@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bakery Bash — Team Roadmaps</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --cream: #FFF8F0;
+  --espresso: #2C1810;
+  --dark-roast: #3D2317;
+  --caramel: #C4873B;
+  --golden: #E8A849;
+  --sage: #7A9E7E;
+  --berry: #B54B6C;
+  --flour: #F0E6D8;
+  --dough: #E8D5BE;
+  --smoke: #4A4A4A;
+  --muted: #8A7A6A;
+  --fe-color: #3B82C4;
+  --fe-bg: #EBF3FA;
+  --fe-border: #B8D4ED;
+  --be-color: #C4873B;
+  --be-bg: #FFF3E0;
+  --be-border: #E8C89A;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--cream);
+  color: var(--espresso);
+}
+
+/* ─── HEADER ─── */
+.hero {
+  background: linear-gradient(155deg, var(--espresso) 0%, #1a0e08 60%, var(--dark-roast) 100%);
+  color: var(--cream);
+  padding: 2rem 2.5rem 1.5rem;
+  position: relative;
+}
+.hero h1 {
+  font-family: 'Playfair Display', serif;
+  font-weight: 900;
+  font-size: 2rem;
+  background: linear-gradient(135deg, var(--cream) 0%, var(--golden) 60%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.hero p { color: var(--dough); font-size: 0.88rem; margin-top: 0.3rem; }
+
+/* ─── TAB SWITCHER ─── */
+.tab-bar {
+  display: flex;
+  background: white;
+  border-bottom: 2px solid var(--flour);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.tab-btn {
+  flex: 1;
+  padding: 0.85rem 1.5rem;
+  border: none;
+  background: transparent;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  color: var(--muted);
+}
+.tab-btn::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: transparent;
+  transition: background 0.2s;
+}
+.tab-btn.active-fe { color: var(--fe-color); }
+.tab-btn.active-fe::after { background: var(--fe-color); }
+.tab-btn.active-be { color: var(--be-color); }
+.tab-btn.active-be::after { background: var(--be-color); }
+.tab-btn:hover { color: var(--espresso); }
+.tab-icon { font-size: 1.1rem; margin-right: 0.4rem; }
+
+/* ─── CONTENT ─── */
+.roadmap-panel { display: none; max-width: 900px; margin: 0 auto; padding: 1.5rem; }
+.roadmap-panel.active { display: block; animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; } }
+
+/* ─── PHASE ─── */
+.phase { margin-bottom: 2rem; }
+.phase-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-bottom: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+.phase-head.fe-head { border-bottom: 2px solid var(--fe-border); }
+.phase-head.be-head { border-bottom: 2px solid var(--be-border); }
+
+.phase-dot {
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Playfair Display', serif;
+  font-weight: 900;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  color: white;
+}
+.phase-dot.fe { background: var(--fe-color); }
+.phase-dot.be { background: var(--be-color); }
+.phase-name {
+  font-family: 'Playfair Display', serif;
+  font-weight: 900;
+  font-size: 1.2rem;
+}
+.phase-sub { font-size: 0.75rem; color: var(--muted); }
+.phase-dates {
+  margin-left: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.phase-dates.fe { color: var(--fe-color); }
+.phase-dates.be { color: var(--be-color); }
+
+/* ─── TASK ─── */
+.task {
+  background: white;
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  margin-bottom: 0.6rem;
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow: 0 1px 4px rgba(44,24,16,0.03);
+  position: relative;
+  transition: all 0.15s;
+}
+.task:hover { box-shadow: 0 3px 12px rgba(44,24,16,0.07); transform: translateY(-1px); }
+.task.done { opacity: 0.45; }
+.task.done .task-title { text-decoration: line-through; }
+
+.task-title { font-weight: 700; font-size: 0.88rem; margin-bottom: 0.25rem; padding-right: 2rem; }
+.task-desc { font-size: 0.78rem; color: var(--smoke); margin-bottom: 0.35rem; }
+.task-detail {
+  font-size: 0.72rem;
+  color: var(--muted);
+  background: var(--flour);
+  padding: 0.35rem 0.6rem;
+  border-radius: 5px;
+  margin-bottom: 0.3rem;
+}
+.task-who {
+  font-size: 0.68rem;
+  color: var(--muted);
+  font-style: italic;
+}
+.dep {
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin-top: 0.3rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.dep.fe { color: var(--fe-color); }
+.dep.be { color: var(--be-color); }
+.dep.blocker { color: var(--berry); }
+
+.task-check {
+  position: absolute;
+  top: 0.85rem; right: 0.85rem;
+  width: 20px; height: 20px;
+  border-radius: 5px;
+  border: 2px solid var(--dough);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  background: white;
+  transition: all 0.15s;
+}
+.task-check:hover { border-color: var(--caramel); }
+.task.done .task-check.fe-check { background: var(--fe-color); border-color: var(--fe-color); color: white; }
+.task.done .task-check.be-check { background: var(--be-color); border-color: var(--be-color); color: white; }
+
+/* ─── CHECKPOINT ─── */
+.checkpoint {
+  background: linear-gradient(135deg, var(--espresso), var(--dark-roast));
+  color: var(--cream);
+  border-radius: 10px;
+  padding: 0.75rem 1.1rem;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.checkpoint-icon { font-size: 1.2rem; }
+.checkpoint-title { font-weight: 700; font-size: 0.82rem; }
+.checkpoint-desc { font-size: 0.72rem; color: var(--dough); margin-top: 0.1rem; }
+
+/* ─── PROGRESS ─── */
+.progress-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: white;
+  border-bottom: 1px solid var(--flour);
+}
+.progress-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.progress-track {
+  flex: 1;
+  height: 6px;
+  background: var(--flour);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+.progress-fill.fe { background: var(--fe-color); }
+.progress-fill.be { background: var(--be-color); }
+
+/* ─── NOTE CARD ─── */
+.note-card {
+  background: var(--flour);
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  margin-top: 1.5rem;
+  border: 1px solid var(--dough);
+}
+.note-card h3 {
+  font-family: 'Playfair Display', serif;
+  font-weight: 700;
+  font-size: 1rem;
+  margin-bottom: 0.4rem;
+}
+.note-card p { font-size: 0.78rem; color: var(--smoke); }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>Bakery Bash — Team Roadmaps</h1>
+  <p>Separate build plans for Frontend (AB + Kavin) and Backend (Daniel + Scott + Dylan B.)</p>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-btn active-fe" id="tabFe" onclick="showPanel('fe')">
+    <span class="tab-icon">🖥️</span> Frontend Roadmap
+  </button>
+  <button class="tab-btn" id="tabBe" onclick="showPanel('be')">
+    <span class="tab-icon">⚙️</span> Backend Roadmap
+  </button>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- FRONTEND ROADMAP -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="roadmap-panel active" id="panel-fe">
+  <div class="progress-bar-container">
+    <span class="progress-label" id="fe-progress-label">0 / 0</span>
+    <div class="progress-track"><div class="progress-fill fe" id="fe-progress-bar" style="width:0%"></div></div>
+    <span class="progress-label" id="fe-progress-pct">0%</span>
+  </div>
+
+  <!-- FE PHASE 1 -->
+  <div class="phase">
+    <div class="phase-head fe-head">
+      <div class="phase-dot fe">1</div>
+      <div><div class="phase-name">Scaffold & Routing</div><div class="phase-sub">Get the app skeleton running</div></div>
+      <div class="phase-dates fe">Apr 4–5</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">Init React app with Firebase SDK</div>
+      <div class="task-desc">Create React project, install Firebase, configure firebase.js with project credentials. Push to repo under games/bakery-bash/.</div>
+      <div class="task-detail">Use the firebase-react-starter template from the FenriX repo as a base. Don't over-engineer — create-react-app or Vite, either works.</div>
+      <div class="task-who">👤 AB</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">Set up page routing</div>
+      <div class="task-desc">Three routes: /lobby (join game), /game (main dashboard), /leaderboard. Use React Router. Add a simple nav or automatic routing based on game state.</div>
+      <div class="task-who">👤 AB</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">Component folder structure</div>
+      <div class="task-desc">Organize: components/Lobby/, components/Dashboard/, components/Leaderboard/, components/shared/. Create placeholder components for each. Agree on naming conventions with Kavin.</div>
+      <div class="task-detail">Decide on state management now. React Context is fine for this scale — don't add Redux. Share a GameContext that holds player state, round info, and game phase.</div>
+      <div class="task-who">👤 AB + Kavin</div>
+    </div>
+
+    <div class="checkpoint">
+      <span class="checkpoint-icon">🚩</span>
+      <div><div class="checkpoint-title">App runs locally, deploys to Firebase Hosting, routes work</div>
+      <div class="checkpoint-desc">You can click between lobby → game → leaderboard. No data yet, just navigation.</div></div>
+    </div>
+  </div>
+
+  <!-- FE PHASE 2 -->
+  <div class="phase">
+    <div class="phase-head fe-head">
+      <div class="phase-dot fe">2</div>
+      <div><div class="phase-name">Lobby & Auth</div><div class="phase-sub">Player joins a game session</div></div>
+      <div class="phase-dates fe">Apr 5–7</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">Login / auth screen</div>
+      <div class="task-desc">Simple form: enter bakery name → Firebase anonymous auth (or email if Backend chose that). Store auth token in context. Redirect to lobby on success.</div>
+      <div class="dep blocker">⛓️ Depends on Backend auth being set up</div>
+      <div class="task-who">👤 Kavin</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">Lobby — waiting room</div>
+      <div class="task-desc">Show list of players who have joined (listen to Firestore /players collection). Display a "waiting for game to start" state. When professor starts the game, auto-redirect to /game.</div>
+      <div class="task-detail">Use onSnapshot to listen for game state changes. When state.phase changes from "lobby" to "decisions", redirect.</div>
+      <div class="task-who">👤 Kavin</div>
+    </div>
+
+    <div class="checkpoint">
+      <span class="checkpoint-icon">🚩</span>
+      <div><div class="checkpoint-title">Two players can join a game and see each other in the lobby</div>
+      <div class="checkpoint-desc">Open two browser tabs, join the same game, see both names appear. When Backend triggers "start", both redirect.</div></div>
+    </div>
+  </div>
+
+  <!-- FE PHASE 3 -->
+  <div class="phase">
+    <div class="phase-head fe-head">
+      <div class="phase-dot fe">3</div>
+      <div><div class="phase-name">Decision Dashboard</div><div class="phase-sub">The core gameplay screen — this is the hardest part</div></div>
+      <div class="phase-dates fe">Apr 7–12</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">Dashboard layout shell</div>
+      <div class="task-desc">Main game screen with header (bakery name, budget, round #, timer) and content area. This is the frame everything else goes into.</div>
+      <div class="task-detail">Header needs to show: current budget remaining, round number (e.g. "Day 3 of 5"), and a countdown timer. Timer syncs with Backend game state.</div>
+      <div class="task-who">👤 AB</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">Pricing panel</div>
+      <div class="task-desc">List the 6 products (croissant, cookie, bagel, sandwich, latte, matcha latte). Each shows cost and a price input field. Player sets their sell price. Show margin calculation (price − cost) live.</div>
+      <div class="task-detail">Validate: price must be ≥ cost (no selling at a loss unless intentional — ask Game Design). Show total menu item count.</div>
+      <div class="task-who">👤 AB</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">Staffing panel</div>
+      <div class="task-desc">Simple: a number input for total staff count. Show cost per employee per round. Show total staffing cost and how it impacts remaining budget.</div>
+      <div class="task-who">👤 Kavin</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">Ad spend panel</div>
+      <div class="task-desc">Dollar amount input for ad spend. Dropdown or radio buttons for ad type (TV, mall, social, etc.). Show remaining budget after allocation.</div>
+      <div class="task-detail">ad_type is categorical — make sure the UI sends the string value, not an index. Backend needs the exact category name for dummy encoding.</div>
+      <div class="task-who">👤 Kavin</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">Budget tracker</div>
+      <div class="task-desc">A live-updating budget bar or display. Starts at starting budget, subtracts: staffing cost + ad spend. Prevents submission if budget goes negative. Show clearly how much is left.</div>
+      <div class="task-who">👤 AB</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">Submit decisions button</div>
+      <div class="task-desc">One button: "Lock In Decisions." Writes all inputs to Firestore. Disable after submission. Show confirmation state. Handle edge case: timer expires before submission → auto-submit current values or use defaults.</div>
+      <div class="dep blocker">⛓️ Depends on Backend decision schema being finalized</div>
+      <div class="task-who">👤 AB</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">Real-time state sync</div>
+      <div class="task-desc">onSnapshot listener on the game state document. When phase changes (decisions → simulate → results), update the UI accordingly. Handle: reconnection after disconnect, stale state.</div>
+      <div class="task-detail">This is the most important infrastructure piece. If sync breaks, the whole game breaks. Test with two tabs, test with network throttling, test closing and reopening a tab mid-round.</div>
+      <div class="task-who">👤 AB</div>
+    </div>
+
+    <div class="checkpoint">
+      <span class="checkpoint-icon">🚩</span>
+      <div><div class="checkpoint-title">One player can set prices, staffing, ad spend, and submit</div>
+      <div class="checkpoint-desc">Decisions write to Firestore. Budget doesn't go negative. Timer counts down. Two tabs stay in sync.</div></div>
+    </div>
+  </div>
+
+  <!-- FE PHASE 4 -->
+  <div class="phase">
+    <div class="phase-head fe-head">
+      <div class="phase-dot fe">4</div>
+      <div><div class="phase-name">Results & Leaderboard</div><div class="phase-sub">The feedback loop — players see what happened</div></div>
+      <div class="phase-dates fe">Apr 12–16</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">Round results screen</div>
+      <div class="task-desc">After Backend simulates, show: revenue earned this round, customer count, customer satisfaction, product sales breakdown, budget remaining. Make revenue the hero number — big, bold, front and center.</div>
+      <div class="task-who">👤 Kavin</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">Leaderboard view</div>
+      <div class="task-desc">Ranked list of all bakeries by cumulative revenue. Highlight current player. Show rank change arrows (↑↓). Auto-updates via onSnapshot on the leaderboard collection.</div>
+      <div class="task-who">👤 Kavin</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">CSV download button</div>
+      <div class="task-desc">Button that pulls the player's accumulated data from Firestore and generates a CSV file. Columns must match the 17-column schema exactly. Use client-side generation (Blob + download link) or call a Backend Cloud Function.</div>
+      <div class="task-detail">This is educationally critical. Students need this to do their modeling work outside the game. Test that the CSV opens cleanly in Excel and Python.</div>
+      <div class="task-who">👤 Kavin</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">Professor dashboard</div>
+      <div class="task-desc">Separate route (/admin or /professor). Controls: start game, advance round, pause, end game. Views: all player states, aggregate stats, class-wide leaderboard. This is the "control room" UI.</div>
+      <div class="task-detail">Keep it functional, not pretty. The professor needs to operate this under pressure on game day. Big buttons, clear labels, no ambiguity.</div>
+      <div class="task-who">👤 AB</div>
+    </div>
+
+    <div class="checkpoint">
+      <span class="checkpoint-icon">🚩</span>
+      <div><div class="checkpoint-title">Full round plays end-to-end in the UI</div>
+      <div class="checkpoint-desc">Join → decide → submit → see results → see leaderboard → download CSV → next round starts. Professor can control pacing.</div></div>
+    </div>
+  </div>
+
+  <!-- FE PHASE 5 -->
+  <div class="phase">
+    <div class="phase-head fe-head">
+      <div class="phase-dot fe">5</div>
+      <div><div class="phase-name">Polish & Edge Cases</div><div class="phase-sub">Make it look like the design deck, handle the weird stuff</div></div>
+      <div class="phase-dates fe">Apr 17–21</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">Visual design pass</div>
+      <div class="task-desc">Apply the bakery aesthetic: warm palette (--cream, --espresso, --caramel, --sage, --berry), Playfair Display headings, DM Sans body text. Consistent card styling, spacing, transitions.</div>
+      <div class="task-who">👤 AB + Kavin</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">Loading & error states</div>
+      <div class="task-desc">Skeleton loaders while Firestore data loads. Error toasts if writes fail. "Reconnecting..." banner if WebSocket drops. "Waiting for next round..." state between phases.</div>
+      <div class="task-who">👤 AB</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">Mobile responsiveness</div>
+      <div class="task-desc">Students will mostly use laptops, but test on tablets and phones. Decision inputs must be usable on mobile. Leaderboard must be readable. Priority: laptop > tablet > phone.</div>
+      <div class="task-who">👤 Kavin</div>
+    </div>
+
+    <div class="task" data-panel="fe">
+      <div class="task-check fe-check" onclick="toggle(this)"></div>
+      <div class="task-title">Timer expiry + AFK handling</div>
+      <div class="task-desc">What happens when the decision timer hits 0 and the player hasn't submitted? Either auto-submit their current inputs or use "previous round" defaults. Coordinate with Backend on which approach.</div>
+      <div class="task-who">👤 AB</div>
+    </div>
+
+    <div class="checkpoint">
+      <span class="checkpoint-icon">🏆</span>
+      <div><div class="checkpoint-title">Frontend is launch-ready</div>
+      <div class="checkpoint-desc">Looks polished, handles errors, works on different screen sizes. Hand off to QA for stress testing.</div></div>
+    </div>
+  </div>
+
+  <div class="note-card">
+    <h3>⚠️ Things that will trip you up</h3>
+    <p><strong>Firestore listener cleanup.</strong> If you don't unsubscribe from onSnapshot when components unmount, you'll get memory leaks and stale updates. Use useEffect cleanup functions religiously.</p>
+    <p style="margin-top:0.4rem;"><strong>Budget validation.</strong> Do it client-side for instant feedback AND server-side for security. Never trust the client alone — students will find ways to submit invalid states.</p>
+    <p style="margin-top:0.4rem;"><strong>Timer sync.</strong> Don't rely on client-side timers alone. The server-side game state should have a round_end_time timestamp. Client computes remaining time from that. Otherwise timers will drift across players.</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- BACKEND ROADMAP -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="roadmap-panel" id="panel-be">
+  <div class="progress-bar-container">
+    <span class="progress-label" id="be-progress-label">0 / 0</span>
+    <div class="progress-track"><div class="progress-fill be" id="be-progress-bar" style="width:0%"></div></div>
+    <span class="progress-label" id="be-progress-pct">0%</span>
+  </div>
+
+  <!-- BE PHASE 1 -->
+  <div class="phase">
+    <div class="phase-head be-head">
+      <div class="phase-dot be">1</div>
+      <div><div class="phase-name">Firebase Setup & Data Schema</div><div class="phase-sub">The foundation everything else sits on</div></div>
+      <div class="phase-dates be">Apr 4–5</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Create Firebase project</div>
+      <div class="task-desc">Enable: Firestore, Authentication (anonymous auth), Hosting, Cloud Functions. Stay on free tier. Document the project ID and share with Frontend.</div>
+      <div class="task-who">👤 Daniel</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Design Firestore collections</div>
+      <div class="task-desc">Core structure: /games/{gameId} (game state, phase, round), /games/{gameId}/players/{playerId} (bakery state, decisions, budget), /games/{gameId}/rounds/{roundId} (results per round), /games/{gameId}/leaderboard.</div>
+      <div class="task-detail">Document this schema in the repo as design/firestore-schema.md. Frontend needs this to know what to read/write. Agree on field names and types with Game Design.</div>
+      <div class="dep blocker">⛓️ Blocks all Frontend data work</div>
+      <div class="task-who">👤 Daniel</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Firestore security rules</div>
+      <div class="task-desc">Write rules so: players can only read/write their own player document, game state is read-only for players (only admin/Cloud Functions can write), leaderboard is read-only.</div>
+      <div class="task-detail">Without security rules, any student can open the browser console and edit anyone's data. This is not optional. Test rules with the Firebase emulator.</div>
+      <div class="task-who">👤 Daniel</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Firebase emulator setup</div>
+      <div class="task-desc">Set up local emulators for Firestore, Auth, and Functions. This lets the whole team develop without burning through free tier quota. Document how to run it in the README.</div>
+      <div class="task-who">👤 Scott</div>
+    </div>
+
+    <div class="checkpoint">
+      <span class="checkpoint-icon">🚩</span>
+      <div><div class="checkpoint-title">Firebase project live, schema documented, security rules deployed</div>
+      <div class="checkpoint-desc">Frontend can connect and start reading/writing. Emulator runs locally for development.</div></div>
+    </div>
+  </div>
+
+  <!-- BE PHASE 2 -->
+  <div class="phase">
+    <div class="phase-head be-head">
+      <div class="phase-dot be">2</div>
+      <div><div class="phase-name">Auth & Game State Machine</div><div class="phase-sub">Players can join, game progresses through phases</div></div>
+      <div class="phase-dates be">Apr 5–8</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Player authentication flow</div>
+      <div class="task-desc">Firebase anonymous auth: player gets a UID, creates a player document with their bakery name, starting budget, and default state. Handle: duplicate names, re-joining after disconnect.</div>
+      <div class="task-who">👤 Daniel</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Game state machine</div>
+      <div class="task-desc">The game document tracks the current phase: LOBBY → DECISIONS → SIMULATING → RESULTS → (loop back to DECISIONS or END). Phase transitions are triggered by the professor (or a Cloud Function timer).</div>
+      <div class="task-detail">Store in /games/{gameId}: { phase: "decisions", round: 3, round_end_time: Timestamp, total_rounds: 5 }. Frontend listens to this with onSnapshot and switches UI accordingly.</div>
+      <div class="task-who">👤 Daniel</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Professor admin endpoints</div>
+      <div class="task-desc">Cloud Functions (or Firestore writes gated by admin UID): createGame, startGame, advanceRound, pauseGame, endGame. The professor controls pacing — players don't.</div>
+      <div class="task-detail">Gate these behind an admin check: verify the caller's UID matches a hardcoded professor UID, or use a custom claim. Don't let students trigger phase transitions.</div>
+      <div class="task-who">👤 Daniel</div>
+    </div>
+
+    <div class="checkpoint">
+      <span class="checkpoint-icon">🚩</span>
+      <div><div class="checkpoint-title">Players can auth, join a game, and the professor can advance phases</div>
+      <div class="checkpoint-desc">Test: 3 players join, professor starts game, phase changes to "decisions", all 3 clients update.</div></div>
+    </div>
+  </div>
+
+  <!-- BE PHASE 3 -->
+  <div class="phase">
+    <div class="phase-head be-head">
+      <div class="phase-dot be">3</div>
+      <div><div class="phase-name">Decision Handling & Revenue Engine</div><div class="phase-sub">The heart of the game — this is the hardest part</div></div>
+      <div class="phase-dates be">Apr 8–14</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Accept & validate player decisions</div>
+      <div class="task-desc">When a player submits, validate: budget isn't exceeded, prices are positive, staff count ≥ 0, ad_spend ≥ 0, ad_type is a valid category. Write validated decisions to the player's round sub-document.</div>
+      <div class="task-detail">Validate server-side in a Cloud Function, not just in Firestore rules. Rules can't do complex math (e.g., staffing_cost + ad_spend ≤ budget). A Cloud Function onWrite trigger works well here.</div>
+      <div class="task-who">👤 Daniel + Scott</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Revenue engine — regression model</div>
+      <div class="task-desc">Cloud Function triggered when all players have submitted (or timer expires). For each player: build feature vector from decisions → apply regression formula → compute revenue. Store results.</div>
+      <div class="task-detail">Formula: revenue = 500 + (30 × staff_count) − (15 × avg_price) + (0.8 × ad_spend) + (50 × num_products) + (5 × headchef_skill) + ad_type_bonus + noise. Load coefficients from a config doc so Game Design can tune without code changes.</div>
+      <div class="dep blocker">⛓️ Needs final coefficients from Game Design</div>
+      <div class="task-who">👤 Daniel</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Customer allocation logic</div>
+      <div class="task-desc">Finite customer pool. Compute each café's attractiveness score (function of prices, products, staff, ads). Distribute customers proportionally. Write customer_count and customer_satisfaction to each player's round result.</div>
+      <div class="dep blocker">⛓️ Needs customer allocation formula from Game Design</div>
+      <div class="task-who">👤 Daniel</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Per-product sales computation</div>
+      <div class="task-desc">Based on customer count and product mix, determine how many of each product were sold: croissant, cookie, bagel, sandwich, latte, matcha_latte. Write as integers to the round results.</div>
+      <div class="task-who">👤 Scott</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Round results assembly</div>
+      <div class="task-desc">After simulation, assemble the complete results document for each player: revenue, customer_count, customer_satisfaction, per-product sales, headchef_skill, ad_type. Write to /games/{gameId}/players/{playerId}/rounds/{roundId}.</div>
+      <div class="task-who">👤 Daniel</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Default handling for non-submitters</div>
+      <div class="task-desc">If a player doesn't submit before the timer: use their previous round's decisions as defaults (or a hardcoded baseline for round 1). Don't block the simulation waiting for stragglers.</div>
+      <div class="task-who">👤 Scott</div>
+    </div>
+
+    <div class="checkpoint">
+      <span class="checkpoint-icon">🚩</span>
+      <div><div class="checkpoint-title">Revenue engine produces correct, reasonable results</div>
+      <div class="checkpoint-desc">Run 5 test scenarios with known inputs, verify output matches hand-calculated expected revenue. Test with 3+ players submitting different decisions.</div></div>
+    </div>
+  </div>
+
+  <!-- BE PHASE 4 -->
+  <div class="phase">
+    <div class="phase-head be-head">
+      <div class="phase-dot be">4</div>
+      <div><div class="phase-name">Leaderboard & Data Export</div><div class="phase-sub">Students need to see rankings and download their data</div></div>
+      <div class="phase-dates be">Apr 14–17</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Leaderboard computation</div>
+      <div class="task-desc">After each round simulation, aggregate cumulative revenue for all players. Rank them. Write to /games/{gameId}/leaderboard as a sorted array. Include rank change from previous round.</div>
+      <div class="task-who">👤 Daniel</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Time-series dataset storage</div>
+      <div class="task-desc">Each player accumulates round-over-round data. Store as an array of row objects in the player document, or as sub-documents under /players/{id}/data/{roundId}. Whichever is easier to query for CSV export.</div>
+      <div class="task-detail">Consider read costs. If Frontend fetches the entire dataset each time, that's 17 fields × N rounds × 1 read per field. Batch into a single document if possible to reduce reads.</div>
+      <div class="task-who">👤 Scott</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">CSV export endpoint</div>
+      <div class="task-desc">Cloud Function or client-side logic that pulls a player's accumulated data and returns a CSV with the 17-column schema. Columns: day, revenue, num_products, avg_price, staff_count, ad_spend, customer_count, customer_satisfaction, headchef_skill, croissant, cookie, bagel, sandwich, latte, matcha_latte, ad_type.</div>
+      <div class="task-detail">Test that the exported CSV opens correctly in both Excel and Python pandas. Check for encoding issues, especially with column headers.</div>
+      <div class="task-who">👤 Scott</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Professor aggregate data export</div>
+      <div class="task-desc">Class-wide data dump for the professor: all players' data in one CSV, plus an additional "player_name" column. Used for the post-game debrief and grading.</div>
+      <div class="task-who">👤 Dylan B.</div>
+    </div>
+
+    <div class="checkpoint">
+      <span class="checkpoint-icon">🚩</span>
+      <div><div class="checkpoint-title">Leaderboard ranks correctly, CSV downloads work</div>
+      <div class="checkpoint-desc">Play 3 rounds. Verify cumulative revenue ranking. Download CSV and open in Excel — all 17 columns, correct data.</div></div>
+    </div>
+  </div>
+
+  <!-- BE PHASE 5 -->
+  <div class="phase">
+    <div class="phase-head be-head">
+      <div class="phase-dot be">5</div>
+      <div><div class="phase-name">QA, Load Testing & Launch Prep</div><div class="phase-sub">Scott + Dylan B. shift fully to QA</div></div>
+      <div class="phase-dates be">Apr 18–25</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Load test — 30+ simulated players</div>
+      <div class="task-desc">Script or browser tabs simulating 30+ concurrent players. All submitting decisions, all receiving results. Monitor Firestore read/write counts against free tier limits (50k reads/day, 20k writes/day).</div>
+      <div class="task-detail">Estimate: ~10 reads per player per phase transition × 4 phases × 5 rounds × 50 players = 10,000 reads. You're probably fine, but measure it.</div>
+      <div class="task-who">👤 Scott + Dylan B.</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Budget integrity audit</div>
+      <div class="task-desc">Verify: no player can end a round with negative budget, auction spend + staffing cost never exceeds available funds, edge cases like exactly $0 remaining are handled.</div>
+      <div class="task-who">👤 Scott</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Revenue accuracy validation</div>
+      <div class="task-desc">Hand-calculate expected revenue for 5 known input scenarios. Compare against engine output. Verify leaderboard ranking matches manual tallying. Check that CSV export data matches Firestore data.</div>
+      <div class="task-who">👤 Dylan B.</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Reconnection & failure testing</div>
+      <div class="task-desc">What happens if: a player disconnects mid-round, Cloud Function times out during simulation, Firestore write fails, professor's browser crashes. Document recovery procedures for each.</div>
+      <div class="task-who">👤 Dylan B.</div>
+    </div>
+
+    <div class="task" data-panel="be">
+      <div class="task-check be-check" onclick="toggle(this)"></div>
+      <div class="task-title">Game day runbook</div>
+      <div class="task-desc">Written document: who monitors what, how to recover from failures, Firestore console URLs, Cloud Function logs, step-by-step for starting/running/ending the game. Print this out for game day.</div>
+      <div class="task-who">👤 Daniel + Scott + Dylan B.</div>
+    </div>
+
+    <div class="checkpoint">
+      <span class="checkpoint-icon">🏆</span>
+      <div><div class="checkpoint-title">Go / no-go decision</div>
+      <div class="checkpoint-desc">After a full dress rehearsal with all 7 team members: is the backend stable enough for 50 students? What's the fallback plan?</div></div>
+    </div>
+  </div>
+
+  <div class="note-card">
+    <h3>⚠️ Things that will trip you up</h3>
+    <p><strong>Free tier limits.</strong> Firestore free tier: 50k reads, 20k writes, 20k deletes per day. With real-time listeners, reads accumulate fast. Use targeted queries (don't listen to entire collections). Batch writes where possible.</p>
+    <p style="margin-top:0.4rem;"><strong>Cloud Function cold starts.</strong> First invocation after idle can take 3–8 seconds. If the revenue engine is a Cloud Function, the first round's simulation will feel slow. Pre-warm it before the game starts by calling it once.</p>
+    <p style="margin-top:0.4rem;"><strong>Config as data, not code.</strong> Store all game parameters (coefficients, starting budget, product costs, etc.) in a Firestore config document, not hardcoded in Cloud Functions. This lets Game Design tune values without deploying code.</p>
+  </div>
+</div>
+
+<script>
+function showPanel(id) {
+  document.querySelectorAll('.roadmap-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b => { b.className = 'tab-btn'; });
+  document.getElementById('tab' + id.charAt(0).toUpperCase() + id.slice(1)).classList.add('active-' + id);
+  updateProgress(id);
+}
+
+function toggle(el) {
+  const task = el.closest('.task');
+  task.classList.toggle('done');
+  el.textContent = task.classList.contains('done') ? '✓' : '';
+  const panel = task.getAttribute('data-panel');
+  updateProgress(panel);
+  saveState();
+}
+
+function updateProgress(panel) {
+  const tasks = document.querySelectorAll(`#panel-${panel} .task`);
+  const done = document.querySelectorAll(`#panel-${panel} .task.done`);
+  const total = tasks.length;
+  const complete = done.length;
+  const pct = total > 0 ? Math.round((complete / total) * 100) : 0;
+  document.getElementById(`${panel}-progress-bar`).style.width = pct + '%';
+  document.getElementById(`${panel}-progress-pct`).textContent = pct + '%';
+  document.getElementById(`${panel}-progress-label`).textContent = complete + ' / ' + total;
+}
+
+function saveState() {
+  const states = { fe: [], be: [] };
+  ['fe', 'be'].forEach(panel => {
+    document.querySelectorAll(`#panel-${panel} .task`).forEach((t, i) => {
+      if (t.classList.contains('done')) states[panel].push(i);
+    });
+  });
+  try { localStorage.setItem('bb-team-roadmaps', JSON.stringify(states)); } catch(e) {}
+}
+
+function loadState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('bb-team-roadmaps') || '{}');
+    ['fe', 'be'].forEach(panel => {
+      const tasks = document.querySelectorAll(`#panel-${panel} .task`);
+      (saved[panel] || []).forEach(i => {
+        if (tasks[i]) {
+          tasks[i].classList.add('done');
+          tasks[i].querySelector('.task-check').textContent = '✓';
+        }
+      });
+      updateProgress(panel);
+    });
+  } catch(e) {}
+}
+
+loadState();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,2449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bakery Bash — Game Design Presentation</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --cream: #FFF8F0;
+  --warm-white: #FFFDF9;
+  --espresso: #2C1810;
+  --dark-roast: #3D2317;
+  --caramel: #C4873B;
+  --golden: #E8A849;
+  --honey: #F5C96A;
+  --sage: #7A9E7E;
+  --sage-light: #A8C5AB;
+  --berry: #B54B6C;
+  --berry-light: #D4748F;
+  --flour: #F0E6D8;
+  --dough: #E8D5BE;
+  --charcoal: #1A1A1A;
+  --smoke: #4A4A4A;
+  --muted: #8A7A6A;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  font-family: 'DM Sans', sans-serif;
+  background: var(--espresso);
+  color: var(--espresso);
+}
+
+.slide-container {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  overflow: hidden;
+}
+
+.slide {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  display: none;
+  flex-direction: column;
+  padding: 3.5rem 5rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--caramel) transparent;
+}
+
+.slide::-webkit-scrollbar { width: 6px; }
+.slide::-webkit-scrollbar-track { background: transparent; }
+.slide::-webkit-scrollbar-thumb { background: var(--caramel); border-radius: 3px; }
+
+.slide.active {
+  display: flex;
+  animation: slideIn 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── BACKGROUNDS ─── */
+.bg-cream { background: var(--cream); }
+.bg-warm { background: var(--warm-white); }
+.bg-dark {
+  background: linear-gradient(145deg, var(--espresso) 0%, var(--dark-roast) 100%);
+  color: var(--cream);
+}
+.bg-flour { background: var(--flour); }
+.bg-sage-soft { background: linear-gradient(160deg, #f0f5f0 0%, #e8f0e8 50%, #f5f0e8 100%); }
+
+/* ─── TYPOGRAPHY ─── */
+.display {
+  font-family: 'Playfair Display', serif;
+  font-weight: 900;
+  line-height: 1.05;
+}
+.serif { font-family: 'Playfair Display', serif; }
+.mono { font-family: 'JetBrains Mono', monospace; }
+
+h1.display { font-size: clamp(2.4rem, 4.5vw, 4rem); }
+h2.display { font-size: clamp(1.8rem, 3.2vw, 2.8rem); }
+h3 { font-size: clamp(1.1rem, 1.6vw, 1.35rem); font-weight: 700; }
+p, li { font-size: clamp(0.85rem, 1.1vw, 1.05rem); line-height: 1.65; }
+.small { font-size: 0.82rem; }
+.label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* ─── LAYOUT ─── */
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.gap-sm { gap: 0.75rem; }
+.gap-md { gap: 1.25rem; }
+.gap-lg { gap: 2rem; }
+.gap-xl { gap: 3rem; }
+.wrap { flex-wrap: wrap; }
+.grow { flex: 1; }
+.center { align-items: center; justify-content: center; }
+.items-start { align-items: flex-start; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+.grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; }
+
+/* ─── COMPONENTS ─── */
+.tag {
+  display: inline-block;
+  padding: 0.25rem 0.65rem;
+  border-radius: 100px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.tag-caramel { background: var(--caramel); color: white; }
+.tag-sage { background: var(--sage); color: white; }
+.tag-berry { background: var(--berry); color: white; }
+.tag-espresso { background: var(--espresso); color: var(--cream); }
+.tag-golden { background: var(--golden); color: var(--espresso); }
+.tag-outline { border: 1.5px solid var(--caramel); color: var(--caramel); background: transparent; }
+
+.card {
+  background: white;
+  border-radius: 12px;
+  padding: 1.25rem 1.35rem;
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow: 0 2px 12px rgba(44,24,16,0.04);
+}
+.card-dark {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 1.25rem 1.35rem;
+}
+
+.divider {
+  width: 60px;
+  height: 3px;
+  background: var(--caramel);
+  border-radius: 2px;
+  margin: 0.75rem 0;
+}
+.divider-light {
+  width: 60px;
+  height: 3px;
+  background: var(--golden);
+  border-radius: 2px;
+  margin: 0.75rem 0;
+}
+
+.stat {
+  font-family: 'Playfair Display', serif;
+  font-weight: 900;
+  font-size: 2.2rem;
+  color: var(--caramel);
+  line-height: 1;
+}
+.stat-dark { color: var(--golden); }
+
+.icon-circle {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.step-num {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--caramel);
+  color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.product-item {
+  padding: 0.6rem 0.85rem;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid rgba(0,0,0,0.06);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.82rem;
+}
+.product-item .emoji { font-size: 1.2rem; }
+
+/* ─── NAVIGATION ─── */
+.nav-bar {
+  position: fixed;
+  bottom: 0; left: 0;
+  width: 100%;
+  height: 56px;
+  background: rgba(44, 24, 16, 0.95);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2rem;
+  z-index: 100;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+.nav-bar .page-info {
+  color: var(--dough);
+  font-size: 0.78rem;
+  font-weight: 500;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.nav-bar .slide-title-preview {
+  color: rgba(255,248,240,0.5);
+  font-size: 0.72rem;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.nav-btn {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--cream);
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: 'DM Sans', sans-serif;
+}
+.nav-btn:hover { background: rgba(255,255,255,0.15); }
+.nav-btn:disabled { opacity: 0.3; cursor: default; }
+
+.progress-bar {
+  position: fixed;
+  top: 0; left: 0;
+  height: 3px;
+  background: var(--caramel);
+  z-index: 101;
+  transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ─── UI SKETCH ─── */
+.ui-sketch {
+  background: white;
+  border: 2px solid var(--dough);
+  border-radius: 12px;
+  overflow: hidden;
+  font-size: 0.72rem;
+}
+.ui-header {
+  background: var(--espresso);
+  color: var(--cream);
+  padding: 0.6rem 1rem;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+}
+.ui-body {
+  display: grid;
+  grid-template-columns: 200px 1fr 220px;
+  min-height: 280px;
+}
+.ui-sidebar {
+  background: var(--flour);
+  padding: 0.75rem;
+  border-right: 1px solid var(--dough);
+}
+.ui-main {
+  padding: 0.75rem;
+}
+.ui-right {
+  background: #fafaf5;
+  padding: 0.75rem;
+  border-left: 1px solid var(--dough);
+}
+.ui-section-label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin-bottom: 0.4rem;
+}
+.ui-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+  font-size: 0.68rem;
+}
+.ui-btn {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  background: var(--caramel);
+  color: white;
+  border-radius: 4px;
+  font-size: 0.58rem;
+  font-weight: 600;
+  margin: 0.15rem 0.1rem;
+}
+.ui-metric {
+  text-align: center;
+  padding: 0.5rem;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid rgba(0,0,0,0.06);
+  margin-bottom: 0.4rem;
+}
+.ui-metric-val {
+  font-family: 'Playfair Display', serif;
+  font-weight: 900;
+  font-size: 1.1rem;
+  color: var(--caramel);
+}
+.ui-metric-label {
+  font-size: 0.55rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ─── TABLE ─── */
+table.clean {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+table.clean th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  background: var(--flour);
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 2px solid var(--dough);
+}
+table.clean td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+table.clean tr:last-child td { border-bottom: none; }
+
+/* ─── TITLE SLIDE ─── */
+.title-slide {
+  background: linear-gradient(160deg, var(--espresso) 0%, #1a0e08 60%, var(--dark-roast) 100%);
+  color: var(--cream);
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.title-slide::before {
+  content: '';
+  position: absolute;
+  top: -30%; right: -20%;
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(196,135,59,0.12) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.title-slide::after {
+  content: '';
+  position: absolute;
+  bottom: -20%; left: -10%;
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(122,158,126,0.08) 0%, transparent 70%);
+  border-radius: 50%;
+}
+.title-content { position: relative; z-index: 1; }
+.title-content .game-name {
+  font-size: clamp(3.5rem, 7vw, 6rem);
+  font-family: 'Playfair Display', serif;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--cream) 0%, var(--golden) 50%, var(--caramel) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 0.5rem;
+}
+.title-content .subtitle {
+  font-size: 1.2rem;
+  color: var(--dough);
+  font-weight: 300;
+  letter-spacing: 0.04em;
+  margin-bottom: 2rem;
+}
+.title-meta {
+  display: flex;
+  gap: 2rem;
+  justify-content: center;
+  font-size: 0.78rem;
+  color: rgba(255,248,240,0.5);
+}
+
+.section-header {
+  margin-bottom: 1.5rem;
+}
+.section-header .label {
+  color: var(--caramel);
+  margin-bottom: 0.35rem;
+  display: block;
+}
+.bg-dark .section-header .label {
+  color: var(--golden);
+}
+</style>
+</head>
+<body>
+
+<div class="progress-bar" id="progress"></div>
+
+<div class="slide-container" id="slideContainer">
+
+<!-- ══════════ SLIDE 1: TITLE ══════════ -->
+<div class="slide title-slide active" data-title="Title">
+  <div class="title-content">
+    <div style="margin-bottom:1rem">
+      <span class="tag tag-golden">MGSC 310 · Game Design Team</span>
+    </div>
+    <div class="game-name">Bakery Bash</div>
+    <div class="subtitle">A competitive café simulation inside a plaza</div>
+    <div class="divider-light" style="margin:0 auto 1.5rem auto;width:80px;"></div>
+    <p style="color:rgba(255,248,240,0.6);max-width:540px;margin:0 auto 2.5rem auto;font-size:0.92rem;line-height:1.7;">
+      30–50 players. Counter-service cafés. Shared customer pool.<br>
+      Budget allocation drives a regression model that determines revenue.
+    </p>
+    <div class="title-meta">
+      <span>📍 Set in a Plaza</span>
+      <span>🧁 Counter-Service Café</span>
+      <span>📊 Revenue is the Goal</span>
+      <span>🤖 AI Competitors</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SLIDE 2: OVERVIEW ══════════ -->
+<div class="slide bg-cream" data-title="Overview">
+  <div class="section-header">
+    <span class="label">Overview</span>
+    <h1 class="display">What is Bakery Bash?</h1>
+    <div class="divider"></div>
+  </div>
+
+  <p style="max-width:720px;margin-bottom:1.75rem;color:var(--smoke);font-size:0.95rem;">
+    Each player runs a grab-and-go café in a plaza food court. Customers walk up, order, and leave — no dine-in. Every round, players set prices, manage employees, bid on ad space, and expand their product menu. A regression model runs under the hood and computes revenue based on each player's decisions. AI-controlled cafés also compete.
+  </p>
+
+  <div class="grid-2" style="margin-bottom: 1.5rem;">
+    <div class="flex gap-md" style="flex-wrap:wrap;">
+      <div class="card flex flex-col center" style="min-width:130px;flex:1;">
+        <div class="stat">30–50</div>
+        <span class="small" style="color:var(--muted);margin-top:0.3rem;">Players</span>
+      </div>
+      <div class="card flex flex-col center" style="min-width:130px;flex:1;">
+        <div class="stat">~35</div>
+        <span class="small" style="color:var(--muted);margin-top:0.3rem;">Min to Play</span>
+      </div>
+      <div class="card flex flex-col center" style="min-width:130px;flex:1;">
+        <div class="stat">X</div>
+        <span class="small" style="color:var(--muted);margin-top:0.3rem;">Rounds</span>
+      </div>
+      <div class="card flex flex-col center" style="min-width:130px;flex:1;">
+        <div class="stat">🏬</div>
+        <span class="small" style="color:var(--muted);margin-top:0.3rem;">Plaza Setting</span>
+      </div>
+    </div>
+    <div class="card" style="border-left:3px solid var(--caramel);">
+      <h3 style="margin-bottom:0.5rem;">Core Concept</h3>
+      <p style="color:var(--smoke);margin-bottom:0.75rem;">
+        Professor provides a café dataset. Features like product mix, staff count, pricing, ad spend, and equipment tier map to revenue through a regression model. Players who study the data discover which coefficients matter most.
+      </p>
+      <div class="flex gap-sm wrap">
+        <span class="tag tag-caramel">Dataset-Driven</span>
+        <span class="tag tag-sage">Regression Model</span>
+        <span class="tag tag-berry">Shared Customers</span>
+        <span class="tag tag-espresso">AI Competitors</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="background:var(--flour);border:none;">
+    <h3 style="margin-bottom:0.5rem;">🎯 Revenue is the Goal</h3>
+    <p style="color:var(--smoke);">
+      Primary metric: <strong>cumulative net revenue</strong> across all rounds. Secondary metrics include customer count, employee satisfaction, and product diversity score. Two leaderboards — one for the professor (aggregate class stats, model insights) and one for students (competitive rankings, revenue breakdown).
+    </p>
+  </div>
+</div>
+
+<!-- ══════════ SLIDE 3: CORE DECISIONS ══════════ -->
+<div class="slide bg-warm" data-title="Core Decisions">
+  <div class="section-header">
+    <span class="label">Core Mechanics</span>
+    <h1 class="display">Three Pillars of Decision-Making</h1>
+    <div class="divider"></div>
+  </div>
+
+  <p style="max-width:680px;margin-bottom:1.5rem;color:var(--smoke);">
+    Every round, players make decisions across three core areas. These inputs feed the regression model.
+  </p>
+
+  <div class="grid-3" style="gap:1.5rem;">
+    <div class="card" style="border-top:4px solid var(--caramel);">
+      <div class="flex items-start gap-sm" style="margin-bottom:0.75rem;">
+        <div class="icon-circle" style="background:var(--caramel);color:white;">💰</div>
+        <div>
+          <h3>Pricing</h3>
+          <span class="small" style="color:var(--muted);">Set prices for each product</span>
+        </div>
+      </div>
+      <p class="small" style="color:var(--smoke);">
+        Each of the 12 base bakery products has a cost. Players set their own sell price. Price elasticity is baked into the model — too high and customers leave, too low and you bleed margin. The sweet spot changes based on competition and ad presence.
+      </p>
+    </div>
+
+    <div class="card" style="border-top:4px solid var(--sage);">
+      <div class="flex items-start gap-sm" style="margin-bottom:0.75rem;">
+        <div class="icon-circle" style="background:var(--sage);color:white;">📢</div>
+        <div>
+          <h3>Auctions</h3>
+          <span class="small" style="color:var(--muted);">Chef, Ads, Technology — 30s each</span>
+        </div>
+      </div>
+      <p class="small" style="color:var(--smoke);">
+        Three sealed-bid auctions run before each day opens: bid on premium chefs, plaza ad placements, and equipment upgrades. 30 seconds per auction, all blind. Budget spent in one reduces what's available for the next — forcing tradeoffs.
+      </p>
+    </div>
+
+    <div class="card" style="border-top:4px solid var(--berry);">
+      <div class="flex items-start gap-sm" style="margin-bottom:0.75rem;">
+        <div class="icon-circle" style="background:var(--berry);color:white;">👥</div>
+        <div>
+          <h3>Employees</h3>
+          <span class="small" style="color:var(--muted);">Hire, manage, poach</span>
+        </div>
+      </div>
+      <p class="small" style="color:var(--smoke);">
+        Hire bakers, cashiers, and managers. Each has a satisfaction score. Unhappy employees trigger a job-open notification to rival cafés. Competitors can bid to poach your staff. Satisfaction is affected by pay, workload, and events.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SLIDE 4: PRODUCTS ══════════ -->
+<div class="slide bg-cream" data-title="Product Menu">
+  <div class="section-header">
+    <span class="label">Menu</span>
+    <h1 class="display">12 Café Products — 3 Categories</h1>
+    <div class="divider"></div>
+  </div>
+
+  <p style="max-width:720px;margin-bottom:0.75rem;color:var(--smoke);font-size:0.9rem;">
+    Counter-service, grab-and-go. Every café <strong>must stock at least one product from each category</strong> (1 sweet, 1 savory, 1 drink). Four options per category. Players can buy additional products from their <strong>supplier</strong> each round.
+  </p>
+
+  <div class="card" style="background:var(--flour);border:none;margin-bottom:0.75rem;padding:0.75rem 1rem;">
+    <div class="flex gap-md items-start" style="align-items:center;">
+      <span style="font-size:1.2rem;">⚠️</span>
+      <p class="small" style="color:var(--smoke);margin:0;"><strong>Base requirement:</strong> Every café must carry a minimum of 1 sweet pastry, 1 savory pastry, and 1 drink at all times. You can stock up to all 12 products if your budget and equipment support it.</p>
+    </div>
+  </div>
+
+  <div class="grid-3" style="gap:1rem;margin-bottom:0.75rem;">
+    <div class="card" style="border-top:4px solid var(--caramel);padding:1rem;">
+      <span class="label" style="color:var(--caramel);display:block;margin-bottom:0.6rem;">🍰 Sweet Pastries</span>
+      <div class="flex flex-col" style="gap:0.4rem;">
+        <div class="product-item"><span class="emoji">🥐</span><div><strong>Croissant</strong><br><span class="small" style="color:var(--muted);">Buttery classic · Mid cost, high satisfaction</span></div></div>
+        <div class="product-item"><span class="emoji">🍪</span><div><strong>Cookie</strong><br><span class="small" style="color:var(--muted);">Chocolate chip · Low cost, fast production</span></div></div>
+        <div class="product-item"><span class="emoji">🧁</span><div><strong>Cupcake</strong><br><span class="small" style="color:var(--muted);">Decorated · High margin, slower bake</span></div></div>
+        <div class="product-item"><span class="emoji">🍩</span><div><strong>Cinnamon Roll</strong><br><span class="small" style="color:var(--muted);">Premium · Highest price, longest bake</span></div></div>
+      </div>
+    </div>
+
+    <div class="card" style="border-top:4px solid var(--sage);padding:1rem;">
+      <span class="label" style="color:var(--sage);display:block;margin-bottom:0.6rem;">🥯 Savory Pastries</span>
+      <div class="flex flex-col" style="gap:0.4rem;">
+        <div class="product-item"><span class="emoji">🥯</span><div><strong>Bagel</strong><br><span class="small" style="color:var(--muted);">Cream cheese add-on · Consistent seller</span></div></div>
+        <div class="product-item"><span class="emoji">🥧</span><div><strong>Quiche Slice</strong><br><span class="small" style="color:var(--muted);">Chef-intensive · High price, high sat.</span></div></div>
+        <div class="product-item"><span class="emoji">🧀</span><div><strong>Cheese Danish</strong><br><span class="small" style="color:var(--muted);">Mid-tier · Steady demand, balanced</span></div></div>
+        <div class="product-item"><span class="emoji">🥪</span><div><strong>Breakfast Sandwich</strong><br><span class="small" style="color:var(--muted);">Peak AM demand · Needs more staff</span></div></div>
+      </div>
+    </div>
+
+    <div class="card" style="border-top:4px solid var(--berry);padding:1rem;">
+      <span class="label" style="color:var(--berry);display:block;margin-bottom:0.6rem;">☕ Drinks</span>
+      <div class="flex flex-col" style="gap:0.4rem;">
+        <div class="product-item"><span class="emoji">☕</span><div><strong>Drip Coffee</strong><br><span class="small" style="color:var(--muted);">Lowest cost · High volume, low margin</span></div></div>
+        <div class="product-item"><span class="emoji">🍵</span><div><strong>Matcha Latte</strong><br><span class="small" style="color:var(--muted);">Trendy · Highest drink margin</span></div></div>
+        <div class="product-item"><span class="emoji">🧋</span><div><strong>Iced Chai</strong><br><span class="small" style="color:var(--muted);">Seasonal · Demand spikes with trends</span></div></div>
+        <div class="product-item"><span class="emoji">🧃</span><div><strong>Fresh Juice</strong><br><span class="small" style="color:var(--muted);">Premium · High sat., equipment needed</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="gap:0.75rem;">
+    <div class="card" style="border-left:3px solid var(--golden);">
+      <h3 style="margin-bottom:0.35rem;">📦 Supplier — New Product Drops</h3>
+      <p class="small" style="color:var(--smoke);">
+        Each round, a <strong>supplier offers a new product</strong> that players can choose to buy and add to their menu. It costs money to implement, and once added, the next round's dataset shows how it performed — units sold, revenue, customer satisfaction delta. This is how players expand beyond the base 12.
+      </p>
+    </div>
+    <div class="card" style="border-left:3px solid var(--sage);">
+      <h3 style="margin-bottom:0.35rem;">📊 Post-Round Product Data</h3>
+      <p class="small" style="color:var(--smoke);">
+        After each day/round, players receive a <strong>time-series dataset</strong> showing: how many of each product were purchased, revenue per product, and customer satisfaction score — all indexed by day. This accumulates over rounds so players can spot trends and optimize.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SLIDE 5: EMPLOYEES ══════════ -->
+<div class="slide bg-dark" data-title="Employee System">
+  <div class="section-header">
+    <span class="label" style="color:var(--golden);">Employees</span>
+    <h1 class="display">Hire, Manage & Poach</h1>
+    <div class="divider-light"></div>
+  </div>
+
+  <p style="max-width:680px;margin-bottom:1.5rem;color:var(--dough);font-size:0.92rem;">
+    Every employee has a <strong>satisfaction score</strong>. This score drives retention, performance, and a competitive poaching mechanic between players.
+  </p>
+
+  <div class="grid-3" style="margin-bottom:1.5rem;">
+    <div class="card-dark">
+      <div style="font-size:1.4rem;margin-bottom:0.5rem;">👨‍🍳</div>
+      <h3 style="color:var(--cream);">Baker</h3>
+      <p class="small" style="color:var(--dough);">Produces baked goods. More bakers = more throughput. Tiered: line baker → lead baker → head baker. Higher tiers produce faster with better quality scores.</p>
+    </div>
+    <div class="card-dark">
+      <div style="font-size:1.4rem;margin-bottom:0.5rem;">💳</div>
+      <h3 style="color:var(--cream);">Cashier</h3>
+      <p class="small" style="color:var(--dough);">Handles checkout. Speed determines queue length. Long queues = customers walk away. Upgradeable register tech multiplies cashier efficiency.</p>
+    </div>
+    <div class="card-dark">
+      <div style="font-size:1.4rem;margin-bottom:0.5rem;">📋</div>
+      <h3 style="color:var(--cream);">Manager</h3>
+      <p class="small" style="color:var(--dough);">Boosts overall satisfaction + handles customer complaints. Reduces employee churn. One manager covers up to 5 staff. Critical for large operations.</p>
+    </div>
+  </div>
+
+  <div class="grid-2" style="gap:1.5rem;">
+    <div class="card-dark" style="border-left:3px solid var(--berry-light);">
+      <h3 style="color:var(--cream);margin-bottom:0.4rem;">😤 Unhappy Employees → Open Job Listing</h3>
+      <p class="small" style="color:var(--dough);">
+        When an employee's satisfaction drops below a threshold, a <strong>message is broadcast to all other cafés</strong> that this employee is open to offers. Rival players can bid to poach them. If no one bids, the employee may quit outright. Factors affecting satisfaction: pay rate, workload (too many customers per staff), consecutive rounds without a raise, and AI curveballs.
+      </p>
+    </div>
+    <div class="card-dark" style="border-left:3px solid var(--sage-light);">
+      <h3 style="color:var(--cream);margin-bottom:0.4rem;">🤝 Buyout / Poach Mechanic</h3>
+      <p class="small" style="color:var(--dough);">
+        Players can <strong>offer to buy out cooks and employees from rival cafés</strong>. This triggers a bidding phase — the original owner can counter-offer with a raise or let them go. Poaching a high-tier baker from a competitor weakens them and strengthens you. Strategic sabotage meets HR management.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SLIDE 6: AUCTIONS ══════════ -->
+<div class="slide bg-sage-soft" data-title="Auctions">
+  <div class="section-header">
+    <span class="label">Pre-Open Phase</span>
+    <h1 class="display">Three Auctions — 30 Seconds Each</h1>
+    <div class="divider"></div>
+  </div>
+
+  <p style="max-width:700px;margin-bottom:1rem;color:var(--smoke);font-size:0.9rem;">
+    Before stores open each round, all players participate in <strong>three back-to-back sealed-bid auctions</strong>. Each auction lasts 30 seconds. All bids are blind — highest bidder wins. Overbidding in one auction eats into budget for the others.
+  </p>
+
+  <div class="flex gap-md" style="margin-bottom:1rem;">
+    <!-- AUCTION 1: CHEF -->
+    <div class="card grow" style="border-top:4px solid var(--caramel);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+        <div class="flex items-start gap-sm">
+          <div class="icon-circle" style="background:var(--caramel);color:white;">👨‍🍳</div>
+          <div>
+            <h3>Chef Auction</h3>
+            <span class="mono small" style="color:var(--muted);">30 sec · Auction #1</span>
+          </div>
+        </div>
+      </div>
+      <p class="small" style="color:var(--smoke);margin-bottom:0.5rem;">
+        Premium chefs with higher tier skills become available. Bid to hire them before competitors do. Winning a head chef means faster production and higher quality scores.
+      </p>
+      <div class="flex flex-col" style="gap:0.3rem;">
+        <div style="background:var(--flour);padding:0.4rem 0.6rem;border-radius:5px;font-size:0.75rem;display:flex;justify-content:space-between;">
+          <span>👨‍🍳 <strong>Head Baker</strong> — Tier 3</span>
+          <span class="tag tag-caramel" style="font-size:0.55rem;">1 avail</span>
+        </div>
+        <div style="background:var(--flour);padding:0.4rem 0.6rem;border-radius:5px;font-size:0.75rem;display:flex;justify-content:space-between;">
+          <span>👨‍🍳 <strong>Lead Baker</strong> — Tier 2</span>
+          <span class="tag tag-outline" style="font-size:0.55rem;">2 avail</span>
+        </div>
+        <div style="background:var(--flour);padding:0.4rem 0.6rem;border-radius:5px;font-size:0.75rem;display:flex;justify-content:space-between;">
+          <span>💳 <strong>Senior Cashier</strong> — Tier 2</span>
+          <span class="tag tag-outline" style="font-size:0.55rem;">2 avail</span>
+        </div>
+      </div>
+      <p class="small" style="color:var(--muted);margin-top:0.4rem;font-style:italic;">
+        Line-level staff (Tier 1) are always available to hire directly — no auction needed.
+      </p>
+    </div>
+
+    <!-- AUCTION 2: ADS -->
+    <div class="card grow" style="border-top:4px solid var(--sage);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+        <div class="flex items-start gap-sm">
+          <div class="icon-circle" style="background:var(--sage);color:white;">📢</div>
+          <div>
+            <h3>Ad Auction</h3>
+            <span class="mono small" style="color:var(--muted);">30 sec · Auction #2</span>
+          </div>
+        </div>
+      </div>
+      <p class="small" style="color:var(--smoke);margin-bottom:0.5rem;">
+        Limited advertising placements in the plaza. Winners get foot traffic boosts for that round. Presets available for quick bidding.
+      </p>
+      <div class="flex flex-col" style="gap:0.3rem;">
+        <div style="background:var(--flour);padding:0.4rem 0.6rem;border-radius:5px;font-size:0.75rem;display:flex;justify-content:space-between;">
+          <span>📍 <strong>Plaza Directory</strong></span>
+          <span class="tag tag-sage" style="font-size:0.55rem;">1 slot</span>
+        </div>
+        <div style="background:var(--flour);padding:0.4rem 0.6rem;border-radius:5px;font-size:0.75rem;display:flex;justify-content:space-between;">
+          <span>🪧 <strong>Food Court Sign</strong></span>
+          <span class="tag tag-outline" style="font-size:0.55rem;">2 slots</span>
+        </div>
+        <div style="background:var(--flour);padding:0.4rem 0.6rem;border-radius:5px;font-size:0.75rem;display:flex;justify-content:space-between;">
+          <span>📱 <strong>Social Media</strong></span>
+          <span class="tag tag-outline" style="font-size:0.55rem;">3 slots</span>
+        </div>
+        <div style="background:var(--flour);padding:0.4rem 0.6rem;border-radius:5px;font-size:0.75rem;display:flex;justify-content:space-between;">
+          <span>🎟️ <strong>Coupons</strong></span>
+          <span class="tag tag-outline" style="font-size:0.55rem;">4 slots</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- AUCTION 3: TECHNOLOGY -->
+    <div class="card grow" style="border-top:4px solid var(--berry);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+        <div class="flex items-start gap-sm">
+          <div class="icon-circle" style="background:var(--berry);color:white;">⚙️</div>
+          <div>
+            <h3>Technology Auction</h3>
+            <span class="mono small" style="color:var(--muted);">30 sec · Auction #3</span>
+          </div>
+        </div>
+      </div>
+      <p class="small" style="color:var(--smoke);margin-bottom:0.5rem;">
+        Premium equipment upgrades with limited supply. Higher-tier tech boosts throughput and reduces breakdown risk. Only top bidders get upgrades this round.
+      </p>
+      <div class="flex flex-col" style="gap:0.3rem;">
+        <div style="background:var(--flour);padding:0.4rem 0.6rem;border-radius:5px;font-size:0.75rem;display:flex;justify-content:space-between;">
+          <span>🔥 <strong>Industrial Oven</strong></span>
+          <span class="tag tag-berry" style="font-size:0.55rem;">1 avail</span>
+        </div>
+        <div style="background:var(--flour);padding:0.4rem 0.6rem;border-radius:5px;font-size:0.75rem;display:flex;justify-content:space-between;">
+          <span>🖥️ <strong>Self-Checkout Register</strong></span>
+          <span class="tag tag-outline" style="font-size:0.55rem;">2 avail</span>
+        </div>
+        <div style="background:var(--flour);padding:0.4rem 0.6rem;border-radius:5px;font-size:0.75rem;display:flex;justify-content:space-between;">
+          <span>❄️ <strong>Walk-in Fridge</strong></span>
+          <span class="tag tag-outline" style="font-size:0.55rem;">2 avail</span>
+        </div>
+        <div style="background:var(--flour);padding:0.4rem 0.6rem;border-radius:5px;font-size:0.75rem;display:flex;justify-content:space-between;">
+          <span>☕ <strong>Auto Espresso</strong></span>
+          <span class="tag tag-outline" style="font-size:0.55rem;">3 avail</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="background:var(--flour);border:none;">
+    <div class="flex gap-md items-start" style="align-items:center;">
+      <span style="font-size:1.1rem;">⏱️</span>
+      <p class="small" style="color:var(--smoke);margin:0;">
+        <strong>Total auction phase: 90 seconds.</strong> All three run sequentially before stores open. Budget spent in Auction #1 reduces what's available for #2 and #3 — players must decide where to go aggressive and where to hold back. Tier 1 staff and basic equipment are always available outside auctions.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SLIDE 7: GAME LOOP ══════════ -->
+<div class="slide bg-cream" data-title="Round Flow">
+  <div class="section-header">
+    <span class="label">Gameplay</span>
+    <h1 class="display">How a Round Plays Out</h1>
+    <div class="divider"></div>
+  </div>
+
+  <p style="max-width:680px;margin-bottom:1.5rem;color:var(--smoke);">
+    Each round follows four phases. After each round, a new row is added to your time-series dataset and the leaderboard updates.
+  </p>
+
+  <div class="flex gap-md" style="margin-bottom:1.5rem;">
+    <div class="card grow" style="border-top:4px solid var(--caramel);text-align:center;">
+      <div class="step-num" style="margin:0 auto 0.5rem auto;">1</div>
+      <h3>Closing Hours</h3>
+      <span class="mono small" style="color:var(--muted);">~3 min</span>
+      <p class="small" style="color:var(--smoke);margin-top:0.5rem;">
+        Adjust everything: hire/fire staff, change prices, expand menu (buy from supplier), respond to poach offers. Review employee satisfaction. Check public chat for competitor achievements.
+      </p>
+    </div>
+    <div class="card grow" style="border-top:4px solid var(--sage);text-align:center;">
+      <div class="step-num" style="margin:0 auto 0.5rem auto;background:var(--sage);">2</div>
+      <h3>Triple Auction</h3>
+      <span class="mono small" style="color:var(--muted);">90 sec (3×30s)</span>
+      <p class="small" style="color:var(--smoke);margin-top:0.5rem;">
+        Three sealed-bid auctions back-to-back: Chef → Ads → Technology. 30 seconds each. Budget spent in one reduces availability for the next.
+      </p>
+    </div>
+    <div class="card grow" style="border-top:4px solid var(--berry);text-align:center;">
+      <div class="step-num" style="margin:0 auto 0.5rem auto;background:var(--berry);">3</div>
+      <h3>Open for Business</h3>
+      <span class="mono small" style="color:var(--muted);">~3 min</span>
+      <p class="small" style="color:var(--smoke);margin-top:0.5rem;">
+        Café opens. Customers flow in. Watch real-time metrics: revenue, customers, employee mood. AI curveballs may fire. No changes allowed.
+      </p>
+    </div>
+    <div class="card grow" style="border-top:4px solid var(--golden);text-align:center;">
+      <div class="step-num" style="margin:0 auto 0.5rem auto;background:var(--golden);color:var(--espresso);">4</div>
+      <h3>Leaderboard + Data</h3>
+      <span class="mono small" style="color:var(--muted);">~2 min</span>
+      <p class="small" style="color:var(--smoke);margin-top:0.5rem;">
+        Leaderboard updates (revenue + customer satisfaction). New row added to your dataset: revenue, per-product sales, employee satisfaction for that day.
+      </p>
+    </div>
+  </div>
+
+  <div class="card" style="border-left:3px solid var(--caramel);">
+    <h3 style="margin-bottom:0.35rem;">📊 Your Time-Series Dataset Grows Each Round</h3>
+    <p class="small" style="color:var(--smoke);">
+      After each day, your dataset gets a new row with: day number, total revenue, how many of each product were purchased, and employee satisfaction score. This accumulates — by Day 10, you have 10 rows to analyze for trends. On your dashboard you always see three key metrics: <strong>revenue</strong>, <strong>customers</strong>, and <strong>employee satisfaction</strong>.
+    </p>
+  </div>
+</div>
+
+<!-- ══════════ SLIDE 8: DETAILED TIMELINE ══════════ -->
+<div class="slide bg-dark" data-title="Decision Timeline">
+  <div class="section-header">
+    <span class="label" style="color:var(--golden);">Timeline</span>
+    <h1 class="display">Exact Decision Timeline per Round</h1>
+    <div class="divider-light"></div>
+  </div>
+
+  <p style="max-width:680px;margin-bottom:1rem;color:var(--dough);font-size:0.88rem;">
+    Each round is ~9 minutes. Here is the exact sequence of what players do, what the system computes, and what information is revealed — minute by minute.
+  </p>
+
+  <div style="position:relative;padding-left:44px;">
+    <!-- vertical line -->
+    <div style="position:absolute;left:17px;top:0;bottom:0;width:2px;background:rgba(255,255,255,0.1);"></div>
+
+    <!-- PHASE 0 -->
+    <div style="position:relative;margin-bottom:1rem;">
+      <div style="position:absolute;left:-44px;top:0;width:34px;height:34px;border-radius:50%;background:var(--golden);color:var(--espresso);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.8rem;">0</div>
+      <div class="card-dark" style="border-left:3px solid var(--golden);">
+        <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:0.35rem;">
+          <h3 style="color:var(--cream);">Round Start — Setup Check</h3>
+          <span class="mono small" style="color:var(--golden);">0:00</span>
+        </div>
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">System:</strong> Loads player state from previous round. Displays carry-over budget, current staff roster, active menu, equipment status.<br>
+          <strong style="color:var(--cream);">Player sees:</strong> Dashboard with all current settings. Any pending poach offers from last round's notifications. Curveball preview (if applicable — e.g., "Supply shortage warning: flour limited this round").
+        </p>
+      </div>
+    </div>
+
+    <!-- PHASE 1 -->
+    <div style="position:relative;margin-bottom:1rem;">
+      <div style="position:absolute;left:-44px;top:0;width:34px;height:34px;border-radius:50%;background:var(--caramel);color:white;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.8rem;">1</div>
+      <div class="card-dark" style="border-left:3px solid var(--caramel);">
+        <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:0.35rem;">
+          <h3 style="color:var(--cream);">Closing Hours — All Decisions Made</h3>
+          <span class="mono small" style="color:var(--caramel);">0:00 – 3:00</span>
+        </div>
+        <p class="small" style="color:var(--dough);margin-bottom:0.5rem;">Players have 3 minutes to make every decision. This is the core action phase.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">
+          <div style="background:rgba(255,255,255,0.04);padding:0.5rem 0.65rem;border-radius:6px;">
+            <span class="small" style="color:var(--golden);font-weight:700;">💰 Set Prices</span>
+            <p style="font-size:0.7rem;color:var(--dough);margin-top:0.2rem;">Adjust sell price for each product individually. See base cost next to each.</p>
+          </div>
+          <div style="background:rgba(255,255,255,0.04);padding:0.5rem 0.65rem;border-radius:6px;">
+            <span class="small" style="color:var(--golden);font-weight:700;">🧁 Edit Menu</span>
+            <p style="font-size:0.7rem;color:var(--dough);margin-top:0.2rem;">Add or remove products. New additions get a "trial" tag — results shown in new product sales column next round.</p>
+          </div>
+          <div style="background:rgba(255,255,255,0.04);padding:0.5rem 0.65rem;border-radius:6px;">
+            <span class="small" style="color:var(--golden);font-weight:700;">👥 Manage Employees</span>
+            <p style="font-size:0.7rem;color:var(--dough);margin-top:0.2rem;">Hire / fire / give raises. Respond to incoming poach offers. Make counter-offers on your staff being poached. Offer to buy out a rival's employee.</p>
+          </div>
+          <div style="background:rgba(255,255,255,0.04);padding:0.5rem 0.65rem;border-radius:6px;">
+            <span class="small" style="color:var(--golden);font-weight:700;">⚙️ Upgrade Equipment</span>
+            <p style="font-size:0.7rem;color:var(--dough);margin-top:0.2rem;">Purchase or upgrade ovens, registers, fridges, espresso machines. Higher tiers cost more but reduce breakdown risk.</p>
+          </div>
+          <div style="background:rgba(255,255,255,0.04);padding:0.5rem 0.65rem;border-radius:6px;">
+            <span class="small" style="color:var(--golden);font-weight:700;">🎨 Change Store Design</span>
+            <p style="font-size:0.7rem;color:var(--dough);margin-top:0.2rem;">Swap aesthetic preset (modern, cozy, industrial, classic). Costs budget but changes ambiance score in the model.</p>
+          </div>
+          <div style="background:rgba(255,255,255,0.04);padding:0.5rem 0.65rem;border-radius:6px;">
+            <span class="small" style="color:var(--golden);font-weight:700;">📦 Buy from Supplier</span>
+            <p style="font-size:0.7rem;color:var(--dough);margin-top:0.2rem;">Supplier offers a new product each round. Buy it to add to your menu. See how it performs in next round's dataset.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PHASE 2 -->
+    <div style="position:relative;margin-bottom:1rem;">
+      <div style="position:absolute;left:-44px;top:0;width:34px;height:34px;border-radius:50%;background:var(--sage);color:white;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.8rem;">2</div>
+      <div class="card-dark" style="border-left:3px solid var(--sage);">
+        <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:0.35rem;">
+          <h3 style="color:var(--cream);">Triple Auction — Chef, Ads, Technology</h3>
+          <span class="mono small" style="color:var(--sage-light);">3:00 – 4:30</span>
+        </div>
+        <p class="small" style="color:var(--dough);margin-bottom:0.5rem;">Three sealed-bid auctions run back-to-back, 30 seconds each. All bids blind. Budget spent in one auction reduces what's available for the next.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.5rem;">
+          <div style="background:rgba(196,135,59,0.12);border:1px solid rgba(196,135,59,0.25);padding:0.5rem;border-radius:6px;">
+            <div style="font-size:0.65rem;font-weight:700;color:var(--golden);margin-bottom:0.25rem;">👨‍🍳 CHEF AUCTION</div>
+            <div style="font-size:0.6rem;color:var(--dough);">3:00 – 3:30</div>
+            <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);margin-top:0.15rem;">Bid on premium tier staff</div>
+          </div>
+          <div style="background:rgba(122,158,126,0.12);border:1px solid rgba(122,158,126,0.25);padding:0.5rem;border-radius:6px;">
+            <div style="font-size:0.65rem;font-weight:700;color:var(--sage-light);margin-bottom:0.25rem;">📢 AD AUCTION</div>
+            <div style="font-size:0.6rem;color:var(--dough);">3:30 – 4:00</div>
+            <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);margin-top:0.15rem;">Bid on plaza ad placements</div>
+          </div>
+          <div style="background:rgba(181,75,108,0.12);border:1px solid rgba(181,75,108,0.25);padding:0.5rem;border-radius:6px;">
+            <div style="font-size:0.65rem;font-weight:700;color:var(--berry-light);margin-bottom:0.25rem;">⚙️ TECH AUCTION</div>
+            <div style="font-size:0.6rem;color:var(--dough);">4:00 – 4:30</div>
+            <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);margin-top:0.15rem;">Bid on equipment upgrades</div>
+          </div>
+        </div>
+        <p class="small" style="color:var(--dough);margin-top:0.4rem;">
+          <strong style="color:var(--cream);">System:</strong> After each 30-sec window → ranks bids → assigns to top bidders → deducts budget → shows won/lost. Results from all 3 auctions finalized before stores open.
+        </p>
+      </div>
+    </div>
+
+    <!-- PHASE 3 -->
+    <div style="position:relative;margin-bottom:1rem;">
+      <div style="position:absolute;left:-44px;top:0;width:34px;height:34px;border-radius:50%;background:var(--berry);color:white;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.8rem;">3</div>
+      <div class="card-dark" style="border-left:3px solid var(--berry);">
+        <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:0.35rem;">
+          <h3 style="color:var(--cream);">Open for Business — Simulation Runs</h3>
+          <span class="mono small" style="color:var(--berry-light);">4:30 – 7:30</span>
+        </div>
+        <p class="small" style="color:var(--dough);margin-bottom:0.5rem;">The café opens. Players watch but cannot change decisions. Real-time metrics stream in.</p>
+        <div class="flex flex-col" style="gap:0.3rem;">
+          <div class="flex items-start gap-sm">
+            <span style="color:var(--berry-light);font-weight:700;font-size:0.75rem;">4:30</span>
+            <span class="small" style="color:var(--dough);">System computes attractiveness score per café → distributes customer pool → customers begin arriving</span>
+          </div>
+          <div class="flex items-start gap-sm">
+            <span style="color:var(--berry-light);font-weight:700;font-size:0.75rem;">5:00</span>
+            <span class="small" style="color:var(--dough);">AI curveballs may fire (health inspector, supply shortage, viral trend, equipment breakdown, mall event, new tenant)</span>
+          </div>
+          <div class="flex items-start gap-sm">
+            <span style="color:var(--berry-light);font-weight:700;font-size:0.75rem;">4:30–7:30</span>
+            <span class="small" style="color:var(--dough);">Live dashboard shows: orders served (ticking), revenue (ticking), queue length, employee mood indicators, any curveball effects</span>
+          </div>
+          <div class="flex items-start gap-sm">
+            <span style="color:var(--berry-light);font-weight:700;font-size:0.75rem;">7:30</span>
+            <span class="small" style="color:var(--dough);">Café closes. Final revenue tallied. Employee satisfaction recalculated. Unhappy employee notifications queued.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PHASE 4 -->
+    <div style="position:relative;">
+      <div style="position:absolute;left:-44px;top:0;width:34px;height:34px;border-radius:50%;background:var(--golden);color:var(--espresso);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.8rem;">4</div>
+      <div class="card-dark" style="border-left:3px solid var(--golden);">
+        <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:0.35rem;">
+          <h3 style="color:var(--cream);">Leaderboard + Dataset Delivery</h3>
+          <span class="mono small" style="color:var(--golden);">7:30 – 9:30</span>
+        </div>
+        <p class="small" style="color:var(--dough);margin-bottom:0.5rem;">2-minute review period. Leaderboard updates and a <strong>new row is added to your time-series dataset</strong>.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">
+          <div style="background:rgba(255,255,255,0.04);padding:0.5rem 0.65rem;border-radius:6px;">
+            <span style="font-size:0.68rem;color:var(--golden);font-weight:700;">🏆 Leaderboard</span>
+            <p style="font-size:0.65rem;color:var(--dough);margin-top:0.15rem;">Rankings by <strong>revenue</strong> and <strong>customer satisfaction</strong> — the only two public metrics</p>
+          </div>
+          <div style="background:rgba(255,255,255,0.04);padding:0.5rem 0.65rem;border-radius:6px;">
+            <span style="font-size:0.68rem;color:var(--golden);font-weight:700;">📊 Time-Series Dataset Row</span>
+            <p style="font-size:0.65rem;color:var(--dough);margin-top:0.15rem;">New row appended: day, revenue, units sold per product, employee satisfaction score</p>
+          </div>
+          <div style="background:rgba(255,255,255,0.04);padding:0.5rem 0.65rem;border-radius:6px;">
+            <span style="font-size:0.68rem;color:var(--golden);font-weight:700;">🧁 Product Sales Breakdown</span>
+            <p style="font-size:0.65rem;color:var(--dough);margin-top:0.15rem;">How many of each product were purchased this day — per item column</p>
+          </div>
+          <div style="background:rgba(255,255,255,0.04);padding:0.5rem 0.65rem;border-radius:6px;">
+            <span style="font-size:0.68rem;color:var(--golden);font-weight:700;">😊 Employee Satisfaction</span>
+            <p style="font-size:0.65rem;color:var(--dough);margin-top:0.15rem;">Per-employee scores + any "open to job" notifications sent out</p>
+          </div>
+          <div style="background:rgba(255,255,255,0.04);padding:0.5rem 0.65rem;border-radius:6px;">
+            <span style="font-size:0.68rem;color:var(--golden);font-weight:700;">⚡ Curveball Report</span>
+            <p style="font-size:0.65rem;color:var(--dough);margin-top:0.15rem;">What events fired, what they affected, estimated revenue impact</p>
+          </div>
+          <div style="background:rgba(255,255,255,0.04);padding:0.5rem 0.65rem;border-radius:6px;">
+            <span style="font-size:0.68rem;color:var(--golden);font-weight:700;">🤝 Poach Alerts</span>
+            <p style="font-size:0.65rem;color:var(--dough);margin-top:0.15rem;">Rival employees available, incoming offers on your staff</p>
+          </div>
+        </div>
+        <p class="small" style="color:var(--dough);margin-top:0.5rem;font-style:italic;">→ Dataset accumulates across rounds — each day is a new row. Players can spot trends and optimize. Next round begins immediately.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SLIDE 9: CUSTOMER LIMIT & AI ══════════ -->
+<div class="slide bg-warm" data-title="Customers & AI">
+  <div class="section-header">
+    <span class="label">Competition</span>
+    <h1 class="display">Customer Pool & AI Rivals</h1>
+    <div class="divider"></div>
+  </div>
+
+  <div class="grid-2" style="gap:1.5rem;">
+    <div>
+      <h3 style="margin-bottom:0.75rem;">🧍 Limited Customer Pool</h3>
+      <div class="card" style="margin-bottom:1rem;">
+        <p class="small" style="color:var(--smoke);margin-bottom:0.75rem;">
+          The plaza has a <strong>finite number of customers each round</strong>. Customers are distributed across cafés based on an attractiveness score computed from:
+        </p>
+        <div class="flex flex-col" style="gap:0.35rem;">
+          <div class="flex items-start gap-sm">
+            <span style="color:var(--caramel);font-weight:700;">→</span>
+            <span class="small"><strong>Product variety</strong> — more menu items = more customer types attracted</span>
+          </div>
+          <div class="flex items-start gap-sm">
+            <span style="color:var(--caramel);font-weight:700;">→</span>
+            <span class="small"><strong>Pricing</strong> — competitive prices pull more budget-conscious shoppers</span>
+          </div>
+          <div class="flex items-start gap-sm">
+            <span style="color:var(--caramel);font-weight:700;">→</span>
+            <span class="small"><strong>Ad presence</strong> — auction wins directly increase foot traffic share</span>
+          </div>
+          <div class="flex items-start gap-sm">
+            <span style="color:var(--caramel);font-weight:700;">→</span>
+            <span class="small"><strong>Employee quality</strong> — higher-tier staff = faster service = less queue churn</span>
+          </div>
+          <div class="flex items-start gap-sm">
+            <span style="color:var(--caramel);font-weight:700;">→</span>
+            <span class="small"><strong>Reputation</strong> — built over rounds, affected by satisfaction and events</span>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="background:var(--flour);border:none;">
+        <p class="small" style="color:var(--smoke);">
+          <strong>Zero-sum at the margin:</strong> If everyone in the plaza invests in ads, the marginal return per ad dollar drops. This teaches competitive strategy — reading the room matters as much as optimizing your own inputs.
+        </p>
+      </div>
+    </div>
+
+    <div>
+      <h3 style="margin-bottom:0.75rem;">🤖 AI-Controlled Bakeries</h3>
+      <div class="card" style="margin-bottom:1rem;">
+        <p class="small" style="color:var(--smoke);margin-bottom:0.75rem;">
+          AI competitors run bakeries alongside human players. They make decisions based on heuristics, creating a baseline of competition even in smaller class sizes.
+        </p>
+        <div class="flex flex-col" style="gap:0.5rem;">
+          <div class="card" style="background:var(--flour);border:none;padding:0.75rem;">
+            <strong class="small">🟢 Passive AI</strong>
+            <p class="small" style="color:var(--muted);">Runs a basic café. Stable prices, no ads. Exists as a floor — if you can't beat this, you need to rethink.</p>
+          </div>
+          <div class="card" style="background:var(--flour);border:none;padding:0.75rem;">
+            <strong class="small">🟡 Adaptive AI</strong>
+            <p class="small" style="color:var(--muted);">Reacts to market conditions. Adjusts prices based on competitor averages. Bids moderately on ads.</p>
+          </div>
+          <div class="card" style="background:var(--flour);border:none;padding:0.75rem;">
+            <strong class="small">🔴 Aggressive AI</strong>
+            <p class="small" style="color:var(--muted);">Price wars, heavy ad bids, poaches employees. Designed to disrupt. The "boss fight" of the plaza.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SLIDE 9: AI CURVEBALLS ══════════ -->
+<div class="slide bg-dark" data-title="AI Curveballs">
+  <div class="section-header">
+    <span class="label" style="color:var(--golden);">Curveballs</span>
+    <h1 class="display">AI-Driven Events</h1>
+    <div class="divider-light"></div>
+  </div>
+
+  <p style="max-width:680px;margin-bottom:1.5rem;color:var(--dough);">
+    Random events that force players to adapt. Each curveball is linked to a player's investment decisions — underspending in one area increases vulnerability.
+  </p>
+
+  <div class="grid-3" style="gap:1rem;">
+    <div class="card-dark">
+      <div style="font-size:1.3rem;margin-bottom:0.4rem;">🔍</div>
+      <h3 style="color:var(--cream);">Health Inspector</h3>
+      <p class="small" style="color:var(--dough);">Low cleanliness score → violation → capacity reduced 50% for a round. Invest in cleanliness or pay the price.</p>
+    </div>
+    <div class="card-dark">
+      <div style="font-size:1.3rem;margin-bottom:0.4rem;">📦</div>
+      <h3 style="color:var(--cream);">Supply Shortage</h3>
+      <p class="small" style="color:var(--dough);">Key ingredient unavailable (flour, butter, coffee). Over-reliance on one product category = menu items unavailable.</p>
+    </div>
+    <div class="card-dark">
+      <div style="font-size:1.3rem;margin-bottom:0.4rem;">🔥</div>
+      <h3 style="color:var(--cream);">Viral Trend</h3>
+      <p class="small" style="color:var(--dough);">A product category surges (matcha goes viral). Players selling it get a traffic boost. Players without it miss out entirely.</p>
+    </div>
+    <div class="card-dark">
+      <div style="font-size:1.3rem;margin-bottom:0.4rem;">⚙️</div>
+      <h3 style="color:var(--cream);">Equipment Breakdown</h3>
+      <p class="small" style="color:var(--dough);">Oven or register fails. Cheap equipment = higher failure rate. Premium gear is more reliable. Repair costs money.</p>
+    </div>
+    <div class="card-dark">
+      <div style="font-size:1.3rem;margin-bottom:0.4rem;">🏪</div>
+      <h3 style="color:var(--cream);">New Plaza Tenant</h3>
+      <p class="small" style="color:var(--dough);">AI competitor opens nearby — siphons foot traffic. Strong ads + reputation retain more customers.</p>
+    </div>
+    <div class="card-dark">
+      <div style="font-size:1.3rem;margin-bottom:0.4rem;">🎉</div>
+      <h3 style="color:var(--cream);">Plaza Event</h3>
+      <p class="small" style="color:var(--dough);">Holiday sale or concert brings extra customers. Players with capacity (staff, inventory) capitalize. Under-staffed bakeries can't serve the surge.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SLIDE 11: DATASET VARIABLES ══════════ -->
+<div class="slide bg-flour" data-title="Dataset Variables">
+  <div class="section-header">
+    <span class="label">Data</span>
+    <h1 class="display">Time-Series Dataset — Grows Each Day</h1>
+    <div class="divider"></div>
+  </div>
+
+  <p style="max-width:720px;margin-bottom:0.5rem;color:var(--smoke);font-size:0.88rem;">
+    After each day (round), a <strong>new row is appended</strong> to the player's dataset. This is a time-series — each row is one day of café operations. Players accumulate data over rounds and can analyze trends, seasonality, and the impact of their decisions.
+  </p>
+
+  <!-- EXAMPLE TABLE -->
+  <div class="card" style="margin-bottom:0.75rem;padding:0.75rem 1rem;overflow-x:auto;">
+    <h3 style="margin-bottom:0.5rem;">📋 Example: What Your Dataset Looks Like After Day 3</h3>
+    <table class="clean" style="font-size:0.7rem;white-space:nowrap;">
+      <thead>
+        <tr>
+          <th>day</th>
+          <th>revenue</th>
+          <th>cust_sat</th>
+          <th>emp_sat</th>
+          <th>🥐 croiss.</th>
+          <th>🍪 cookie</th>
+          <th>🧁 cupcake</th>
+          <th>🍩 cin.roll</th>
+          <th>🥯 bagel</th>
+          <th>🥧 quiche</th>
+          <th>🧀 danish</th>
+          <th>🥪 brkfst</th>
+          <th>☕ coffee</th>
+          <th>🍵 matcha</th>
+          <th>🧋 chai</th>
+          <th>🧃 juice</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>1</strong></td>
+          <td style="color:var(--caramel);font-weight:600;">$2,840</td>
+          <td>82%</td>
+          <td>88%</td>
+          <td>34</td><td>52</td><td>—</td><td>—</td>
+          <td>28</td><td>—</td><td>—</td><td>—</td>
+          <td>61</td><td>—</td><td>—</td><td>—</td>
+        </tr>
+        <tr>
+          <td><strong>2</strong></td>
+          <td style="color:var(--caramel);font-weight:600;">$3,120</td>
+          <td>85%</td>
+          <td>85%</td>
+          <td>38</td><td>48</td><td>—</td><td>—</td>
+          <td>31</td><td>14</td><td>—</td><td>—</td>
+          <td>58</td><td>22</td><td>—</td><td>—</td>
+        </tr>
+        <tr style="background:rgba(122,158,126,0.06);">
+          <td><strong>3</strong></td>
+          <td style="color:var(--caramel);font-weight:600;">$3,450</td>
+          <td>87%</td>
+          <td>79%</td>
+          <td>42</td><td>45</td><td>18</td><td>—</td>
+          <td>33</td><td>16</td><td>—</td><td>—</td>
+          <td>55</td><td>28</td><td>—</td><td>—</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="small" style="color:var(--muted);margin-top:0.4rem;">
+      "—" = product not on menu that day. New products appear as columns once added. Data accumulates — by Day 10, players have 10 rows to analyze.
+    </p>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;">
+    <!-- LEFT COLUMN -->
+    <div>
+      <div class="card" style="margin-bottom:0.6rem;border-left:3px solid var(--caramel);">
+        <h3 style="margin-bottom:0.4rem;">🕐 Time-Series Index</h3>
+        <table class="clean" style="font-size:0.75rem;">
+          <thead><tr><th>Variable</th><th>Type</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code class="mono small">day</code></td><td><span class="tag tag-caramel" style="font-size:0.55rem;">Index</span></td><td class="small">Day/round number (1, 2, 3...)</td></tr>
+            <tr><td><code class="mono small" style="color:var(--caramel);font-weight:600;">revenue</code></td><td><span class="tag tag-caramel" style="font-size:0.55rem;">Target</span></td><td class="small">Total revenue for that day</td></tr>
+            <tr><td><code class="mono small">customer_satisfaction</code></td><td><span class="tag tag-sage" style="font-size:0.55rem;">Output</span></td><td class="small">Mean satisfaction (0–100) that day</td></tr>
+            <tr><td><code class="mono small">employee_satisfaction</code></td><td><span class="tag tag-sage" style="font-size:0.55rem;">Output</span></td><td class="small">Mean employee satisfaction that day</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" style="margin-bottom:0.6rem;border-left:3px solid var(--golden);">
+        <h3 style="margin-bottom:0.4rem;">🧁 Per-Product Purchase Columns</h3>
+        <table class="clean" style="font-size:0.75rem;">
+          <thead><tr><th>Variable</th><th>Type</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code class="mono small">croissant_sold</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Numerical</span></td><td class="small">Units sold that day</td></tr>
+            <tr><td><code class="mono small">cookie_sold</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Numerical</span></td><td class="small">Units sold that day</td></tr>
+            <tr><td><code class="mono small">cupcake_sold</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Numerical</span></td><td class="small">Units sold (null if not on menu)</td></tr>
+            <tr><td colspan="3" class="small" style="color:var(--muted);font-style:italic;">...one column per product (12 base + any supplier additions)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" style="border-left:3px solid var(--berry);">
+        <h3 style="margin-bottom:0.4rem;">📢 Auction & Ad Variables</h3>
+        <table class="clean" style="font-size:0.75rem;">
+          <thead><tr><th>Variable</th><th>Type</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code class="mono small">chef_auction_spend</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Numerical</span></td><td class="small">Spent on chef auction</td></tr>
+            <tr><td><code class="mono small">ad_auction_spend</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Numerical</span></td><td class="small">Spent on ad auction</td></tr>
+            <tr><td><code class="mono small">tech_auction_spend</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Numerical</span></td><td class="small">Spent on tech auction</td></tr>
+            <tr><td><code class="mono small">ad_slots_won</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Numerical</span></td><td class="small">Ad placements secured (0–4)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div>
+      <div class="card" style="margin-bottom:0.6rem;border-left:3px solid var(--sage);">
+        <h3 style="margin-bottom:0.4rem;">👥 Employee Variables</h3>
+        <table class="clean" style="font-size:0.75rem;">
+          <thead><tr><th>Variable</th><th>Type</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code class="mono small">baker_count</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Numerical</span></td><td class="small">Bakers employed that day</td></tr>
+            <tr><td><code class="mono small">baker_tier_max</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Categorical</span></td><td class="small">Highest baker tier on staff</td></tr>
+            <tr><td><code class="mono small">cashier_count</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Numerical</span></td><td class="small">Cashiers employed</td></tr>
+            <tr><td><code class="mono small">manager_count</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Numerical</span></td><td class="small">Managers employed</td></tr>
+            <tr><td><code class="mono small">avg_emp_pay</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Numerical</span></td><td class="small">Avg wage per employee</td></tr>
+            <tr><td><code class="mono small">staff_turnover</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Numerical</span></td><td class="small">Employees lost that day</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" style="margin-bottom:0.6rem;border-left:3px solid var(--smoke);">
+        <h3 style="margin-bottom:0.4rem;">⚙️ Equipment & Store Variables</h3>
+        <table class="clean" style="font-size:0.75rem;">
+          <thead><tr><th>Variable</th><th>Type</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code class="mono small">oven_tier</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Cat.</span></td><td class="small">Basic / Commercial / Industrial</td></tr>
+            <tr><td><code class="mono small">register_tier</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Cat.</span></td><td class="small">Manual / POS / Self-checkout</td></tr>
+            <tr><td><code class="mono small">fridge_tier</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Cat.</span></td><td class="small">Mini / Standard / Walk-in</td></tr>
+            <tr><td><code class="mono small">espresso_tier</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Cat.</span></td><td class="small">Manual / Semi / Full-auto</td></tr>
+            <tr><td><code class="mono small">store_design</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Cat.</span></td><td class="small">Modern / Cozy / Industrial / Classic</td></tr>
+            <tr><td><code class="mono small">competitor_count</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Num.</span></td><td class="small">Total cafés in mall that day</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" style="border-left:3px solid var(--espresso);">
+        <h3 style="margin-bottom:0.4rem;">🧁 Menu State</h3>
+        <table class="clean" style="font-size:0.75rem;">
+          <thead><tr><th>Variable</th><th>Type</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code class="mono small">menu_item_count</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Num.</span></td><td class="small">Products on menu (min 3)</td></tr>
+            <tr><td><code class="mono small">avg_price</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Num.</span></td><td class="small">Mean sell price across menu</td></tr>
+            <tr><td><code class="mono small">avg_margin</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Num.</span></td><td class="small">Mean (price − cost) per item</td></tr>
+            <tr><td><code class="mono small">new_product_added</code></td><td><span class="tag tag-outline" style="font-size:0.55rem;">Binary</span></td><td class="small">Bought supplier product (1/0)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SLIDE 12: LEADERBOARD ══════════ -->
+<div class="slide bg-cream" data-title="Leaderboard">
+  <div class="section-header">
+    <span class="label">Scoring</span>
+    <h1 class="display">Dual Leaderboard System</h1>
+    <div class="divider"></div>
+  </div>
+
+  <p style="max-width:680px;margin-bottom:1.5rem;color:var(--smoke);">
+    Two separate leaderboard views — one for students competing, one for the professor analyzing the class.
+  </p>
+
+  <div class="grid-2" style="gap:1.5rem;">
+    <div class="card" style="border-top:4px solid var(--caramel);">
+      <h3 style="margin-bottom:0.75rem;">🏆 Student Leaderboard</h3>
+      <p class="small" style="color:var(--smoke);margin-bottom:0.75rem;">Updated after every round. Visible to all players. Only two metrics shown publicly.</p>
+      <table class="clean">
+        <thead>
+          <tr><th>#</th><th>Café</th><th>Revenue</th><th>Cust. Satisfaction</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>1</strong></td><td>🥐 Golden Crust</td><td>$12,400</td><td>91%</td></tr>
+          <tr><td><strong>2</strong></td><td>🍪 Dough & Co</td><td>$11,850</td><td>88%</td></tr>
+          <tr><td><strong>3</strong></td><td>🧁 Sugar Rush</td><td>$10,200</td><td>79%</td></tr>
+          <tr style="color:var(--muted);"><td>...</td><td>...</td><td>...</td><td>...</td></tr>
+        </tbody>
+      </table>
+      <p class="small" style="color:var(--muted);margin-top:0.5rem;">
+        Shows rank, café name, cumulative revenue, and average customer satisfaction. These are the only two publicly visible metrics — all other data (employee satisfaction, product breakdown, costs) is private to each player.
+      </p>
+    </div>
+
+    <div class="card" style="border-top:4px solid var(--sage);">
+      <h3 style="margin-bottom:0.75rem;">📊 Professor Dashboard</h3>
+      <p class="small" style="color:var(--smoke);margin-bottom:0.75rem;">Class-level analytics and model insights. Professor-only view.</p>
+      <div class="flex flex-col" style="gap:0.5rem;">
+        <div style="padding:0.5rem 0.75rem;background:var(--flour);border-radius:6px;">
+          <span class="small"><strong>Aggregate Class Stats</strong> — avg revenue, median spend, distribution of strategies</span>
+        </div>
+        <div style="padding:0.5rem 0.75rem;background:var(--flour);border-radius:6px;">
+          <span class="small"><strong>Model Coefficient Reveal</strong> — show which features had the highest betas after each round</span>
+        </div>
+        <div style="padding:0.5rem 0.75rem;background:var(--flour);border-radius:6px;">
+          <span class="small"><strong>Decision Heatmap</strong> — what did the class invest in? Where did budgets go?</span>
+        </div>
+        <div style="padding:0.5rem 0.75rem;background:var(--flour);border-radius:6px;">
+          <span class="small"><strong>Curveball Impact</strong> — which events hurt which players and why</span>
+        </div>
+        <div style="padding:0.5rem 0.75rem;background:var(--flour);border-radius:6px;">
+          <span class="small"><strong>Student Engagement</strong> — AFK detection, decision frequency, strategy shifts</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SLIDE 13: DASHBOARD UI SKETCH ══════════ -->
+<div class="slide bg-warm" data-title="UI Sketch" style="padding:2.5rem 3.5rem 4rem 3.5rem;">
+  <div class="section-header" style="margin-bottom:0.75rem;">
+    <span class="label">Interface</span>
+    <h1 class="display" style="font-size:clamp(1.5rem,2.5vw,2.2rem);">Player Dashboard — Stardew-Inspired Café View</h1>
+    <div class="divider"></div>
+  </div>
+
+  <p style="max-width:700px;margin-bottom:0.75rem;color:var(--smoke);font-size:0.85rem;">
+    Main view is your café — a pixel-art shop interior you can see and feel. Tabs along the right edge slide open management panels. Click a tab below to preview.
+  </p>
+
+  <!-- INTERACTIVE MOCKUP -->
+  <div id="bakeryUI" style="position:relative;width:100%;height:420px;border-radius:14px;overflow:hidden;border:2.5px solid #bfa580;box-shadow:0 6px 32px rgba(44,24,16,0.12);">
+
+    <!-- ─── TOP HUD BAR ─── -->
+    <div style="position:absolute;top:0;left:0;right:0;height:36px;background:rgba(44,24,16,0.92);display:flex;align-items:center;justify-content:space-between;padding:0 14px;z-index:20;font-size:0.7rem;color:#ffe8cc;font-family:'JetBrains Mono',monospace;">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <span style="font-family:'Playfair Display',serif;font-weight:900;font-size:0.85rem;color:#f5c96a;">🧁 Golden Crust</span>
+        <span style="opacity:0.5;">|</span>
+        <span>Day <strong style="color:#f5c96a;">4</strong>/10</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span style="background:rgba(255,255,255,0.06);padding:2px 8px;border-radius:3px;">💰 <strong style="color:#7ae87e;">$3,120</strong> <span style="font-size:0.55rem;opacity:0.5;">rev</span></span>
+        <span style="background:rgba(255,255,255,0.06);padding:2px 8px;border-radius:3px;">👥 <strong style="color:#f5c96a;">87</strong> <span style="font-size:0.55rem;opacity:0.5;">cust</span></span>
+        <span style="background:rgba(255,255,255,0.06);padding:2px 8px;border-radius:3px;">😊 <strong style="color:#a8c5ab;">79%</strong> <span style="font-size:0.55rem;opacity:0.5;">emp</span></span>
+        <span style="background:#b54b6c;color:white;padding:3px 10px;border-radius:4px;font-weight:700;font-size:0.65rem;cursor:pointer;letter-spacing:0.03em;">SUBMIT</span>
+      </div>
+    </div>
+
+    <!-- ─── CAFE SCENE (pixel art SVG) ─── -->
+    <div style="position:absolute;top:36px;left:0;right:0;bottom:0;overflow:hidden;">
+      <svg viewBox="0 0 900 400" style="width:100%;height:100%;display:block;" xmlns="http://www.w3.org/2000/svg">
+        <!-- BACKGROUND - warm café interior -->
+        <defs>
+          <pattern id="tile" width="16" height="16" patternUnits="userSpaceOnUse">
+            <rect width="16" height="16" fill="#e8d5be"/>
+            <rect x="0" y="0" width="8" height="8" fill="#e0ccb4" opacity="0.5"/>
+            <rect x="8" y="8" width="8" height="8" fill="#e0ccb4" opacity="0.5"/>
+          </pattern>
+          <pattern id="wallpaper" width="32" height="32" patternUnits="userSpaceOnUse">
+            <rect width="32" height="32" fill="#f5e6d0"/>
+            <circle cx="16" cy="16" r="2" fill="#ecdbc4" opacity="0.6"/>
+          </pattern>
+        </defs>
+
+        <!-- Wall -->
+        <rect x="0" y="0" width="900" height="200" fill="url(#wallpaper)"/>
+        <!-- Wall accent stripe -->
+        <rect x="0" y="130" width="900" height="6" fill="#c4a882" opacity="0.4"/>
+        <!-- Floor -->
+        <rect x="0" y="200" width="900" height="200" fill="url(#tile)"/>
+
+        <!-- BACK SHELF (wall-mounted) -->
+        <rect x="40" y="40" width="280" height="12" rx="2" fill="#8B6B4A"/>
+        <rect x="40" y="88" width="280" height="12" rx="2" fill="#8B6B4A"/>
+        <!-- Shelf items row 1 -->
+        <rect x="55" y="20" width="16" height="20" rx="2" fill="#d4a84b"/> <!-- jar -->
+        <rect x="58" y="16" width="10" height="6" rx="2" fill="#c49a3a"/>
+        <rect x="85" y="22" width="14" height="18" rx="2" fill="#e87070"/> <!-- jar 2 -->
+        <rect x="115" y="18" width="20" height="22" rx="2" fill="#7ab5e8"/> <!-- container -->
+        <rect x="150" y="24" width="12" height="16" rx="2" fill="#b8d468"/> <!-- bottle -->
+        <rect x="175" y="20" width="18" height="20" rx="3" fill="#e8a849"/> <!-- bag -->
+        <rect x="210" y="22" width="14" height="18" rx="2" fill="#d4748f"/> <!-- jar 3 -->
+        <rect x="240" y="18" width="22" height="22" rx="2" fill="#a8c5ab"/> <!-- tin -->
+        <rect x="278" y="24" width="16" height="16" rx="8" fill="#f5c96a"/> <!-- round jar -->
+        <!-- Shelf items row 2 -->
+        <rect x="50" y="56" width="24" height="30" rx="3" fill="#f0e0c0"/> <!-- flour bag -->
+        <text x="62" y="76" font-size="7" fill="#8a7a6a" text-anchor="middle" font-family="monospace">FLOUR</text>
+        <rect x="90" y="62" width="18" height="24" rx="2" fill="#e8d5be"/>
+        <rect x="125" y="58" width="26" height="28" rx="3" fill="#d4a84b"/>
+        <text x="138" y="77" font-size="6" fill="#8B6B4A" text-anchor="middle" font-family="monospace">SUGAR</text>
+        <rect x="170" y="64" width="14" height="22" rx="2" fill="#8B6B4A"/>
+        <rect x="200" y="60" width="20" height="26" rx="3" fill="#c49a3a"/>
+        <rect x="238" y="62" width="16" height="24" rx="2" fill="#e87070"/>
+        <rect x="272" y="58" width="22" height="28" rx="2" fill="#7ab5e8"/>
+
+        <!-- OVEN (pixel style) -->
+        <rect x="360" y="100" width="80" height="100" rx="4" fill="#555"/>
+        <rect x="365" y="105" width="70" height="50" rx="3" fill="#333"/>
+        <rect x="370" y="110" width="60" height="40" rx="2" fill="#4a3020" opacity="0.9"/>
+        <!-- oven glow -->
+        <rect x="372" y="112" width="56" height="36" rx="2" fill="#e85020" opacity="0.25"/>
+        <!-- oven knobs -->
+        <circle cx="380" cy="170" r="5" fill="#888"/>
+        <circle cx="400" cy="170" r="5" fill="#888"/>
+        <circle cx="420" cy="170" r="5" fill="#e85020" opacity="0.7"/>
+        <!-- oven label -->
+        <text x="400" y="192" font-size="7" fill="#aaa" text-anchor="middle" font-family="monospace">COMMERCIAL</text>
+
+        <!-- COUNTER (long, front-facing) -->
+        <rect x="20" y="210" width="540" height="60" rx="4" fill="#a07850"/>
+        <rect x="20" y="210" width="540" height="8" rx="2" fill="#b89060"/>
+        <!-- Glass display case -->
+        <rect x="30" y="220" width="200" height="44" rx="4" fill="rgba(180,220,240,0.15)"/>
+        <rect x="30" y="220" width="200" height="4" fill="rgba(255,255,255,0.2)"/>
+        <!-- Display items (baked goods in case) -->
+        <!-- Croissants -->
+        <ellipse cx="55" cy="248" rx="12" ry="7" fill="#e8a849"/>
+        <ellipse cx="55" cy="246" rx="10" ry="5" fill="#f5c96a"/>
+        <ellipse cx="85" cy="250" rx="12" ry="7" fill="#e8a849"/>
+        <!-- Cookies -->
+        <circle cx="115" cy="248" r="8" fill="#c49a3a"/>
+        <circle cx="113" cy="246" r="2" fill="#6b4020"/>
+        <circle cx="118" cy="249" r="1.5" fill="#6b4020"/>
+        <circle cx="135" cy="250" r="7" fill="#c49a3a"/>
+        <!-- Muffins -->
+        <rect x="155" y="243" width="14" height="12" rx="2" fill="#d4a84b"/>
+        <ellipse cx="162" cy="243" rx="9" ry="6" fill="#b8845a"/>
+        <circle cx="160" cy="241" r="2" fill="#4060b0"/>
+        <rect x="180" y="244" width="14" height="12" rx="2" fill="#d4a84b"/>
+        <ellipse cx="187" cy="244" rx="9" ry="6" fill="#c49060"/>
+        <!-- Donuts -->
+        <circle cx="210" cy="248" r="8" fill="#e8a0b0"/>
+        <circle cx="210" cy="248" r="3" fill="#a07850"/>
+
+        <!-- REGISTER area -->
+        <rect x="260" y="222" width="50" height="38" rx="3" fill="#444"/>
+        <rect x="265" y="226" width="40" height="20" rx="2" fill="#2a5a3a"/>
+        <text x="285" y="240" font-size="9" fill="#7ae87e" text-anchor="middle" font-family="monospace">$3.50</text>
+        <rect x="270" y="250" width="30" height="6" rx="1" fill="#666"/>
+
+        <!-- COFFEE STATION -->
+        <rect x="340" y="222" width="60" height="40" rx="3" fill="#6b4020"/>
+        <!-- Espresso machine -->
+        <rect x="345" y="215" width="30" height="35" rx="3" fill="#555"/>
+        <rect x="348" y="218" width="8" height="8" rx="1" fill="#888"/>
+        <rect x="360" y="218" width="8" height="8" rx="1" fill="#888"/>
+        <rect x="352" y="235" width="4" height="10" fill="#aaa"/>
+        <rect x="362" y="235" width="4" height="10" fill="#aaa"/>
+        <!-- Cups -->
+        <rect x="380" y="232" width="8" height="12" rx="1" fill="#fff"/>
+        <rect x="392" y="234" width="7" height="10" rx="1" fill="#fff"/>
+
+        <!-- CAFE SIGN (hanging) -->
+        <line x1="140" y1="0" x2="140" y2="10" stroke="#8B6B4A" stroke-width="2"/>
+        <line x1="260" y1="0" x2="260" y2="10" stroke="#8B6B4A" stroke-width="2"/>
+        <rect x="120" y="8" width="160" height="28" rx="4" fill="#2C1810"/>
+        <text x="200" y="27" font-size="12" fill="#f5c96a" text-anchor="middle" font-family="'Playfair Display',serif" font-weight="900">GOLDEN CRUST</text>
+
+        <!-- PIXEL CHARACTERS -->
+        <!-- Baker (behind counter) -->
+        <!-- head -->
+        <rect x="480" y="185" width="16" height="16" rx="2" fill="#f0c8a0"/>
+        <!-- chef hat -->
+        <rect x="478" y="176" width="20" height="10" rx="3" fill="white"/>
+        <rect x="482" y="170" width="12" height="8" rx="2" fill="white"/>
+        <!-- body (apron) -->
+        <rect x="479" y="201" width="18" height="20" rx="2" fill="white"/>
+        <rect x="482" y="203" width="12" height="16" rx="1" fill="#e8d5be"/>
+
+        <!-- Cashier (behind register) -->
+        <rect x="278" y="190" width="14" height="14" rx="2" fill="#d4a070"/>
+        <rect x="275" y="185" width="20" height="6" rx="1" fill="#b54b6c"/><!-- visor -->
+        <rect x="277" y="204" width="16" height="16" rx="2" fill="#b54b6c"/>
+
+        <!-- CUSTOMERS (front of counter, walking area) -->
+        <!-- Customer 1 -->
+        <rect x="80" y="285" width="14" height="14" rx="7" fill="#f0c890"/>
+        <rect x="82" y="276" width="10" height="10" rx="2" fill="#5a4030"/>
+        <rect x="79" y="299" width="16" height="18" rx="2" fill="#5080c0"/>
+        <rect x="82" y="317" width="5" height="10" fill="#3a3a3a"/>
+        <rect x="89" y="317" width="5" height="10" fill="#3a3a3a"/>
+
+        <!-- Customer 2 -->
+        <rect x="180" y="290" width="14" height="14" rx="7" fill="#e0b080"/>
+        <rect x="182" y="282" width="10" height="10" rx="2" fill="#d4748f"/>
+        <rect x="179" y="304" width="16" height="18" rx="2" fill="#e87070"/>
+        <rect x="182" y="322" width="5" height="10" fill="#4a4a4a"/>
+        <rect x="189" y="322" width="5" height="10" fill="#4a4a4a"/>
+
+        <!-- Customer 3 (at counter) -->
+        <rect x="310" y="275" width="14" height="14" rx="7" fill="#c09870"/>
+        <rect x="312" y="268" width="10" height="8" rx="2" fill="#2a2a2a"/>
+        <rect x="309" y="289" width="16" height="20" rx="2" fill="#7a9e7e"/>
+        <rect x="312" y="309" width="5" height="12" fill="#3a3a3a"/>
+        <rect x="319" y="309" width="5" height="12" fill="#3a3a3a"/>
+
+        <!-- FLOOR DETAILS -->
+        <!-- Welcome mat -->
+        <rect x="60" y="350" width="60" height="20" rx="2" fill="#8B6B4A" opacity="0.4"/>
+        <text x="90" y="364" font-size="6" fill="#6b4020" text-anchor="middle" font-family="monospace" opacity="0.5">WELCOME</text>
+
+        <!-- Small table/stool area -->
+        <rect x="470" y="300" width="40" height="30" rx="3" fill="#a07850"/>
+        <rect x="470" y="296" width="40" height="6" rx="2" fill="#b89060"/>
+        <circle cx="460" cy="320" r="8" fill="#8B6B4A"/>
+        <circle cx="520" cy="320" r="8" fill="#8B6B4A"/>
+
+        <!-- Potted plant -->
+        <rect x="540" y="315" width="16" height="18" rx="2" fill="#8B6B4A"/>
+        <ellipse cx="548" cy="310" rx="14" ry="12" fill="#5a8a5a"/>
+        <ellipse cx="544" cy="305" rx="8" ry="8" fill="#7ab87a"/>
+        <ellipse cx="554" cy="308" rx="6" ry="7" fill="#6aaa6a"/>
+
+        <!-- Notification toast (bottom left) -->
+        <rect x="15" y="355" width="240" height="30" rx="6" fill="rgba(44,24,16,0.88)"/>
+        <text x="30" y="374" font-size="8" fill="#f5c96a" font-family="'DM Sans',sans-serif">⚠️ Cashier Alex is unhappy — rivals notified</text>
+
+        <!-- Revenue ticker (bottom right of scene) -->
+        <rect x="580" y="10" width="120" height="28" rx="6" fill="rgba(44,24,16,0.85)"/>
+        <text x="595" y="28" font-size="9" fill="#7ae87e" font-family="'JetBrains Mono',monospace">💰 $3,120</text>
+        <text x="670" y="28" font-size="7" fill="#f5c96a" font-family="monospace">+$42</text>
+
+      </svg>
+    </div>
+
+    <!-- ─── RIGHT TAB STRIP ─── -->
+    <div id="tabStrip" style="position:absolute;top:36px;right:0;bottom:0;width:38px;display:flex;flex-direction:column;justify-content:center;gap:2px;padding:6px 0;z-index:15;background:rgba(44,24,16,0.7);backdrop-filter:blur(4px);">
+      <div class="bakery-tab" data-tab="menu" onclick="toggleTab('menu')" title="Menu & Pricing" style="width:36px;height:42px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:6px 0 0 6px;font-size:1rem;transition:all 0.2s;background:rgba(255,255,255,0.06);">🧁</div>
+      <div class="bakery-tab" data-tab="employees" onclick="toggleTab('employees')" title="Employees" style="width:36px;height:42px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:6px 0 0 6px;font-size:1rem;transition:all 0.2s;background:rgba(255,255,255,0.06);">👥</div>
+      <div class="bakery-tab" data-tab="equipment" onclick="toggleTab('equipment')" title="Equipment" style="width:36px;height:42px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:6px 0 0 6px;font-size:1rem;transition:all 0.2s;background:rgba(255,255,255,0.06);">⚙️</div>
+      <div class="bakery-tab" data-tab="ads" onclick="toggleTab('ads')" title="Advertising" style="width:36px;height:42px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:6px 0 0 6px;font-size:1rem;transition:all 0.2s;background:rgba(255,255,255,0.06);">📢</div>
+      <div class="bakery-tab" data-tab="stats" onclick="toggleTab('stats')" title="Stats & Leaderboard" style="width:36px;height:42px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:6px 0 0 6px;font-size:1rem;transition:all 0.2s;background:rgba(255,255,255,0.06);">📊</div>
+      <div class="bakery-tab" data-tab="budget" onclick="toggleTab('budget')" title="Budget" style="width:36px;height:42px;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:6px 0 0 6px;font-size:1rem;transition:all 0.2s;background:rgba(255,255,255,0.06);">💰</div>
+    </div>
+
+    <!-- ─── SLIDE-OUT PANELS ─── -->
+    <div id="panelOverlay" style="display:none;position:absolute;top:36px;right:38px;bottom:0;width:260px;z-index:12;transition:transform 0.3s cubic-bezier(0.22,1,0.36,1);font-size:0.7rem;overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.2) transparent;">
+
+      <!-- MENU PANEL -->
+      <div class="tab-panel" id="panel-menu" style="display:none;background:rgba(44,24,16,0.94);backdrop-filter:blur(8px);height:100%;padding:14px;color:#ffe8cc;">
+        <div style="font-weight:800;font-size:0.8rem;color:#f5c96a;margin-bottom:8px;font-family:'Playfair Display',serif;">🧁 Menu & Pricing</div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);"><span>🥐 Croissant</span><span style="color:#f5c96a;font-weight:700;">$3.50</span></div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);"><span>🍪 Cookie</span><span style="color:#f5c96a;font-weight:700;">$2.00</span></div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);"><span>☕ Drip Coffee</span><span style="color:#f5c96a;font-weight:700;">$2.75</span></div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);"><span>🥯 Bagel</span><span style="color:#f5c96a;font-weight:700;">$3.25</span></div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);"><span>🍵 Matcha Latte</span><span style="color:#f5c96a;font-weight:700;">$5.50</span></div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);"><span>🧁 Cupcake</span><span style="color:#f5c96a;font-weight:700;">$3.75</span></div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);"><span>🍩 Donut</span><span style="color:#f5c96a;font-weight:700;">$2.25</span></div>
+        <div style="padding:6px 0;color:rgba(255,255,255,0.35);font-style:italic;cursor:pointer;">+ Add new product...</div>
+        <div style="margin-top:6px;background:rgba(122,158,126,0.15);border:1px solid rgba(122,158,126,0.3);border-radius:6px;padding:6px 8px;font-size:0.62rem;">
+          🆕 <strong>Matcha Latte</strong> — 18 sold last round · $99 rev · +3% sat
+        </div>
+      </div>
+
+      <!-- EMPLOYEES PANEL -->
+      <div class="tab-panel" id="panel-employees" style="display:none;background:rgba(44,24,16,0.94);backdrop-filter:blur(8px);height:100%;padding:14px;color:#ffe8cc;">
+        <div style="font-weight:800;font-size:0.8rem;color:#f5c96a;margin-bottom:8px;font-family:'Playfair Display',serif;">👥 Employees</div>
+        <div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;"><strong>👨‍🍳 Baker — Marco</strong><span style="color:#7ae87e;">😊 85%</span></div>
+          <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);margin-top:2px;">Lead Baker · $220/rd</div>
+          <div style="height:4px;background:rgba(255,255,255,0.1);border-radius:2px;margin-top:4px;"><div style="height:100%;width:85%;background:#7ae87e;border-radius:2px;"></div></div>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;"><strong>👨‍🍳 Baker — Sam</strong><span style="color:#7ae87e;">😊 88%</span></div>
+          <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);margin-top:2px;">Line Baker · $160/rd</div>
+          <div style="height:4px;background:rgba(255,255,255,0.1);border-radius:2px;margin-top:4px;"><div style="height:100%;width:88%;background:#7ae87e;border-radius:2px;"></div></div>
+        </div>
+        <div style="background:rgba(181,75,108,0.15);border:1px solid rgba(181,75,108,0.3);border-radius:6px;padding:8px;margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;"><strong>💳 Cashier — Alex</strong><span style="color:#e8a849;">😐 62%</span></div>
+          <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);margin-top:2px;">Cashier · $120/rd · <span style="color:#d4748f;">⚠ UNHAPPY</span></div>
+          <div style="height:4px;background:rgba(255,255,255,0.1);border-radius:2px;margin-top:4px;"><div style="height:100%;width:62%;background:#e8a849;border-radius:2px;"></div></div>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;"><strong>📋 Manager — Jo</strong><span style="color:#7ae87e;">😊 90%</span></div>
+          <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);margin-top:2px;">Manager · $280/rd</div>
+          <div style="height:4px;background:rgba(255,255,255,0.1);border-radius:2px;margin-top:4px;"><div style="height:100%;width:90%;background:#7ae87e;border-radius:2px;"></div></div>
+        </div>
+        <div style="display:flex;gap:4px;">
+          <span style="background:#7a9e7e;color:white;padding:3px 8px;border-radius:4px;font-size:0.6rem;font-weight:700;cursor:pointer;">Hire</span>
+          <span style="background:#b54b6c;color:white;padding:3px 8px;border-radius:4px;font-size:0.6rem;font-weight:700;cursor:pointer;">Fire</span>
+          <span style="background:#e8a849;color:#2c1810;padding:3px 8px;border-radius:4px;font-size:0.6rem;font-weight:700;cursor:pointer;">Give Raise</span>
+        </div>
+        <div style="margin-top:8px;background:rgba(122,158,126,0.12);border:1px solid rgba(122,158,126,0.25);border-radius:6px;padding:6px 8px;font-size:0.6rem;">
+          🤝 <strong>Sugar Rush</strong>'s head baker is available!<br>
+          <span style="background:#e8a849;color:#2c1810;padding:2px 6px;border-radius:3px;font-size:0.55rem;font-weight:700;cursor:pointer;margin-top:3px;display:inline-block;">Make Offer</span>
+        </div>
+      </div>
+
+      <!-- EQUIPMENT PANEL -->
+      <div class="tab-panel" id="panel-equipment" style="display:none;background:rgba(44,24,16,0.94);backdrop-filter:blur(8px);height:100%;padding:14px;color:#ffe8cc;">
+        <div style="font-weight:800;font-size:0.8rem;color:#f5c96a;margin-bottom:8px;font-family:'Playfair Display',serif;">⚙️ Equipment</div>
+        <div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;"><strong>🔥 Oven</strong><span style="color:#7ae87e;font-size:0.6rem;font-weight:700;">COMMERCIAL</span></div>
+          <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);margin-top:2px;">Tier 2/3 · Low breakdown risk</div>
+          <span style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:3px;font-size:0.55rem;margin-top:4px;display:inline-block;cursor:pointer;">Upgrade → Industrial ($800)</span>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;"><strong>🖥️ Register</strong><span style="color:#e8a849;font-size:0.6rem;font-weight:700;">POS</span></div>
+          <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);margin-top:2px;">Tier 2/3 · 1.5× cashier speed</div>
+          <span style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:3px;font-size:0.55rem;margin-top:4px;display:inline-block;cursor:pointer;">Upgrade → Self-checkout ($1,200)</span>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;"><strong>❄️ Fridge</strong><span style="color:#f5c96a;font-size:0.6rem;font-weight:700;">STANDARD</span></div>
+          <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);margin-top:2px;">Tier 2/3 · Supports 10 products</div>
+          <span style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:3px;font-size:0.55rem;margin-top:4px;display:inline-block;cursor:pointer;">Upgrade → Walk-in ($600)</span>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;">
+          <div style="display:flex;justify-content:space-between;"><strong>☕ Espresso Machine</strong><span style="color:#d4748f;font-size:0.6rem;font-weight:700;">MANUAL</span></div>
+          <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);margin-top:2px;">Tier 1/3 · Slow drinks</div>
+          <span style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:3px;font-size:0.55rem;margin-top:4px;display:inline-block;cursor:pointer;">Upgrade → Semi-auto ($400)</span>
+        </div>
+      </div>
+
+      <!-- ADS PANEL -->
+      <div class="tab-panel" id="panel-ads" style="display:none;background:rgba(44,24,16,0.94);backdrop-filter:blur(8px);height:100%;padding:14px;color:#ffe8cc;">
+        <div style="font-weight:800;font-size:0.8rem;color:#f5c96a;margin-bottom:6px;font-family:'Playfair Display',serif;">📢 Auctions (30s each)</div>
+        <div style="font-size:0.55rem;color:rgba(255,255,255,0.3);margin-bottom:6px;">Three sealed-bid auctions before stores open</div>
+
+        <div style="font-size:0.6rem;font-weight:700;color:var(--golden);margin-bottom:3px;">👨‍🍳 CHEF AUCTION</div>
+        <div style="background:rgba(255,255,255,0.04);border-radius:5px;padding:5px 7px;margin-bottom:3px;display:flex;justify-content:space-between;align-items:center;font-size:0.62rem;">
+          <span>Head Baker (T3)</span><span style="background:#2a2a2a;border:1px solid rgba(255,255,255,0.15);padding:1px 5px;border-radius:3px;color:#f5c96a;font-weight:700;">$600</span>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);border-radius:5px;padding:5px 7px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;font-size:0.62rem;">
+          <span>Lead Baker (T2)</span><span style="background:#2a2a2a;border:1px solid rgba(255,255,255,0.15);padding:1px 5px;border-radius:3px;color:#f5c96a;font-weight:700;">$300</span>
+        </div>
+
+        <div style="font-size:0.6rem;font-weight:700;color:var(--sage-light);margin-bottom:3px;">📢 AD AUCTION</div>
+        <div style="background:rgba(255,255,255,0.04);border-radius:5px;padding:5px 7px;margin-bottom:3px;display:flex;justify-content:space-between;align-items:center;font-size:0.62rem;">
+          <span>📍 Plaza Directory</span><span style="background:#2a2a2a;border:1px solid rgba(255,255,255,0.15);padding:1px 5px;border-radius:3px;color:#f5c96a;font-weight:700;">$500</span>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);border-radius:5px;padding:5px 7px;margin-bottom:3px;display:flex;justify-content:space-between;align-items:center;font-size:0.62rem;">
+          <span>🪧 Food Court Sign</span><span style="background:#2a2a2a;border:1px solid rgba(255,255,255,0.15);padding:1px 5px;border-radius:3px;color:#f5c96a;font-weight:700;">$200</span>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);border-radius:5px;padding:5px 7px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;font-size:0.62rem;">
+          <span>📱 Social / 🎟️ Coupons</span><span style="background:#2a2a2a;border:1px solid rgba(255,255,255,0.15);padding:1px 5px;border-radius:3px;color:rgba(255,255,255,0.3);">$0</span>
+        </div>
+
+        <div style="font-size:0.6rem;font-weight:700;color:var(--berry-light);margin-bottom:3px;">⚙️ TECH AUCTION</div>
+        <div style="background:rgba(255,255,255,0.04);border-radius:5px;padding:5px 7px;margin-bottom:3px;display:flex;justify-content:space-between;align-items:center;font-size:0.62rem;">
+          <span>🔥 Industrial Oven</span><span style="background:#2a2a2a;border:1px solid rgba(255,255,255,0.15);padding:1px 5px;border-radius:3px;color:rgba(255,255,255,0.3);">$0</span>
+        </div>
+        <div style="background:rgba(255,255,255,0.04);border-radius:5px;padding:5px 7px;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;font-size:0.62rem;">
+          <span>☕ Auto Espresso</span><span style="background:#2a2a2a;border:1px solid rgba(255,255,255,0.15);padding:1px 5px;border-radius:3px;color:#f5c96a;font-weight:700;">$400</span>
+        </div>
+
+        <div style="font-size:0.55rem;color:rgba(255,255,255,0.3);border-top:1px solid rgba(255,255,255,0.06);padding-top:5px;">
+          Budget spent in auction #1 reduces what's available for #2 and #3
+        </div>
+      </div>
+
+      <!-- STATS PANEL -->
+      <div class="tab-panel" id="panel-stats" style="display:none;background:rgba(44,24,16,0.94);backdrop-filter:blur(8px);height:100%;padding:14px;color:#ffe8cc;">
+        <div style="font-weight:800;font-size:0.8rem;color:#f5c96a;margin-bottom:8px;font-family:'Playfair Display',serif;">📊 Your Stats</div>
+        <div style="display:grid;grid-template-columns:1fr;gap:5px;margin-bottom:10px;">
+          <div style="text-align:center;background:rgba(255,255,255,0.04);padding:10px;border-radius:6px;">
+            <div style="font-family:'Playfair Display',serif;font-weight:900;font-size:1.4rem;color:#f5c96a;">$3,120</div>
+            <div style="font-size:0.55rem;color:rgba(255,255,255,0.4);text-transform:uppercase;">Revenue (Today)</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+            <div style="text-align:center;background:rgba(255,255,255,0.04);padding:8px;border-radius:6px;">
+              <div style="font-family:'Playfair Display',serif;font-weight:900;font-size:1.1rem;color:#7ae87e;">87</div>
+              <div style="font-size:0.55rem;color:rgba(255,255,255,0.4);text-transform:uppercase;">Customers</div>
+            </div>
+            <div style="text-align:center;background:rgba(255,255,255,0.04);padding:8px;border-radius:6px;">
+              <div style="font-family:'Playfair Display',serif;font-weight:900;font-size:1.1rem;color:#a8c5ab;">79%</div>
+              <div style="font-size:0.55rem;color:rgba(255,255,255,0.4);text-transform:uppercase;">Emp. Satisfaction</div>
+            </div>
+          </div>
+        </div>
+        <div style="font-size:0.6rem;font-weight:700;color:rgba(255,255,255,0.5);margin-bottom:5px;">🏆 LEADERBOARD — Revenue + Cust. Satisfaction</div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:0.6rem;color:rgba(255,255,255,0.4);font-weight:600;"><span>#</span><span style="margin-left:auto;display:flex;gap:12px;"><span>Rev</span><span>Sat</span></span></div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:0.65rem;"><span>🥇 Dough & Co</span><span style="display:flex;gap:12px;"><span style="color:#f5c96a;">$12.4k</span><span style="color:#a8c5ab;">91%</span></span></div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:0.65rem;"><span>🥈 Sugar Rush</span><span style="display:flex;gap:12px;"><span style="color:#f5c96a;">$11.8k</span><span style="color:#a8c5ab;">88%</span></span></div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:0.65rem;"><span>🥉 Flour Power</span><span style="display:flex;gap:12px;"><span style="color:#f5c96a;">$10.9k</span><span style="color:#a8c5ab;">84%</span></span></div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.65rem;font-weight:700;color:#f5c96a;"><span>→ Golden Crust (You)</span><span style="display:flex;gap:12px;"><span>$10.2k</span><span style="color:#a8c5ab;">87%</span></span></div>
+      </div>
+
+      <!-- BUDGET PANEL -->
+      <div class="tab-panel" id="panel-budget" style="display:none;background:rgba(44,24,16,0.94);backdrop-filter:blur(8px);height:100%;padding:14px;color:#ffe8cc;">
+        <div style="font-weight:800;font-size:0.8rem;color:#f5c96a;margin-bottom:8px;font-family:'Playfair Display',serif;">💰 Budget</div>
+        <div style="text-align:center;background:rgba(122,232,126,0.08);border:1px solid rgba(122,232,126,0.2);padding:12px;border-radius:8px;margin-bottom:10px;">
+          <div style="font-family:'Playfair Display',serif;font-weight:900;font-size:1.8rem;color:#7ae87e;">$4,280</div>
+          <div style="font-size:0.6rem;color:rgba(255,255,255,0.4);text-transform:uppercase;">Remaining Budget</div>
+        </div>
+        <div style="font-size:0.6rem;font-weight:700;color:rgba(255,255,255,0.5);margin-bottom:5px;">EXPENSES THIS ROUND</div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);"><span>Staff wages</span><span style="color:#d4748f;">−$850</span></div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);"><span>Plaza rent</span><span style="color:#d4748f;">−$500</span></div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);"><span>Ingredients</span><span style="color:#d4748f;">−$340</span></div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);"><span>Ad bids</span><span style="color:#d4748f;">−$850</span></div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;font-weight:700;"><span>Total costs</span><span style="color:#d4748f;">−$2,540</span></div>
+        <div style="margin-top:8px;background:rgba(255,255,255,0.04);padding:6px 8px;border-radius:6px;font-size:0.6rem;color:rgba(255,255,255,0.4);">
+          ⓘ Rent + wages are paid every round regardless of performance. AFK players bleed cash.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DESCRIPTION BELOW -->
+  <div style="margin-top:0.75rem;display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;">
+    <div class="card" style="background:var(--flour);border:none;">
+      <strong class="small">🎮 Main View — Your Café</strong>
+      <p class="small" style="color:var(--muted);">
+        Pixel-art shop interior inspired by Stardew Valley. Players see their café with display cases, ovens, register, staff characters, and customers flowing in. HUD bar always shows <strong>revenue</strong>, <strong>customers</strong>, and <strong>employee satisfaction</strong>. Notification toasts appear at the bottom.
+      </p>
+    </div>
+    <div class="card" style="background:var(--flour);border:none;">
+      <strong class="small">📑 Right Tabs — Slide-Out Panels</strong>
+      <p class="small" style="color:var(--muted);">
+        Six tabs: Menu, Employees, Equipment, Auctions (all 3: chef/ads/tech), Stats + Leaderboard (revenue & customer sat. only), and Budget. Click a tab → panel slides open. Click again → collapses. <em>(Click the tabs above to preview!)</em>
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SLIDE: PLAZA MAP ══════════ -->
+<div class="slide bg-cream" data-title="Plaza Map">
+  <div class="section-header">
+    <span class="label">Map View</span>
+    <h1 class="display">The Plaza — See Every Café</h1>
+    <div class="divider"></div>
+  </div>
+
+  <p style="max-width:700px;margin-bottom:0.75rem;color:var(--smoke);font-size:0.9rem;">
+    A top-down map of the plaza shows every café's location. Hover over any café to see its name, revenue, and customer count. Click to inspect further. This is how players scout the competition.
+  </p>
+
+  <!-- PLAZA MAP MOCKUP -->
+  <div style="position:relative;width:100%;height:360px;border-radius:14px;overflow:hidden;border:2px solid var(--dough);background:#e8ddd0;">
+    <svg viewBox="0 0 900 360" style="width:100%;height:100%;display:block;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Plaza ground -->
+      <rect width="900" height="360" fill="#e2d5c3"/>
+      <!-- Pathways -->
+      <rect x="0" y="160" width="900" height="40" fill="#d4c4a8" rx="2"/>
+      <rect x="420" y="0" width="40" height="360" fill="#d4c4a8" rx="2"/>
+      <!-- Fountain in center -->
+      <circle cx="440" cy="180" r="35" fill="#b8cfe0" stroke="#8aafcc" stroke-width="2"/>
+      <circle cx="440" cy="180" r="20" fill="#a0c0d8"/>
+      <circle cx="440" cy="180" r="8" fill="#88b0cc"/>
+      <!-- Trees/bushes -->
+      <circle cx="120" cy="180" r="14" fill="#6a9a6a" opacity="0.7"/>
+      <circle cx="320" cy="100" r="12" fill="#5a8a5a" opacity="0.7"/>
+      <circle cx="560" cy="260" r="14" fill="#6a9a6a" opacity="0.7"/>
+      <circle cx="760" cy="180" r="12" fill="#5a8a5a" opacity="0.7"/>
+      <circle cx="200" cy="300" r="10" fill="#7aaa7a" opacity="0.6"/>
+      <circle cx="680" cy="80" r="11" fill="#7aaa7a" opacity="0.6"/>
+      <!-- Benches -->
+      <rect x="350" y="135" width="24" height="8" rx="2" fill="#8B6B4A"/>
+      <rect x="505" y="195" width="24" height="8" rx="2" fill="#8B6B4A"/>
+
+      <!-- CAFE BUILDINGS -->
+      <!-- Player's cafe (highlighted) -->
+      <g id="cafe-you">
+        <rect x="50" y="40" width="100" height="70" rx="6" fill="#2C1810" stroke="#f5c96a" stroke-width="2.5"/>
+        <rect x="55" y="45" width="90" height="35" rx="3" fill="#3D2317"/>
+        <text x="100" y="68" font-size="8" fill="#f5c96a" text-anchor="middle" font-family="'Playfair Display',serif" font-weight="900">GOLDEN CRUST</text>
+        <rect x="70" y="85" width="20" height="20" rx="2" fill="#4a3020"/>
+        <rect x="95" y="85" width="20" height="20" rx="2" fill="#4a3020"/>
+        <circle cx="100" cy="28" r="8" fill="#f5c96a" opacity="0.3"/>
+        <text x="100" y="31" font-size="7" fill="#f5c96a" text-anchor="middle" font-weight="700">YOU</text>
+      </g>
+
+      <!-- Competitor 1 -->
+      <g id="cafe-1" class="plaza-cafe" data-name="Dough & Co" data-rev="$12.4k" data-cust="342">
+        <rect x="220" y="40" width="80" height="55" rx="5" fill="#5a3828"/>
+        <text x="260" y="72" font-size="7" fill="#e8d5be" text-anchor="middle" font-family="monospace">Dough & Co</text>
+        <rect x="240" y="78" width="15" height="14" rx="2" fill="#3a2018"/>
+        <rect x="258" y="78" width="15" height="14" rx="2" fill="#3a2018"/>
+        <circle cx="260" cy="35" r="4" fill="#7ae87e"/>
+      </g>
+
+      <!-- Competitor 2 -->
+      <g id="cafe-2">
+        <rect x="540" y="30" width="85" height="55" rx="5" fill="#4a5a6a"/>
+        <text x="582" y="62" font-size="7" fill="#d0dce8" text-anchor="middle" font-family="monospace">Sugar Rush</text>
+        <rect x="555" y="68" width="15" height="14" rx="2" fill="#3a4a5a"/>
+        <rect x="575" y="68" width="15" height="14" rx="2" fill="#3a4a5a"/>
+      </g>
+
+      <!-- Competitor 3 -->
+      <g id="cafe-3">
+        <rect x="700" y="50" width="90" height="55" rx="5" fill="#6a4a3a"/>
+        <text x="745" y="82" font-size="7" fill="#e8d5be" text-anchor="middle" font-family="monospace">Flour Power</text>
+        <rect x="720" y="88" width="15" height="14" rx="2" fill="#4a2a1a"/>
+        <rect x="740" y="88" width="15" height="14" rx="2" fill="#4a2a1a"/>
+      </g>
+
+      <!-- Competitor 4 -->
+      <g id="cafe-4">
+        <rect x="60" y="230" width="85" height="55" rx="5" fill="#5a6a5a"/>
+        <text x="102" y="262" font-size="7" fill="#d0e8d0" text-anchor="middle" font-family="monospace">Crumb Co.</text>
+        <rect x="77" y="268" width="15" height="14" rx="2" fill="#3a4a3a"/>
+        <rect x="95" y="268" width="15" height="14" rx="2" fill="#3a4a3a"/>
+      </g>
+
+      <!-- Competitor 5 (AI) -->
+      <g id="cafe-ai">
+        <rect x="350" y="240" width="75" height="50" rx="5" fill="#555" stroke="#e87070" stroke-width="1" stroke-dasharray="3,2"/>
+        <text x="387" y="268" font-size="6" fill="#ccc" text-anchor="middle" font-family="monospace">🤖 AI Café</text>
+        <rect x="365" y="275" width="12" height="12" rx="2" fill="#3a3a3a"/>
+        <rect x="382" y="275" width="12" height="12" rx="2" fill="#3a3a3a"/>
+      </g>
+
+      <!-- Competitor 6 -->
+      <g id="cafe-6">
+        <rect x="600" y="240" width="80" height="55" rx="5" fill="#6a5a4a"/>
+        <text x="640" y="272" font-size="7" fill="#e8d5be" text-anchor="middle" font-family="monospace">Rise & Bake</text>
+        <rect x="617" y="278" width="15" height="14" rx="2" fill="#4a3a2a"/>
+        <rect x="637" y="278" width="15" height="14" rx="2" fill="#4a3a2a"/>
+      </g>
+
+      <!-- Walking customers (dots) -->
+      <circle cx="300" cy="175" r="4" fill="#e8a849" opacity="0.6"/>
+      <circle cx="480" cy="165" r="4" fill="#b54b6c" opacity="0.6"/>
+      <circle cx="400" cy="185" r="4" fill="#7a9e7e" opacity="0.6"/>
+      <circle cx="600" cy="172" r="4" fill="#5080c0" opacity="0.6"/>
+      <circle cx="150" cy="178" r="4" fill="#d4a84b" opacity="0.6"/>
+      <circle cx="700" cy="170" r="4" fill="#c09870" opacity="0.6"/>
+      <circle cx="440" cy="130" r="3" fill="#e87070" opacity="0.5"/>
+      <circle cx="440" cy="230" r="3" fill="#7ab5e8" opacity="0.5"/>
+
+      <!-- Hover tooltip example (static mockup) -->
+      <rect x="530" y="6" width="120" height="52" rx="6" fill="rgba(44,24,16,0.92)"/>
+      <text x="540" y="22" font-size="8" fill="#f5c96a" font-weight="700" font-family="'DM Sans',sans-serif">Sugar Rush</text>
+      <text x="540" y="35" font-size="7" fill="#7ae87e" font-family="'JetBrains Mono',monospace">💰 $11.8k revenue</text>
+      <text x="540" y="48" font-size="7" fill="#a8c5ab" font-family="'JetBrains Mono',monospace">👥 310 customers</text>
+      <!-- Arrow from tooltip to cafe -->
+      <line x1="582" y1="58" x2="582" y2="68" stroke="rgba(44,24,16,0.5)" stroke-width="1"/>
+    </svg>
+  </div>
+
+  <div style="margin-top:0.75rem;display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem;">
+    <div class="card" style="background:var(--flour);border:none;">
+      <strong class="small">🗺️ Hover to Inspect</strong>
+      <p class="small" style="color:var(--muted);">Hover over any café to see name, revenue, and customer count. Quick way to scout competitor performance without leaving your view.</p>
+    </div>
+    <div class="card" style="background:var(--flour);border:none;">
+      <strong class="small">🤖 AI Cafés Visible</strong>
+      <p class="small" style="color:var(--muted);">AI-controlled competitors are shown with a dashed border and robot icon so players can distinguish them from human-run cafés.</p>
+    </div>
+    <div class="card" style="background:var(--flour);border:none;">
+      <strong class="small">👥 Customer Flow</strong>
+      <p class="small" style="color:var(--muted);">During open hours, customers visually move around the plaza toward cafés based on attractiveness scores — gives a feel for where traffic is going.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SLIDE: PUBLIC CHAT + ACHIEVEMENTS ══════════ -->
+<div class="slide bg-dark" data-title="Chat & Achievements">
+  <div class="section-header">
+    <span class="label" style="color:var(--golden);">Social</span>
+    <h1 class="display">Public Chat & Achievements</h1>
+    <div class="divider-light"></div>
+  </div>
+
+  <p style="max-width:700px;margin-bottom:1rem;color:var(--dough);font-size:0.9rem;">
+    A live public chat where players can talk, and <strong>achievements are automatically posted</strong> when milestones are hit. Players can filter by café to track specific competitors.
+  </p>
+
+  <div class="grid-2" style="gap:1.5rem;">
+    <!-- CHAT MOCKUP -->
+    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;overflow:hidden;">
+      <!-- Chat header -->
+      <div style="background:rgba(255,255,255,0.06);padding:8px 14px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.06);">
+        <span style="font-weight:700;font-size:0.8rem;color:var(--cream);">💬 Plaza Chat</span>
+        <div style="display:flex;gap:4px;">
+          <span style="background:rgba(245,201,106,0.15);border:1px solid rgba(245,201,106,0.3);padding:2px 8px;border-radius:10px;font-size:0.58rem;color:var(--golden);cursor:pointer;">All</span>
+          <span style="background:rgba(255,255,255,0.06);padding:2px 8px;border-radius:10px;font-size:0.58rem;color:rgba(255,255,255,0.4);cursor:pointer;">Dough & Co</span>
+          <span style="background:rgba(255,255,255,0.06);padding:2px 8px;border-radius:10px;font-size:0.58rem;color:rgba(255,255,255,0.4);cursor:pointer;">Sugar Rush</span>
+          <span style="background:rgba(255,255,255,0.06);padding:2px 8px;border-radius:10px;font-size:0.58rem;color:rgba(255,255,255,0.4);cursor:pointer;">Filter ▾</span>
+        </div>
+      </div>
+      <!-- Chat messages -->
+      <div style="padding:10px 14px;display:flex;flex-direction:column;gap:6px;font-size:0.72rem;color:var(--dough);min-height:200px;">
+        <!-- Achievement auto-post -->
+        <div style="background:rgba(245,201,106,0.08);border:1px solid rgba(245,201,106,0.2);border-radius:8px;padding:6px 10px;">
+          <span style="font-size:0.6rem;color:var(--golden);font-weight:700;">🏆 ACHIEVEMENT</span>
+          <div style="margin-top:2px;"><strong style="color:var(--cream);">Dough & Co</strong> hit <strong style="color:var(--golden);">$10,000 cumulative revenue!</strong></div>
+          <span style="font-size:0.55rem;color:rgba(255,255,255,0.3);">Day 3 · 2 min ago</span>
+        </div>
+
+        <!-- Player message -->
+        <div style="display:flex;gap:6px;align-items:flex-start;">
+          <span style="background:var(--sage);color:white;padding:2px 6px;border-radius:4px;font-size:0.58rem;font-weight:700;flex-shrink:0;">Flour Power</span>
+          <span>who keeps outbidding me on the oven auction lol</span>
+        </div>
+
+        <!-- Achievement auto-post -->
+        <div style="background:rgba(122,158,126,0.08);border:1px solid rgba(122,158,126,0.2);border-radius:8px;padding:6px 10px;">
+          <span style="font-size:0.6rem;color:var(--sage-light);font-weight:700;">🎯 ACHIEVEMENT</span>
+          <div style="margin-top:2px;"><strong style="color:var(--cream);">Golden Crust</strong> achieved <strong style="color:var(--sage-light);">90%+ customer satisfaction!</strong></div>
+          <span style="font-size:0.55rem;color:rgba(255,255,255,0.3);">Day 3 · 1 min ago</span>
+        </div>
+
+        <!-- Player message -->
+        <div style="display:flex;gap:6px;align-items:flex-start;">
+          <span style="background:var(--berry);color:white;padding:2px 6px;border-radius:4px;font-size:0.58rem;font-weight:700;flex-shrink:0;">Sugar Rush</span>
+          <span>just lost my head baker 😭 someone poached them</span>
+        </div>
+
+        <!-- Player message -->
+        <div style="display:flex;gap:6px;align-items:flex-start;">
+          <span style="background:var(--caramel);color:white;padding:2px 6px;border-radius:4px;font-size:0.58rem;font-weight:700;flex-shrink:0;">Golden Crust</span>
+          <span>😏</span>
+        </div>
+
+        <!-- Achievement -->
+        <div style="background:rgba(181,75,108,0.08);border:1px solid rgba(181,75,108,0.2);border-radius:8px;padding:6px 10px;">
+          <span style="font-size:0.6rem;color:var(--berry-light);font-weight:700;">⚡ ACHIEVEMENT</span>
+          <div style="margin-top:2px;"><strong style="color:var(--cream);">Crumb Co.</strong> survived a <strong style="color:var(--berry-light);">health inspector visit</strong> with no penalties!</div>
+          <span style="font-size:0.55rem;color:rgba(255,255,255,0.3);">Day 3 · just now</span>
+        </div>
+      </div>
+      <!-- Chat input -->
+      <div style="border-top:1px solid rgba(255,255,255,0.06);padding:8px 14px;display:flex;gap:6px;">
+        <div style="flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:6px 10px;font-size:0.68rem;color:rgba(255,255,255,0.3);">Type a message...</div>
+        <span style="background:var(--caramel);color:white;padding:5px 12px;border-radius:6px;font-size:0.65rem;font-weight:700;cursor:pointer;">Send</span>
+      </div>
+    </div>
+
+    <!-- ACHIEVEMENTS LIST -->
+    <div>
+      <h3 style="color:var(--cream);margin-bottom:0.75rem;">🏅 Auto-Posted Achievements</h3>
+      <p class="small" style="color:var(--dough);margin-bottom:0.75rem;">
+        When a player hits a milestone, it's automatically broadcast to the public chat. Creates competition, FOMO, and information leakage — other players can see who's thriving.
+      </p>
+      <div class="flex flex-col" style="gap:0.5rem;">
+        <div class="card-dark" style="padding:0.65rem 0.85rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span class="small" style="color:var(--cream);"><strong>💰 Revenue Milestones</strong></span>
+            <span style="font-size:0.6rem;color:var(--golden);">$5k, $10k, $25k, $50k</span>
+          </div>
+        </div>
+        <div class="card-dark" style="padding:0.65rem 0.85rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span class="small" style="color:var(--cream);"><strong>😊 Satisfaction Streaks</strong></span>
+            <span style="font-size:0.6rem;color:var(--sage-light);">3+ days above 90%</span>
+          </div>
+        </div>
+        <div class="card-dark" style="padding:0.65rem 0.85rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span class="small" style="color:var(--cream);"><strong>🧁 Menu Master</strong></span>
+            <span style="font-size:0.6rem;color:var(--berry-light);">Stocked all 12 products</span>
+          </div>
+        </div>
+        <div class="card-dark" style="padding:0.65rem 0.85rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span class="small" style="color:var(--cream);"><strong>👨‍🍳 Talent Thief</strong></span>
+            <span style="font-size:0.6rem;color:var(--caramel);">Successfully poached a rival employee</span>
+          </div>
+        </div>
+        <div class="card-dark" style="padding:0.65rem 0.85rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span class="small" style="color:var(--cream);"><strong>⚡ Survivor</strong></span>
+            <span style="font-size:0.6rem;color:var(--golden);">Weathered a curveball with no revenue loss</span>
+          </div>
+        </div>
+        <div class="card-dark" style="padding:0.65rem 0.85rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span class="small" style="color:var(--cream);"><strong>📢 Ad Dominator</strong></span>
+            <span style="font-size:0.6rem;color:var(--sage-light);">Won 3+ ad slots in one round</span>
+          </div>
+        </div>
+        <div class="card-dark" style="padding:0.65rem 0.85rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span class="small" style="color:var(--cream);"><strong>🔥 Hot Streak</strong></span>
+            <span style="font-size:0.6rem;color:var(--berry-light);">Revenue grew 3 consecutive days</span>
+          </div>
+        </div>
+      </div>
+      <p class="small" style="color:rgba(255,255,255,0.35);margin-top:0.5rem;font-style:italic;">
+        Filter by café name to track a specific competitor's achievement feed.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SLIDE: DECISION TREE ══════════ -->
+<div class="slide bg-warm" data-title="Decision Tree">
+  <div class="section-header">
+    <span class="label">Strategy</span>
+    <h1 class="display">Decision Tree — Every Choice & Follow-Up</h1>
+    <div class="divider"></div>
+  </div>
+
+  <p style="max-width:700px;margin-bottom:0.75rem;color:var(--smoke);font-size:0.88rem;">
+    Each player decision branches into follow-up requirements. This tree maps every choice and what it triggers.
+  </p>
+
+  <div style="overflow-x:auto;">
+    <svg viewBox="0 0 960 440" style="width:100%;height:auto;display:block;min-width:700px;" xmlns="http://www.w3.org/2000/svg">
+      <style>
+        .node { rx: 8; ry: 8; }
+        .node-root { fill: #2C1810; }
+        .node-l1 { fill: #C4873B; }
+        .node-l2 { fill: #e8d5be; stroke: #c4a882; stroke-width: 1; }
+        .node-l3 { fill: #f5f0e8; stroke: #d4c4a8; stroke-width: 1; }
+        .lbl { font-family: 'DM Sans', sans-serif; fill: white; font-weight: 700; font-size: 10px; }
+        .lbl-dark { fill: #2C1810; }
+        .sublbl { font-family: 'DM Sans', sans-serif; fill: rgba(255,255,255,0.7); font-size: 7px; }
+        .sublbl-dark { fill: #8a7a6a; }
+        .edge { stroke: #c4a882; stroke-width: 1.5; fill: none; }
+      </style>
+
+      <!-- ROOT -->
+      <rect x="380" y="5" width="200" height="34" class="node node-root"/>
+      <text x="480" y="26" class="lbl" text-anchor="middle" font-size="12">🧁 ROUND START</text>
+
+      <!-- LEVEL 1 BRANCHES -->
+      <!-- Pricing -->
+      <path d="M430 39 L160 75" class="edge"/>
+      <rect x="80" y="65" width="160" height="30" class="node node-l1"/>
+      <text x="160" y="84" class="lbl" text-anchor="middle">💰 Set Prices</text>
+
+      <!-- Menu -->
+      <path d="M450 39 L340 75" class="edge"/>
+      <rect x="260" y="65" width="160" height="30" class="node node-l1"/>
+      <text x="340" y="84" class="lbl" text-anchor="middle">🧁 Edit Menu</text>
+
+      <!-- Employees -->
+      <path d="M510 39 L540 75" class="edge"/>
+      <rect x="460" y="65" width="160" height="30" class="node node-l1"/>
+      <text x="540" y="84" class="lbl" text-anchor="middle">👥 Manage Employees</text>
+
+      <!-- Auctions -->
+      <path d="M530 39 L740 75" class="edge"/>
+      <rect x="660" y="65" width="160" height="30" class="node node-l1"/>
+      <text x="740" y="84" class="lbl" text-anchor="middle">📢 Auctions (3×30s)</text>
+
+      <!-- LEVEL 2 — PRICING BRANCHES -->
+      <path d="M120 95 L70 130" class="edge"/>
+      <rect x="10" y="120" width="120" height="26" class="node node-l2"/>
+      <text x="70" y="137" class="lbl lbl-dark" text-anchor="middle" font-size="8">Per-product pricing</text>
+
+      <path d="M180 95 L210 130" class="edge"/>
+      <rect x="145" y="120" width="130" height="26" class="node node-l2"/>
+      <text x="210" y="137" class="lbl lbl-dark" text-anchor="middle" font-size="8">Monitor competitiveness</text>
+
+      <!-- L3 from pricing -->
+      <path d="M70 146 L50 175" class="edge"/>
+      <rect x="5" y="168" width="95" height="22" class="node node-l3"/>
+      <text x="52" y="183" class="lbl lbl-dark" text-anchor="middle" font-size="7">Check margin vs cost</text>
+
+      <path d="M70 146 L130 175" class="edge"/>
+      <rect x="85" y="168" width="95" height="22" class="node node-l3"/>
+      <text x="132" y="183" class="lbl lbl-dark" text-anchor="middle" font-size="7">Review dataset trends</text>
+
+      <path d="M210 146 L210 175" class="edge"/>
+      <rect x="160" y="168" width="100" height="22" class="node node-l3"/>
+      <text x="210" y="183" class="lbl lbl-dark" text-anchor="middle" font-size="7">Adjust vs plaza avg</text>
+
+      <!-- LEVEL 2 — MENU BRANCHES -->
+      <path d="M310 95 L280 130" class="edge"/>
+      <rect x="225" y="120" width="110" height="26" class="node node-l2"/>
+      <text x="280" y="137" class="lbl lbl-dark" text-anchor="middle" font-size="8">Add/Remove items</text>
+
+      <path d="M360 95 L400 130" class="edge"/>
+      <rect x="345" y="120" width="110" height="26" class="node node-l2"/>
+      <text x="400" y="137" class="lbl lbl-dark" text-anchor="middle" font-size="8">Buy from supplier</text>
+
+      <!-- L3 from menu -->
+      <path d="M280 146 L250 175" class="edge"/>
+      <rect x="195" y="168" width="110" height="22" class="node node-l3"/>
+      <text x="250" y="183" class="lbl lbl-dark" text-anchor="middle" font-size="7">Min 1 sweet/sav/drink</text>
+
+      <path d="M280 146 L340 175" class="edge"/>
+      <rect x="290" y="168" width="100" height="22" class="node node-l3"/>
+      <text x="340" y="183" class="lbl lbl-dark" text-anchor="middle" font-size="7">Check product data</text>
+
+      <path d="M400 146 L400 175" class="edge"/>
+      <rect x="350" y="168" width="100" height="22" class="node node-l3"/>
+      <text x="400" y="183" class="lbl lbl-dark" text-anchor="middle" font-size="7">Review new prod. col</text>
+
+      <!-- LEVEL 2 — EMPLOYEE BRANCHES -->
+      <path d="M500 95 L470 130" class="edge"/>
+      <rect x="420" y="120" width="100" height="26" class="node node-l2"/>
+      <text x="470" y="137" class="lbl lbl-dark" text-anchor="middle" font-size="8">Hire / Fire</text>
+
+      <path d="M540 95 L560 130" class="edge"/>
+      <rect x="525" y="120" width="75" height="26" class="node node-l2"/>
+      <text x="562" y="137" class="lbl lbl-dark" text-anchor="middle" font-size="8">Give Raise</text>
+
+      <path d="M580 95 L640 130" class="edge"/>
+      <rect x="605" y="120" width="75" height="26" class="node node-l2"/>
+      <text x="642" y="137" class="lbl lbl-dark" text-anchor="middle" font-size="8">Poach Rival</text>
+
+      <!-- L3 from employees -->
+      <path d="M470 146 L440 175" class="edge"/>
+      <rect x="390" y="168" width="100" height="22" class="node node-l3"/>
+      <text x="440" y="183" class="lbl lbl-dark" text-anchor="middle" font-size="7">Check satisfaction</text>
+
+      <path d="M470 146 L520 175" class="edge"/>
+      <rect x="475" y="168" width="90" height="22" class="node node-l3"/>
+      <text x="520" y="183" class="lbl lbl-dark" text-anchor="middle" font-size="7">Staff-to-cust ratio</text>
+
+      <path d="M562 146 L562 175" class="edge"/>
+      <rect x="525" y="200" width="80" height="22" class="node node-l3"/>
+      <text x="565" y="215" class="lbl lbl-dark" text-anchor="middle" font-size="7">Prevent poaching</text>
+      <path d="M562 190 L565 200" class="edge"/>
+
+      <path d="M642 146 L642 175" class="edge"/>
+      <rect x="600" y="168" width="90" height="22" class="node node-l3"/>
+      <text x="645" y="183" class="lbl lbl-dark" text-anchor="middle" font-size="7">Bid on unhappy staff</text>
+
+      <path d="M645 190 L645 200" class="edge"/>
+      <rect x="605" y="200" width="85" height="22" class="node node-l3"/>
+      <text x="647" y="215" class="lbl lbl-dark" text-anchor="middle" font-size="7">Counter-offer war</text>
+
+      <!-- LEVEL 2 — AUCTION BRANCHES -->
+      <path d="M700 95 L700 130" class="edge"/>
+      <rect x="660" y="120" width="80" height="26" class="node node-l2"/>
+      <text x="700" y="137" class="lbl lbl-dark" text-anchor="middle" font-size="8">👨‍🍳 Chef Bid</text>
+
+      <path d="M740 95 L790 130" class="edge"/>
+      <rect x="750" y="120" width="80" height="26" class="node node-l2"/>
+      <text x="790" y="137" class="lbl lbl-dark" text-anchor="middle" font-size="8">📢 Ad Bid</text>
+
+      <path d="M780 95 L880 130" class="edge"/>
+      <rect x="840" y="120" width="80" height="26" class="node node-l2"/>
+      <text x="880" y="137" class="lbl lbl-dark" text-anchor="middle" font-size="8">⚙️ Tech Bid</text>
+
+      <!-- L3 from auctions -->
+      <path d="M700 146 L700 175" class="edge"/>
+      <rect x="655" y="168" width="95" height="22" class="node node-l3"/>
+      <text x="702" y="183" class="lbl lbl-dark" text-anchor="middle" font-size="7">Budget remaining?</text>
+
+      <path d="M790 146 L790 175" class="edge"/>
+      <rect x="745" y="168" width="95" height="22" class="node node-l3"/>
+      <text x="792" y="183" class="lbl lbl-dark" text-anchor="middle" font-size="7">Which slots to target</text>
+
+      <path d="M880 146 L880 175" class="edge"/>
+      <rect x="835" y="168" width="95" height="22" class="node node-l3"/>
+      <text x="882" y="183" class="lbl lbl-dark" text-anchor="middle" font-size="7">Upgrade vs save $</text>
+
+      <!-- BOTTOM: POST-ROUND FLOW -->
+      <rect x="330" y="230" width="300" height="30" rx="8" fill="#7A9E7E"/>
+      <text x="480" y="250" class="lbl" text-anchor="middle" font-size="11">🏪 STORES OPEN → Simulation Runs</text>
+
+      <path d="M480 260 L480 280" class="edge" style="stroke:#7A9E7E;"/>
+
+      <rect x="350" y="280" width="260" height="30" rx="8" fill="#E8A849"/>
+      <text x="480" y="300" class="lbl" text-anchor="middle" font-size="11" fill="#2C1810">📊 RESULTS → New Dataset Row</text>
+
+      <path d="M480 310 L480 330" class="edge" style="stroke:#E8A849;"/>
+
+      <!-- DECISION REVIEW -->
+      <rect x="280" y="330" width="400" height="30" rx="8" fill="#2C1810"/>
+      <text x="480" y="350" class="lbl" text-anchor="middle" font-size="10">🔄 REVIEW: What worked? → Adjust → Next Round</text>
+
+      <!-- Feedback arrows -->
+      <path d="M350 330 L100 250 L100 95 L140 95" class="edge" style="stroke:var(--berry);stroke-dasharray:4,3;opacity:0.5;"/>
+      <text x="80" y="250" font-size="7" fill="#B54B6C" font-family="'DM Sans',sans-serif" transform="rotate(-90 80 250)">feedback loop</text>
+
+      <!-- Legend -->
+      <rect x="10" y="390" width="14" height="14" rx="3" class="node-root"/>
+      <text x="30" y="401" font-size="8" fill="#8a7a6a" font-family="'DM Sans',sans-serif">Start/End</text>
+      <rect x="110" y="390" width="14" height="14" rx="3" class="node-l1"/>
+      <text x="130" y="401" font-size="8" fill="#8a7a6a" font-family="'DM Sans',sans-serif">Core Decision</text>
+      <rect x="230" y="390" width="14" height="14" rx="3" class="node-l2"/>
+      <text x="250" y="401" font-size="8" fill="#8a7a6a" font-family="'DM Sans',sans-serif">Sub-Decision</text>
+      <rect x="350" y="390" width="14" height="14" rx="3" class="node-l3"/>
+      <text x="370" y="401" font-size="8" fill="#8a7a6a" font-family="'DM Sans',sans-serif">Follow-Up Check</text>
+      <line x1="470" y1="397" x2="500" y2="397" stroke="#B54B6C" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <text x="510" y="401" font-size="8" fill="#8a7a6a" font-family="'DM Sans',sans-serif">Feedback Loop</text>
+    </svg>
+  </div>
+
+  <div class="card" style="background:var(--flour);border:none;margin-top:0.5rem;">
+    <p class="small" style="color:var(--smoke);margin:0;">
+      <strong>Every decision branches.</strong> Setting prices requires checking margins and competitor data. Editing the menu requires meeting the base requirement (1 sweet, 1 savory, 1 drink). Managing employees triggers satisfaction checks and potential poach alerts. Auction bids cascade — overspending on chefs leaves less for ads and tech. After the round, results feed back into the next cycle.
+    </p>
+  </div>
+</div>
+
+<!-- ══════════ SLIDE 12: TECHNICAL OVERVIEW ══════════ -->
+<div class="slide bg-dark" data-title="Technical">
+  <div class="section-header">
+    <span class="label" style="color:var(--golden);">For the Teams</span>
+    <h1 class="display">Technical Overview</h1>
+    <div class="divider-light"></div>
+  </div>
+
+  <p style="max-width:680px;margin-bottom:1.5rem;color:var(--dough);">
+    What each team needs to know to build Bakery Bash.
+  </p>
+
+  <div class="grid-3" style="gap:1.5rem;">
+    <div class="card-dark" style="border-top:3px solid var(--golden);">
+      <span class="tag tag-golden" style="margin-bottom:0.75rem;display:inline-block;">Front End</span>
+      <div class="flex flex-col" style="gap:0.5rem;">
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">Player Dashboard</strong> — single-page app with three panels (menu/employees, results/notifications, ads/budget). All decisions submitted via one button.
+        </p>
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">Real-time Updates</strong> — WebSocket feed for live round metrics (customers served, revenue tick, queue length). Leaderboard animates on update.
+        </p>
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">Plaza Map View</strong> — interactive map showing all cafés in the plaza. Hover to see name, revenue, and customer count. Click to inspect competitor details.
+        </p>
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">Public Chat + Achievements</strong> — live chat feed with auto-posted achievements. Filterable by team/café. Players can chat and track competitor milestones.
+        </p>
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">Notifications</strong> — toast system for poach alerts, curveball events, employee warnings. Color-coded by urgency.
+        </p>
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">Two Leaderboard Views</strong> — student-facing (competitive) and professor-facing (analytics). Route-guarded by role.
+        </p>
+      </div>
+    </div>
+
+    <div class="card-dark" style="border-top:3px solid var(--sage-light);">
+      <span class="tag tag-sage" style="margin-bottom:0.75rem;display:inline-block;">Back End</span>
+      <div class="flex flex-col" style="gap:0.5rem;">
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">Regression Engine</strong> — scikit-learn model server-side. Player decisions → feature vector → revenue prediction. Coefficients loaded from professor's dataset.
+        </p>
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">Customer Allocation</strong> — finite pool split by attractiveness score. Compute each café's share per round. Handle ties and edge cases.
+        </p>
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">Triple Auction System</strong> — three sequential sealed-bid auctions (chef, ads, tech) with 30s windows each. Handle simultaneous bids, tie-breaking, budget carry-over between auctions. Broadcast results.
+        </p>
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">Employee Satisfaction</strong> — compute per-employee scores each round. Trigger poach notifications at threshold. Handle bidding/counter-offer flow.
+        </p>
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">AI Competitors</strong> — 3 difficulty tiers with decision heuristics. Run each round alongside human players. Participate in auctions and poaching.
+        </p>
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">Curveball Engine</strong> — probability-weighted random events. Linked to player state (cheap equipment → breakdown). Fire during active rounds.
+        </p>
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">Time-Series Dataset</strong> — after each day, generate a new row per player: day, revenue, per-product unit sales, employee satisfaction. Append to player's cumulative dataset. Serve via API for in-game analysis.
+        </p>
+      </div>
+    </div>
+
+    <div class="card-dark" style="border-top:3px solid var(--berry-light);">
+      <span class="tag tag-berry" style="margin-bottom:0.75rem;display:inline-block;">QA</span>
+      <div class="flex flex-col" style="gap:0.5rem;">
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">30–50 Player Load</strong> — stress test WebSocket connections with full player count. Verify simultaneous bids across all three 30-second auction windows don't race-condition.
+        </p>
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">Budget Integrity</strong> — verify players can't overspend. Test edge cases: exactly $0 remaining, negative after auction, hiring while bidding.
+        </p>
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">Poach Flow</strong> — end-to-end testing of unhappy employee → notification → offer → counter-offer → transfer. Test simultaneous offers from multiple players.
+        </p>
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">Leaderboard Accuracy</strong> — verify revenue tallying across rounds. Test that student and professor views show correct data. Edge: all players tied.
+        </p>
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">AI Behavior</strong> — verify AI competitors make valid decisions. Test that aggressive AI actually disrupts. Confirm AI participates correctly in auctions.
+        </p>
+        <p class="small" style="color:var(--dough);">
+          <strong style="color:var(--cream);">Anti-AFK</strong> — test that idle players bleed cash (rent + wages). Verify AFK detection triggers correctly.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SLIDE 13: LEARNING OUTCOMES ══════════ -->
+<div class="slide bg-cream" data-title="Learning">
+  <div class="section-header">
+    <span class="label">Outcomes</span>
+    <h1 class="display">What Students Learn</h1>
+    <div class="divider"></div>
+  </div>
+
+  <div class="grid-2" style="gap:1.5rem;">
+    <div class="flex flex-col gap-md">
+      <div class="card" style="border-left:3px solid var(--caramel);">
+        <h3 style="margin-bottom:0.35rem;">📈 Predictive Modeling</h3>
+        <p class="small" style="color:var(--smoke);">Which features drive revenue? After playing, model coefficients become intuitive. Students experience feature importance through trial and error — then validate with the actual betas.</p>
+      </div>
+      <div class="card" style="border-left:3px solid var(--sage);">
+        <h3 style="margin-bottom:0.35rem;">💡 Resource Optimization</h3>
+        <p class="small" style="color:var(--smoke);">Fixed budget forces concentration on high-impact decisions. Can't invest in everything. Players learn to identify which inputs have the highest marginal return per dollar.</p>
+      </div>
+      <div class="card" style="border-left:3px solid var(--berry);">
+        <h3 style="margin-bottom:0.35rem;">🎯 Competitive Strategy</h3>
+        <p class="small" style="color:var(--smoke);">Shared customer pool teaches market positioning. If everyone bids on Plaza Directory ads, the marginal value drops. Reading competitor behavior is as important as optimizing your own café.</p>
+      </div>
+    </div>
+    <div class="flex flex-col gap-md">
+      <div class="card" style="border-left:3px solid var(--golden);">
+        <h3 style="margin-bottom:0.35rem;">⚖️ Risk Management</h3>
+        <p class="small" style="color:var(--smoke);">Diversified menus, adequate staffing, and premium equipment hedge against curveballs. Students who over-optimize for one metric get punished by variance. The dataset reveals how to build resilience.</p>
+      </div>
+      <div class="card" style="border-left:3px solid var(--smoke);">
+        <h3 style="margin-bottom:0.35rem;">🧠 Data-Driven Decision Making</h3>
+        <p class="small" style="color:var(--smoke);">The professor's post-game debrief reveals model coefficients, feature importance rankings, and the gap between student intuition and actual model weights. This is the aha moment.</p>
+      </div>
+      <div class="card" style="border-left:3px solid var(--espresso);">
+        <h3 style="margin-bottom:0.35rem;">🤝 Human Capital Management</h3>
+        <p class="small" style="color:var(--smoke);">Employee satisfaction as a game mechanic teaches that talent retention has measurable ROI. Losing a head baker to a competitor has real consequences — students feel the cost of neglecting their team.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ SLIDE 14: SUMMARY ══════════ -->
+<div class="slide title-slide" data-title="Summary" style="text-align:center;justify-content:center;">
+  <div class="title-content">
+    <div class="game-name" style="font-size:clamp(2.5rem,5vw,4.5rem);">Bakery Bash</div>
+    <div class="subtitle" style="margin-bottom:2rem;">Competitive café simulation · Plaza food court · 30–50 players</div>
+
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;max-width:700px;margin:0 auto 2.5rem auto;">
+      <div class="card-dark" style="text-align:center;padding:1rem;">
+        <div style="font-size:1.5rem;margin-bottom:0.3rem;">💰</div>
+        <strong class="small" style="color:var(--cream);">Price</strong>
+        <p style="font-size:0.65rem;color:var(--dough);">Set prices for 12+ products</p>
+      </div>
+      <div class="card-dark" style="text-align:center;padding:1rem;">
+        <div style="font-size:1.5rem;margin-bottom:0.3rem;">📢</div>
+        <strong class="small" style="color:var(--cream);">Ads</strong>
+        <p style="font-size:0.65rem;color:var(--dough);">3 auctions: chef, ads, tech</p>
+      </div>
+      <div class="card-dark" style="text-align:center;padding:1rem;">
+        <div style="font-size:1.5rem;margin-bottom:0.3rem;">👥</div>
+        <strong class="small" style="color:var(--cream);">Employees</strong>
+        <p style="font-size:0.65rem;color:var(--dough);">Hire, manage, poach rivals</p>
+      </div>
+      <div class="card-dark" style="text-align:center;padding:1rem;">
+        <div style="font-size:1.5rem;margin-bottom:0.3rem;">🤖</div>
+        <strong class="small" style="color:var(--cream);">AI</strong>
+        <p style="font-size:0.65rem;color:var(--dough);">Curveballs + AI competitors</p>
+      </div>
+    </div>
+
+    <div style="color:rgba(255,248,240,0.4);font-size:0.82rem;">
+      Game Design Team · MGSC 310 · Prof. Frenzel · Chapman University
+    </div>
+  </div>
+</div>
+
+</div>
+
+<!-- ─── NAV BAR ─── -->
+<div class="nav-bar">
+  <div class="flex gap-sm" style="align-items:center;">
+    <button class="nav-btn" id="prevBtn" onclick="changeSlide(-1)">← Prev</button>
+    <span class="page-info" id="pageInfo">1 / 14</span>
+    <button class="nav-btn" id="nextBtn" onclick="changeSlide(1)">Next →</button>
+  </div>
+  <span class="slide-title-preview" id="slideTitle"></span>
+  <span style="color:rgba(255,248,240,0.35);font-size:0.68rem;">↑↓ or ←→ to navigate</span>
+</div>
+
+<script>
+let current = 0;
+const slides = document.querySelectorAll('.slide');
+const total = slides.length;
+
+function showSlide(n) {
+  slides.forEach(s => s.classList.remove('active'));
+  current = Math.max(0, Math.min(n, total - 1));
+  slides[current].classList.add('active');
+  document.getElementById('pageInfo').textContent = `${current + 1} / ${total}`;
+  document.getElementById('prevBtn').disabled = current === 0;
+  document.getElementById('nextBtn').disabled = current === total - 1;
+  document.getElementById('progress').style.width = `${((current + 1) / total) * 100}%`;
+  document.getElementById('slideTitle').textContent = slides[current].dataset.title || '';
+}
+
+function changeSlide(dir) { showSlide(current + dir); }
+
+let activeTab = null;
+function toggleTab(tabName) {
+  const overlay = document.getElementById('panelOverlay');
+  const panels = document.querySelectorAll('.tab-panel');
+  const tabs = document.querySelectorAll('.bakery-tab');
+  
+  if (activeTab === tabName) {
+    overlay.style.display = 'none';
+    activeTab = null;
+    tabs.forEach(t => t.style.background = 'rgba(255,255,255,0.06)');
+    return;
+  }
+  
+  panels.forEach(p => p.style.display = 'none');
+  document.getElementById('panel-' + tabName).style.display = 'block';
+  overlay.style.display = 'block';
+  activeTab = tabName;
+  
+  tabs.forEach(t => {
+    t.style.background = t.dataset.tab === tabName 
+      ? 'rgba(196,135,59,0.5)' 
+      : 'rgba(255,255,255,0.06)';
+  });
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); changeSlide(1); }
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); changeSlide(-1); }
+});
+
+showSlide(0);
+</script>
+
+</body>
+</html>
