@@ -19,8 +19,8 @@ const GameDocument = {
   joinCode: "ABC123",             // string
 
   // Current phase of the state machine
-  // Transitions: lobby → round_N_decide → round_N_bid → simulating → results_ready → (next round or game_over)
-  phase: "lobby",                 // "lobby" | "round_N_decide" | "round_N_bid" | "simulating" | "results_ready" | "game_over"
+  // Transitions: lobby → decide → bid → simulating → results_ready → (next round or game_over)
+  phase: "lobby",                 // "lobby" | "decide" | "bid" | "simulating" | "results_ready" | "game_over"
 
   // Current round number (1-indexed)
   currentRound: 1,                // number (1–5)
@@ -109,14 +109,13 @@ const PlayerDocument = {
   budgetCurrent: 2000,            // number ($) — updated after each round
   cumulativeRevenue: 0,           // number ($) — sum of all round revenues (for leaderboard)
 
-  // Current round's decisions (overwritten each round before submission)
-  // Kept here for fast read; also written to /decisions subcollection for history
+  // Current round's working draft (live editable state before submit)
+  // On submit, backend snapshots this into /decisions/{roundId} as the immutable historical record
   pendingDecision: {
     submitted: false,             // boolean
     submittedAt: null,            // Timestamp | null
 
     // Pricing & staffing
-    avgPrice: 5.0,                // number ($) — average price across active products
     staffCount: 3,                // number (integer)
     adSpend: 0,                   // number ($)
 
@@ -128,6 +127,16 @@ const PlayerDocument = {
       sandwich: false,
       latte: false,
       matchaLatte: false,
+    },
+
+    // Per-product prices (backend computes avgPrice from active menu items)
+    productPrices: {
+      croissant: 0,
+      cookie: 0,
+      bagel: 0,
+      sandwich: 0,
+      latte: 0,
+      matchaLatte: 0,
     },
 
     // Per-product quantity ordered (units)
@@ -177,14 +186,13 @@ const PlayerDocument = {
 
 // ─────────────────────────────────────────────────────────────
 // /games/{gameId}/players/{playerId}/decisions/{roundId}
-// Immutable historical record of what the player submitted each round.
+// Immutable historical snapshot of the player's submitted decision for a round.
 // roundId = "round_1", "round_2", … "round_5"
 // ─────────────────────────────────────────────────────────────
 const DecisionDocument = {
   round: 1,                       // number
   submittedAt: null,              // Timestamp
 
-  avgPrice: 5.0,                  // number ($)
   staffCount: 3,                  // number
   adSpend: 0,                     // number ($)
 
@@ -195,6 +203,16 @@ const DecisionDocument = {
     sandwich: false,
     latte: false,
     matchaLatte: false,
+  },
+
+  // Per-product prices (backend computes avgPrice from active menu items)
+  productPrices: {
+    croissant: 0,
+    cookie: 0,
+    bagel: 0,
+    sandwich: 0,
+    latte: 0,
+    matchaLatte: 0,
   },
 
   quantities: {
@@ -216,7 +234,7 @@ const DecisionDocument = {
     amount: 0,
   },
 
-  // Computed at simulation time
+  // Derived server-side
   numProducts: 3,                 // number — count of active menu items
   totalCosts: 0,                  // number ($) — staffing + inventory costs
   budgetBefore: 2000,             // number ($) — snapshot before deductions
@@ -251,11 +269,39 @@ const RoundResultDocument = {
     matchaLatte: 0,
   },
 
-  // Inputs echoed back (makes CSV export trivial — all data in one doc)
+  // Inputs + derived values echoed back (makes CSV export trivial — all data in one doc)
   avgPrice: 0,
+
+  // Player inputs echoed back for CSV export / auditing
+  productPrices: {
+    croissant: 0,
+    cookie: 0,
+    bagel: 0,
+    sandwich: 0,
+    latte: 0,
+    matchaLatte: 0,
+  },
+  menu: {
+    croissant: true,
+    cookie: true,
+    bagel: true,
+    sandwich: false,
+    latte: false,
+    matchaLatte: false,
+  },
+  quantitySubmitted: {
+    croissant: 0,
+    cookie: 0,
+    bagel: 0,
+    sandwich: 0,
+    latte: 0,
+    matchaLatte: 0,
+  },
+
   staffCount: 0,
   adSpend: 0,
   numProducts: 0,
+  totalCosts: 0,
 
   // Budget ledger
   revenueGross: 0,
@@ -303,7 +349,7 @@ const AggregateRoundDocument = {
 };
 
 // ─────────────────────────────────────────────────────────────
-// /games/{gameId}/leaderboard  (single document)
+// /games/{gameId}/leaderboard  (single document path)
 // Rewritten by Cloud Function at the end of each round.
 // ─────────────────────────────────────────────────────────────
 const LeaderboardDocument = {
@@ -324,35 +370,32 @@ const LeaderboardDocument = {
 };
 
 // ─────────────────────────────────────────────────────────────
-// /games/{gameId}/csvRows/{playerId}  (one document per player)
+// /games/{gameId}/csvRows/{playerId}/rounds/{roundId}
 // Append-only array of row objects for CSV export.
 // Matches the 17-column schema from the game design spec exactly.
 // Written by Cloud Function after each simulation.
 // ─────────────────────────────────────────────────────────────
 const CsvRowsDocument = {
   playerId: "uid_abc",
-
-  // Each element = one row in the exported CSV
-  rows: [
-    {
-      day: 1,                     // number — round number
-      revenue: 0,                 // number ($)
-      num_products: 3,            // number
-      avg_price: 5.0,             // number ($)
-      staff_count: 3,             // number
-      ad_spend: 0,                // number ($)
-      customer_count: 0,          // number
-      customer_satisfaction: 0,   // number (0–100)
-      headchef_skill: 0,          // number (0–100)
-      croissant: 0,               // number — units sold
-      cookie: 0,
-      bagel: 0,
-      sandwich: 0,
-      latte: 0,
-      matcha_latte: 0,
-      ad_type: "none",            // string — ad type won this round, or "none"
-    },
-  ],
+  round: 1,                     // number — round number
+  row: {
+    day: 1,                     // number — round number
+    revenue: 0,                 // number ($)
+    num_products: 3,            // number
+    avg_price: 5.0,             // number ($)
+    staff_count: 3,             // number
+    ad_spend: 0,                // number ($)
+    customer_count: 0,          // number
+    customer_satisfaction: 0,   // number (0–100)
+    headchef_skill: 0,          // number (0–100)
+    croissant: 0,               // number — units sold
+    cookie: 0,
+    bagel: 0,
+    sandwich: 0,
+    latte: 0,
+    matcha_latte: 0,
+    ad_type: "none",           // string — ad type won this round, or "none"
+  },
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -365,8 +408,8 @@ const CsvRowsDocument = {
 // /games/{gameId}/players/{playerId}/decisions/{roundId}  ← DecisionDocument
 // /games/{gameId}/players/{playerId}/rounds/{roundId}     ← RoundResultDocument
 // /games/{gameId}/rounds/{roundId}         ← AggregateRoundDocument
-// /games/{gameId}/leaderboard              ← LeaderboardDocument (single doc)
-// /games/{gameId}/csvRows/{playerId}       ← CsvRowsDocument
+// /games/{gameId}/leaderboard              ← LeaderboardDocument (single document path)
+// /games/{gameId}/csvRows/{playerId}/rounds/{roundId}  ← CsvRowsDocument
 //
 // ─────────────────────────────────────────────────────────────
 // FIRESTORE SECURITY RULES (reference)
@@ -388,10 +431,11 @@ const CsvRowsDocument = {
 //       allow write: if false;
 //     }
 //
-//     // Players can only read/write their own player document
+//     // Players can read their own player document, but backend owns financial/result fields
 //     match /games/{gameId}/players/{playerId} {
-//       allow read: if request.auth != null;
-//       allow write: if request.auth.uid == playerId;
+//       allow read: if request.auth.uid == playerId;
+//       allow write: if request.auth.uid == playerId
+//         && request.resource.data.diff(resource.data).changedKeys().hasOnly(["displayName", "pendingDecision", "pendingBids"]);
 //
 //       match /decisions/{roundId} {
 //         allow read: if request.auth.uid == playerId;
@@ -415,8 +459,8 @@ const CsvRowsDocument = {
 //       allow write: if false;
 //     }
 //
-//     // CSV rows readable only by the owning player
-//     match /games/{gameId}/csvRows/{playerId} {
+//     // CSV rows readable only by the owning player (one doc per round)
+//     match /games/{gameId}/csvRows/{playerId}/rounds/{roundId} {
 //       allow read: if request.auth.uid == playerId;
 //       allow write: if false;
 //     }
