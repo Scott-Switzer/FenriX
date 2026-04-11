@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─────────────────────────────────────────────────────────
+    // /games/{gameId}
+    // Players can read game state to track phase, round, timers.
+    // Only Cloud Functions can write (phase transitions, score updates).
+    // ─────────────────────────────────────────────────────────
+    match /games/{gameId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+
+      // ─────────────────────────────────────────────────────
+      // /games/{gameId}/config/params
+      // Read-only for all authenticated users.
+      // ─────────────────────────────────────────────────────
+      match /config/{doc} {
+        allow read: if request.auth != null;
+        allow write: if false;
+      }
+
+      // ─────────────────────────────────────────────────────
+      // /games/{gameId}/players/{playerId}
+      // Players can only read/write their own document.
+      // Writes are restricted to decision/bid fields only —
+      // financial state (budgetCurrent, cumulativeRevenue, lastRoundResult)
+      // is owned by Cloud Functions and cannot be overwritten client-side.
+      // ─────────────────────────────────────────────────────
+      match /players/{playerId} {
+        allow read: if request.auth != null && request.auth.uid == playerId;
+        allow create: if request.auth != null && request.auth.uid == playerId;
+        allow update: if request.auth != null
+          && request.auth.uid == playerId
+          && request.resource.data.diff(resource.data)
+               .changedKeys()
+               .hasOnly(["displayName", "pendingDecision", "pendingBids"]);
+
+        // Immutable decision snapshots — player can write once per round,
+        // but never delete or overwrite a submitted decision.
+        match /decisions/{roundId} {
+          allow read: if request.auth != null && request.auth.uid == playerId;
+          allow create: if request.auth != null && request.auth.uid == playerId;
+          allow update: if false;
+          allow delete: if false;
+        }
+
+        // Round results are written exclusively by Cloud Functions.
+        match /rounds/{roundId} {
+          allow read: if request.auth != null && request.auth.uid == playerId;
+          allow write: if false;
+        }
+      }
+
+      // ─────────────────────────────────────────────────────
+      // /games/{gameId}/rounds/{roundId}
+      // Aggregate round data — readable by all players (e.g. for professor
+      // dashboard and class-wide results view), written only by Cloud Functions.
+      // ─────────────────────────────────────────────────────
+      match /rounds/{roundId} {
+        allow read: if request.auth != null;
+        allow write: if false;
+      }
+
+      // ─────────────────────────────────────────────────────
+      // /games/{gameId}/leaderboard
+      // Read-only for all authenticated players.
+      // Rewritten by Cloud Function after each round simulation.
+      // ─────────────────────────────────────────────────────
+      match /leaderboard {
+        allow read: if request.auth != null;
+        allow write: if false;
+      }
+
+      // ─────────────────────────────────────────────────────
+      // /games/{gameId}/csvRows/{playerId}/rounds/{roundId}
+      // Players can only read their own CSV rows.
+      // Written exclusively by Cloud Functions.
+      // ─────────────────────────────────────────────────────
+      match /csvRows/{playerId}/rounds/{roundId} {
+        allow read: if request.auth != null && request.auth.uid == playerId;
+        allow write: if false;
+      }
+    }
+  }
+}
