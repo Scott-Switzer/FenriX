@@ -68,7 +68,7 @@ export function LandingPage() {
             <input
               type="text"
               className="form-field__input"
-              placeholder="e.g. Kavin"
+              placeholder="e.g. John"
               value={playerName}
               onChange={(e) => setPlayerName(e.target.value)}
               maxLength={24}
