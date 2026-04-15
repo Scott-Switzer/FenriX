@@ -147,6 +147,7 @@ exports.joinGame = onCall(async (request) => {
       displayName,
       joinedAt: FieldValue.serverTimestamp(),
       budgetCurrent: startingBudget,
+      creditBalance: 0,
       cumulativeRevenue: 0,
       pendingDecision: DEFAULT_PENDING_DECISION,
       pendingBids: DEFAULT_PENDING_BIDS,

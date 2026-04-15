@@ -48,6 +48,15 @@ async function seedLobbyGame() {
     startingBudget: 2000,
     costPerStaffPerRound: 50,
     unitCostPerProduct: 1,
+    credit: {
+      overdraftEnabled: false,
+      creditCostRate: null,
+      chargeTiming: null,
+    },
+    staffingCost: {
+      baseCostPerStaff: 50,
+      escalationCurve: null,
+    },
   });
 }
 
@@ -106,7 +115,11 @@ async function main() {
     throw new Error("Player document uid does not match Auth uid.");
   }
 
-  if (player.budgetCurrent !== 2000 || player.cumulativeRevenue !== 0) {
+  if (
+    player.budgetCurrent !== 2000 ||
+    player.creditBalance !== 0 ||
+    player.cumulativeRevenue !== 0
+  ) {
     throw new Error("Player document was not initialized with expected state.");
   }
 

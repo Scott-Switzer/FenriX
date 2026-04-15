@@ -24,6 +24,15 @@
         "startingBudget": 2000,
         "costPerStaffPerRound": 50,
         "unitCostPerProduct": 1,
+        "credit": {
+          "overdraftEnabled": false,
+          "creditCostRate": null,
+          "chargeTiming": null
+        },
+        "staffingCost": {
+          "baseCostPerStaff": 50,
+          "escalationCurve": null
+        },
         "revenueModel": {
           "base": 500,
           "staffCoefficient": 30,
@@ -43,6 +52,7 @@
         "displayName": "The Rolling Scone",
         "joinedAt": null,
         "budgetCurrent": 2000,
+        "creditBalance": 0,
         "cumulativeRevenue": 0,
         "pendingDecision": {
           "submitted": false,
@@ -109,6 +119,7 @@
         "displayName": "Bagel Bros",
         "joinedAt": null,
         "budgetCurrent": 2000,
+        "creditBalance": 0,
         "cumulativeRevenue": 0,
         "pendingDecision": {
           "submitted": false,
