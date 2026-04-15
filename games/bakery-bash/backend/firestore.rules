@@ -31,7 +31,7 @@ service cloud.firestore {
       // /games/{gameId}/players/{playerId}
       // Players can only read/write their own document.
       // Writes are restricted to decision/bid fields only —
-      // financial state (budgetCurrent, cumulativeRevenue, lastRoundResult)
+      // financial state (budgetCurrent, creditBalance, cumulativeRevenue, lastRoundResult)
       // is owned by Cloud Functions and cannot be overwritten client-side.
       // ─────────────────────────────────────────────────────
       match /players/{playerId} {

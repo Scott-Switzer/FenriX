@@ -10,6 +10,10 @@
  *   /games
  */
 
+/**
+ * @typedef {"lobby" | "email" | "decide" | "bid" | "simulating" | "results_ready" | "game_over"} GamePhase
+ */
+
 // ─────────────────────────────────────────────────────────────
 // /games/{gameId}
 // Created by professor via /api/game/create
@@ -19,8 +23,8 @@ const GameDocument = {
   joinCode: "ABC123",             // string
 
   // Current phase of the state machine
-  // Transitions: lobby → decide → bid → simulating → results_ready → (next round or game_over)
-  phase: "lobby",                 // "lobby" | "decide" | "bid" | "simulating" | "results_ready" | "game_over"
+  // Transitions: lobby → email → decide → bid → simulating → results_ready → (next round email or game_over)
+  phase: "lobby",                 // GamePhase
 
   // Current round number (1-indexed)
   currentRound: 1,                // number (1–5)
@@ -52,6 +56,21 @@ const GameConfigDocument = {
   startingBudget: 2000,           // number ($)
   costPerStaffPerRound: 50,       // number ($)
   unitCostPerProduct: 1,          // number ($) — flat cost per unit ordered
+
+  // Credit / overdraft mechanics are pending Game Design sign-off.
+  // Until creditCostRate is finalized, backend validation should keep budgets non-negative.
+  credit: {
+    overdraftEnabled: false,       // boolean
+    creditCostRate: null,          // number | null — Open Q #6
+    chargeTiming: null,            // "immediate" | "per_round" | "game_end" | null
+  },
+
+  // Dynamic staffing cost is pending Game Design sign-off.
+  // Until escalationCurve is finalized, use costPerStaffPerRound as a flat fallback.
+  staffingCost: {
+    baseCostPerStaff: 50,          // number ($)
+    escalationCurve: null,         // object | null — Open Q #7
+  },
 
   // Revenue regression coefficients
   revenueModel: {
@@ -89,6 +108,7 @@ const GameConfigDocument = {
 
   // Phase durations (seconds)
   phaseDurations: {
+    email: 60,
     decide: 300,                  // 5 minutes
     bid: 120,                     // 2 minutes (2 × 60s auctions)
     simulate: 30,
@@ -107,6 +127,7 @@ const PlayerDocument = {
 
   // Live financial state
   budgetCurrent: 2000,            // number ($) — updated after each round
+  creditBalance: 0,               // number ($) — amount currently financed through overdraft/credit
   cumulativeRevenue: 0,           // number ($) — sum of all round revenues (for leaderboard)
 
   // Current round's working draft (live editable state before submit)
@@ -236,7 +257,9 @@ const DecisionDocument = {
 
   // Derived server-side
   numProducts: 3,                 // number — count of active menu items
-  totalCosts: 0,                  // number ($) — staffing + inventory costs
+  staffingCost: 0,                // number ($) — dynamic curve once Open Q #7 is resolved
+  creditCost: 0,                  // number ($) — overdraft/credit fee once Open Q #6 is resolved
+  totalCosts: 0,                  // number ($) — staffing + inventory costs + credit costs
   budgetBefore: 2000,             // number ($) — snapshot before deductions
 };
 
@@ -305,6 +328,10 @@ const RoundResultDocument = {
 
   // Budget ledger
   revenueGross: 0,
+  staffingCost: 0,
+  creditCost: 0,
+  creditBalanceBefore: 0,
+  creditBalanceAfter: 0,
   totalCosts: 0,
   budgetBefore: 0,
   budgetAfter: 0,

@@ -68,6 +68,7 @@ function playerDocument(uid, displayName) {
     displayName,
     joinedAt: null,
     budgetCurrent: 2000,
+    creditBalance: 0,
     cumulativeRevenue: 0,
     pendingDecision,
     pendingBids,
@@ -255,6 +256,7 @@ describe("Bakery Bash Firestore security rules", () => {
       staffCount: 4,
     } }));
     await assertFails(updateDoc(playerRef, { budgetCurrent: 999999 }));
+    await assertFails(updateDoc(playerRef, { creditBalance: 999999 }));
     await assertFails(updateDoc(playerRef, { cumulativeRevenue: 999999 }));
   });
 
