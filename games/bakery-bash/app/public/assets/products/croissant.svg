@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 16 16" shape-rendering="crispEdges">
+  <rect width="16" height="16" fill="none"/>
+
+  <!-- outline -->
+  <rect x="2" y="9" width="1" height="1" fill="#4a2a20"/>
+  <rect x="3" y="7" width="1" height="2" fill="#4a2a20"/>
+  <rect x="4" y="6" width="1" height="1" fill="#4a2a20"/>
+  <rect x="5" y="5" width="1" height="1" fill="#4a2a20"/>
+  <rect x="6" y="4" width="4" height="1" fill="#4a2a20"/>
+  <rect x="10" y="5" width="1" height="1" fill="#4a2a20"/>
+  <rect x="11" y="6" width="1" height="1" fill="#4a2a20"/>
+  <rect x="12" y="7" width="1" height="2" fill="#4a2a20"/>
+  <rect x="13" y="9" width="1" height="1" fill="#4a2a20"/>
+
+  <!-- body -->
+  <rect x="3" y="9" width="1" height="1" fill="#b85d2a"/>
+  <rect x="4" y="7" width="2" height="3" fill="#d97a2b"/>
+  <rect x="5" y="6" width="2" height="3" fill="#e8922f"/>
+  <rect x="6" y="5" width="4" height="4" fill="#f0a12a"/>
+  <rect x="9" y="6" width="2" height="3" fill="#e38b2c"/>
+  <rect x="10" y="7" width="2" height="3" fill="#cf722b"/>
+  <rect x="12" y="9" width="1" height="1" fill="#b85d2a"/>
+
+  <!-- underside shading (kept flush, no drops) -->
+  <rect x="4" y="9" width="1" height="1" fill="#b66329"/>
+  <rect x="5" y="9" width="1" height="1" fill="#c86d2b"/>
+  <rect x="10" y="9" width="1" height="1" fill="#c86d2b"/>
+  <rect x="11" y="9" width="1" height="1" fill="#b66329"/>
+
+  <!-- inner arch -->
+  <rect x="6" y="9" width="1" height="1" fill="#6b3725"/>
+  <rect x="7" y="9" width="2" height="1" fill="#2b1a16"/>
+  <rect x="9" y="9" width="1" height="1" fill="#6b3725"/>
+
+  <!-- segment lines -->
+  <rect x="5" y="7" width="1" height="2" fill="#a95026"/>
+  <rect x="8" y="5" width="1" height="4" fill="#b45a28"/>
+  <rect x="10" y="7" width="1" height="2" fill="#a95026"/>
+
+  <!-- highlights -->
+  <rect x="4" y="8" width="1" height="1" fill="#ffd76a"/>
+  <rect x="6" y="6" width="1" height="1" fill="#ffe38a"/>
+  <rect x="7" y="6" width="1" height="1" fill="#fff1b0"/>
+  <rect x="10" y="6" width="1" height="1" fill="#ffe38a"/>
+  <rect x="11" y="8" width="1" height="1" fill="#ffd76a"/>
+</svg>

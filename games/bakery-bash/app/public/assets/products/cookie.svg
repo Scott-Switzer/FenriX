@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" shape-rendering="crispEdges">
+  <title>Cookie (icon)</title>
+  <desc>Pixel-art SVG icon. Transparent background. 32x32.</desc>
+  <!-- Palette: outline:#1c1a1a dough:#E8D5BE caramel:#C4873B honey:#F5C96A chip:#3D2317 highlight:#F0E6D8 shadow:#00000022 -->
+
+  <!-- outline (slightly irregular) -->
+  <rect x="12" y="7" width="8" height="1" fill="#1c1a1a"/>
+  <rect x="10" y="8" width="2" height="1" fill="#1c1a1a"/>
+  <rect x="20" y="8" width="2" height="1" fill="#1c1a1a"/>
+  <rect x="9" y="9" width="1" height="2" fill="#1c1a1a"/>
+  <rect x="22" y="9" width="1" height="2" fill="#1c1a1a"/>
+  <rect x="8" y="11" width="1" height="10" fill="#1c1a1a"/>
+  <rect x="23" y="11" width="1" height="10" fill="#1c1a1a"/>
+  <rect x="9" y="21" width="1" height="2" fill="#1c1a1a"/>
+  <rect x="22" y="21" width="1" height="2" fill="#1c1a1a"/>
+  <rect x="10" y="23" width="2" height="1" fill="#1c1a1a"/>
+  <rect x="20" y="23" width="2" height="1" fill="#1c1a1a"/>
+  <rect x="12" y="24" width="8" height="1" fill="#1c1a1a"/>
+
+  <!-- bite -->
+  <rect x="20" y="10" width="2" height="1" fill="#00000000"/>
+  <rect x="21" y="11" width="2" height="1" fill="#00000000"/>
+
+  <!-- fill -->
+  <rect x="12" y="8" width="8" height="1" fill="#E8D5BE"/>
+  <rect x="10" y="9" width="12" height="2" fill="#E8D5BE"/>
+  <rect x="9" y="11" width="14" height="10" fill="#E8D5BE"/>
+  <rect x="10" y="21" width="12" height="2" fill="#E8D5BE"/>
+  <rect x="12" y="23" width="8" height="1" fill="#E8D5BE"/>
+
+  <!-- toasted shading (more chip-cookie-like) -->
+  <rect x="11" y="12" width="1" height="1" fill="#C4873B"/>
+  <rect x="14" y="11" width="1" height="1" fill="#C4873B"/>
+  <rect x="18" y="14" width="1" height="1" fill="#C4873B"/>
+  <rect x="16" y="18" width="1" height="1" fill="#C4873B"/>
+  <rect x="19" y="19" width="1" height="1" fill="#C4873B"/>
+  <rect x="13" y="20" width="1" height="1" fill="#C4873B"/>
+  <rect x="12" y="17" width="1" height="1" fill="#F5C96A"/>
+  <rect x="20" y="16" width="1" height="1" fill="#F5C96A"/>
+
+  <!-- chocolate chips (bigger scatter) -->
+  <rect x="12" y="13" width="1" height="1" fill="#3D2317"/>
+  <rect x="15" y="12" width="1" height="1" fill="#3D2317"/>
+  <rect x="17" y="13" width="1" height="1" fill="#3D2317"/>
+  <rect x="19" y="15" width="1" height="1" fill="#3D2317"/>
+  <rect x="14" y="16" width="1" height="1" fill="#3D2317"/>
+  <rect x="11" y="18" width="1" height="1" fill="#3D2317"/>
+  <rect x="18" y="18" width="1" height="1" fill="#3D2317"/>
+  <rect x="13" y="21" width="1" height="1" fill="#3D2317"/>
+
+  <!-- highlight -->
+  <rect x="12" y="10" width="1" height="1" fill="#F0E6D8"/>
+  <rect x="13" y="9" width="1" height="1" fill="#F0E6D8"/>
+  <rect x="14" y="9" width="1" height="1" fill="#F0E6D8"/>
+  <rect x="15" y="9" width="1" height="1" fill="#F0E6D8"/>
+
+  <!-- shadow -->
+  <rect x="10" y="25" width="14" height="1" fill="#00000022"/>
+</svg>
+

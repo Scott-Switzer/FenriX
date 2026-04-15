@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { useGameDispatch } from "../../contexts/GameContext";
 import type { GamePhase } from "../../types/game";
 
-const PHASES: GamePhase[] = ["decide", "bid", "simulate", "results"];
+const PHASES: GamePhase[] = ["decide", "simulate", "results"];
 
 export function DevNav() {
   const dispatch = useGameDispatch();

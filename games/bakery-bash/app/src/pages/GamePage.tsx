@@ -1,33 +1,49 @@
-import { useGame } from "../contexts/GameContext";
+import { useGame, useGameDispatch } from "../contexts/GameContext";
 import { RoundHeader } from "../components/game/RoundHeader";
+import { BakeryView } from "../components/game/BakeryView";
+import { GameSidebar } from "../components/game/GameSidebar";
 import { PageShell } from "../components/ui/PageShell";
-import { DecidePhase } from "./phases/DecidePhase";
-import { BidPhase } from "./phases/BidPhase";
 import { SimulatePhase } from "./phases/SimulatePhase";
 import { ResultsPhase } from "./phases/ResultsPhase";
 
 export function GamePage() {
   const { phase } = useGame();
+  const dispatch = useGameDispatch();
 
-  const renderPhase = () => {
-    switch (phase) {
-      case "decide":
-        return <DecidePhase />;
-      case "bid":
-        return <BidPhase />;
-      case "simulate":
-        return <SimulatePhase />;
-      case "results":
-        return <ResultsPhase />;
-      default:
-        return <DecidePhase />;
+  const isDecisionPhase = phase === "decide" || phase === "bid";
+
+  const handleSubmit = () => {
+    if (phase === "decide") {
+      dispatch({ type: "SET_PHASE", payload: "bid" });
+    } else if (phase === "bid") {
+      dispatch({ type: "SET_PHASE", payload: "simulate" });
     }
   };
 
+  if (!isDecisionPhase) {
+    return (
+      <PageShell className="game-page">
+        <RoundHeader />
+        <div className="game-page__content">
+          {phase === "simulate" ? <SimulatePhase /> : <ResultsPhase />}
+        </div>
+      </PageShell>
+    );
+  }
+
   return (
-    <PageShell className="game-page">
+    <PageShell className="game-page game-page--wide">
       <RoundHeader />
-      <div className="game-page__content">{renderPhase()}</div>
+      <div className="game-page__dashboard">
+        <BakeryView />
+        <GameSidebar />
+      </div>
+      <button
+        className="btn btn--primary game-page__submit"
+        onClick={handleSubmit}
+      >
+        Submit Decisions
+      </button>
     </PageShell>
   );
 }

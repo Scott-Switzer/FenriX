@@ -14,12 +14,11 @@ export interface MenuItem {
   id: MenuItemId;
   name: string;
   unlocked: boolean;
-  price: number;
+  basePrice: number;
   quantity: number;
 }
 
 export interface PlayerDecisions {
-  prices: Record<MenuItemId, number>;
   quantities: Record<MenuItemId, number>;
   staffCount: number;
   adBids: Record<AdType, number>;

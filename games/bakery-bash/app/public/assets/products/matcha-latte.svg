@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" shape-rendering="crispEdges">
+  <title>Matcha latte (icon)</title>
+  <desc>Pixel-art SVG icon. Transparent background. 32x32.</desc>
+  <!-- Palette: outline:#1c1a1a cup:#F0E6D8 matcha:#7A9E7E foam:#FFF8F0 highlight:#A8C5AB shadow:#00000022 -->
+
+  <!-- mug outline -->
+  <rect x="11" y="9" width="10" height="1" fill="#1c1a1a"/>
+  <rect x="10" y="10" width="1" height="12" fill="#1c1a1a"/>
+  <rect x="21" y="10" width="1" height="12" fill="#1c1a1a"/>
+  <rect x="11" y="22" width="10" height="1" fill="#1c1a1a"/>
+
+  <!-- handle -->
+  <rect x="22" y="12" width="2" height="1" fill="#1c1a1a"/>
+  <rect x="24" y="13" width="1" height="5" fill="#1c1a1a"/>
+  <rect x="22" y="18" width="2" height="1" fill="#1c1a1a"/>
+  <rect x="22" y="13" width="1" height="5" fill="#F0E6D8"/>
+
+  <!-- cup fill -->
+  <rect x="11" y="10" width="10" height="12" fill="#F0E6D8"/>
+
+  <!-- foam + matcha -->
+  <rect x="11" y="10" width="10" height="3" fill="#FFF8F0"/>
+  <rect x="11" y="13" width="10" height="6" fill="#7A9E7E"/>
+  <rect x="12" y="14" width="2" height="1" fill="#A8C5AB"/>
+  <rect x="16" y="15" width="2" height="1" fill="#A8C5AB"/>
+  <rect x="18" y="14" width="2" height="1" fill="#A8C5AB"/>
+  <rect x="14" y="17" width="1" height="1" fill="#A8C5AB"/>
+
+  <!-- saucer -->
+  <rect x="9" y="24" width="14" height="1" fill="#1c1a1a"/>
+  <rect x="10" y="23" width="12" height="1" fill="#F0E6D8"/>
+  <rect x="10" y="25" width="12" height="1" fill="#00000022"/>
+</svg>
+
