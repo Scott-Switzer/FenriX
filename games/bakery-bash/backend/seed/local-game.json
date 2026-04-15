@@ -42,6 +42,7 @@
           "noiseMin": -100,
           "noiseMax": 100
         },
+        "chefBonusPerPoint": 5,
         "customerPoolMultiplier": 100
       }
     },

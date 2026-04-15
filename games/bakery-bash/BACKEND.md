@@ -48,7 +48,7 @@ revenue = 500
         + (0.8 × ad_spend)
         + (50 × num_products)
         + ad_bonus
-        + chef_bonus
+        + (5 × headchef_skill)
         + noise [-100, +100]
 ```
 

@@ -93,7 +93,7 @@ const GameConfigDocument = {
 
   // Chef auction: skill level (0–100) won maps to a revenue bonus
   // bonus = chefSkill * chefBonusPerPoint
-  chefBonusPerPoint: 2,           // number
+  chefBonusPerPoint: 5,           // number
 
   // Customer pool = customerPoolMultiplier × numPlayers
   customerPoolMultiplier: 100,
