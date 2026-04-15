@@ -330,11 +330,6 @@ h3 { font-size: 0.7rem; }
   50% { opacity: 0; }
 }
 
-.round-header__budget {
-  font-family: var(--font-pixel);
-  font-size: 0.55rem;
-  color: var(--golden);
-}
 
 /* ─── Game Dashboard (Sidebar + Bakery View) ────────────── */
 

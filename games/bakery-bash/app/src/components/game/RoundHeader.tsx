@@ -1,7 +1,7 @@
 import { useGame } from "../../contexts/GameContext";
 
 export function RoundHeader() {
-  const { currentRound, totalRounds, timeRemaining, player } = useGame();
+  const { currentRound, totalRounds, timeRemaining } = useGame();
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -22,12 +22,6 @@ export function RoundHeader() {
           }`}
         >
           {formatTime(timeRemaining)}
-        </div>
-      )}
-
-      {player && (
-        <div className="round-header__budget">
-          Budget: ${player.budget.toLocaleString()}
         </div>
       )}
     </header>
