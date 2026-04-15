@@ -11,7 +11,6 @@
 /                   → Landing / Join Game
 /lobby              → Waiting room (pre-game)
 /game
-  /game/email       → Company email inbox / modal
   /game/decide      → Phase 1: Set prices, staffing, menu
   /game/bid         → Phase 2: Ad + Chef auction
   /game/simulate    → Phase 3: Minigame / loading screen
@@ -43,18 +42,7 @@
 
 ---
 
-### 3. Company Email (`/game/email`)
-
-- Inbox-style page or modal shown when the game phase is `email`
-- Displays company emails for the current round (supplier updates, staffing notices, market news, professor announcements)
-- Each email card shows sender, subject, timestamp, and body
-- Supports unread/read state locally so players can review messages without blocking backend progress
-- Primary action: "Continue to Decisions" when the professor advances to `decide`
-- Can also be opened from the in-game header as a modal during later phases for reference
-
----
-
-### 4. Phase 1: Decide (`/game/decide`)
+### 3. Phase 1: Decide (`/game/decide`)
 
 - Round indicator ("Round 2 of 5")
 - Countdown timer (red when < 60s)
@@ -68,7 +56,7 @@
 
 ---
 
-### 5. Phase 2: Bidding (`/game/bid`)
+### 4. Phase 2: Bidding (`/game/bid`)
 
 Two sequential 1-minute auctions:
 
@@ -86,7 +74,7 @@ Two sequential 1-minute auctions:
 
 ---
 
-### 6. Phase 3: Simulate (`/game/simulate`)
+### 5. Phase 3: Simulate (`/game/simulate`)
 
 - Animated loading screen ("Kitchen is busy…")
 - Simple minigame — e.g. tap falling croissants (score display only, no mechanical effect)
@@ -94,7 +82,7 @@ Two sequential 1-minute auctions:
 
 ---
 
-### 7. Phase 4: Results (`/game/results`)
+### 6. Phase 4: Results (`/game/results`)
 
 - Revenue this round (large, prominent)
 - Customer count
@@ -106,7 +94,7 @@ Two sequential 1-minute auctions:
 
 ---
 
-### 8. Leaderboard (`/leaderboard`)
+### 7. Leaderboard (`/leaderboard`)
 
 **Student view:**
 - Ranked by cumulative net revenue
@@ -120,7 +108,7 @@ Two sequential 1-minute auctions:
 
 ---
 
-### 9. Professor Control Panel (`/professor`)
+### 8. Professor Control Panel (`/professor`)
 
 - Start Game
 - Advance Round
@@ -143,7 +131,6 @@ Two sequential 1-minute auctions:
         <LobbyPage />
         <GamePage>
           <RoundHeader />     ← round number, timer, budget
-          <EmailPhase />
           <DecidePhase />
           <BidPhase />
           <SimulatePhase />
