@@ -56,6 +56,12 @@ service cloud.firestore {
           allow read: if isOwner(playerId);
           allow write: if false;
         }
+
+        // Email phase data drops are written exclusively by Cloud Functions.
+        match /emails/{emailId} {
+          allow read: if isOwner(playerId);
+          allow write: if false;
+        }
       }
 
       // ─────────────────────────────────────────────────────

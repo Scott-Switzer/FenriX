@@ -25,6 +25,25 @@ const PRODUCT_KEYS = [
 
 const AD_TYPES = ["TV", "Billboard", "Radio", "Newspaper"];
 
+const CSV_COLUMNS = [
+  "day",
+  "revenue",
+  "num_products",
+  "avg_price",
+  "staff_count",
+  "ad_spend",
+  "customer_count",
+  "customer_satisfaction",
+  "headchef_skill",
+  "croissant",
+  "cookie",
+  "bagel",
+  "sandwich",
+  "latte",
+  "matcha_latte",
+  "ad_type",
+];
+
 const DEFAULT_CONFIG = {
   costPerStaffPerRound: 50,
   unitCostPerProduct: 1,
@@ -369,6 +388,76 @@ function roundNumberFromId(roundId) {
   return match ? Number.parseInt(match[1], 10) : Number.NaN;
 }
 
+function csvCell(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  const stringValue = String(value);
+
+  if (/[",\n\r]/.test(stringValue)) {
+    return `"${stringValue.replaceAll('"', '""')}"`;
+  }
+
+  return stringValue;
+}
+
+function rowsToCsv(rows) {
+  const header = CSV_COLUMNS.join(",");
+  const lines = rows.map((row) =>
+    CSV_COLUMNS.map((column) => csvCell(row[column])).join(",")
+  );
+
+  return [header, ...lines].join("\n");
+}
+
+async function buildPlayerCsvEmail({
+  gameRef,
+  playerId,
+  displayName,
+  completedRound,
+  currentRow,
+}) {
+  const previousRowsSnap = await gameRef
+    .collection("csvRows")
+    .doc(playerId)
+    .collection("rounds")
+    .get();
+  const previousRows = previousRowsSnap.docs
+    .map((doc) => ({
+      round: numberOrDefault(doc.get("round"), 0),
+      row: doc.get("row"),
+    }))
+    .filter((entry) => entry.round > 0 && entry.round < completedRound)
+    .sort((a, b) => a.round - b.round)
+    .map((entry) => entry.row);
+  const rows = [...previousRows, currentRow];
+  const nextRound = completedRound + 1;
+
+  return {
+    type: "round_data_csv",
+    round: nextRound,
+    availableAfterRound: completedRound,
+    recipientPlayerId: playerId,
+    subject: `Round ${completedRound} data is ready`,
+    sender: "Bakery Bash Analytics",
+    body:
+      `Hi ${displayName || "there"}, your latest performance data is attached. ` +
+      `Use this CSV before Round ${nextRound} to update your model and plan decisions.`,
+    read: false,
+    createdAt: FieldValue.serverTimestamp(),
+    attachments: [
+      {
+        filename: `bakery-bash-through-round-${completedRound}.csv`,
+        contentType: "text/csv",
+        csvText: rowsToCsv(rows),
+        rowCount: rows.length,
+        includedThroughRound: completedRound,
+      },
+    ],
+  };
+}
+
 async function claimSimulationRun(gameId, roundId) {
   const gameRef = db.collection("games").doc(gameId);
   const roundRef = gameRef.collection("rounds").doc(roundId);
@@ -568,12 +657,31 @@ async function runRoundSimulation(gameId, roundId) {
         input.numProducts
       ).toFixed(1)
     );
+    const csvRow = {
+      day: roundNumber,
+      revenue,
+      num_products: input.numProducts,
+      avg_price: input.avgPrice,
+      staff_count: staffCount,
+      ad_spend: adSpend,
+      customer_count: customerCount,
+      customer_satisfaction: satisfaction,
+      headchef_skill: headchefSkill,
+      croissant: productsSoldForRound.croissant,
+      cookie: productsSoldForRound.cookie,
+      bagel: productsSoldForRound.bagel,
+      sandwich: productsSoldForRound.sandwich,
+      latte: productsSoldForRound.latte,
+      matcha_latte: productsSoldForRound.matchaLatte,
+      ad_type: adTypeWon || "none",
+    };
 
     results.push({
       playerId: input.playerId,
       displayName: player.displayName,
       cumulativeRevenue:
         numberOrDefault(player.cumulativeRevenue, 0) + revenue,
+      csvRow,
       result: {
         round: roundNumber,
         revenue,
@@ -619,9 +727,20 @@ async function runRoundSimulation(gameId, roundId) {
 
   const revenues = results.map((result) => result.result.revenue);
   const customerCountsList = results.map((result) => result.result.customerCount);
+  const emailDocs = await Promise.all(
+    results.map((result) =>
+      buildPlayerCsvEmail({
+        gameRef,
+        playerId: result.playerId,
+        displayName: result.displayName,
+        completedRound: roundNumber,
+        currentRow: result.csvRow,
+      })
+    )
+  );
   const batch = db.batch();
 
-  for (const result of results) {
+  for (const [index, result] of results.entries()) {
     const playerRef = gameRef.collection("players").doc(result.playerId);
     const playerRoundRef = playerRef.collection("rounds").doc(roundId);
     const csvRowRef = gameRef
@@ -629,6 +748,9 @@ async function runRoundSimulation(gameId, roundId) {
       .doc(result.playerId)
       .collection("rounds")
       .doc(roundId);
+    const emailRef = playerRef
+      .collection("emails")
+      .doc(`round_${roundNumber + 1}_data`);
 
     batch.set(playerRoundRef, result.result);
     batch.update(playerRef, {
@@ -647,25 +769,9 @@ async function runRoundSimulation(gameId, roundId) {
     batch.set(csvRowRef, {
       playerId: result.playerId,
       round: roundNumber,
-      row: {
-        day: roundNumber,
-        revenue: result.result.revenue,
-        num_products: result.result.numProducts,
-        avg_price: result.result.avgPrice,
-        staff_count: result.result.staffCount,
-        ad_spend: result.result.adSpend,
-        customer_count: result.result.customerCount,
-        customer_satisfaction: result.result.customerSatisfaction,
-        headchef_skill: result.result.headchefSkill,
-        croissant: result.result.productsSold.croissant,
-        cookie: result.result.productsSold.cookie,
-        bagel: result.result.productsSold.bagel,
-        sandwich: result.result.productsSold.sandwich,
-        latte: result.result.productsSold.latte,
-        matcha_latte: result.result.productsSold.matchaLatte,
-        ad_type: result.result.adTypeWon || "none",
-      },
+      row: result.csvRow,
     });
+    batch.set(emailRef, emailDocs[index]);
   }
 
   batch.set(

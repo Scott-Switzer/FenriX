@@ -107,6 +107,14 @@ customer_count, customer_satisfaction, headchef_skill,
 croissant, cookie, bagel, sandwich, latte, matcha_latte, ad_type
 ```
 
+During the `email` phase, the backend creates a per-player email data drop at:
+
+```
+/games/{gameId}/players/{playerId}/emails/round_{nextRound}_data
+```
+
+The email contains a `text/csv` attachment with all CSV rows available through the just-completed round. The frontend should read this backend-owned email document and let the owning player download the attached CSV before making the next round's decisions.
+
 ---
 
 ## Open Questions

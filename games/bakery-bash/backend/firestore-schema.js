@@ -426,6 +426,33 @@ const CsvRowsDocument = {
 };
 
 // ─────────────────────────────────────────────────────────────
+// /games/{gameId}/players/{playerId}/emails/{emailId}
+// Backend-owned email phase messages. Used to drop the current CSV dataset
+// before the next decision round so players can update their models.
+// emailId = "round_2_data", "round_3_data", …
+// ─────────────────────────────────────────────────────────────
+const PlayerEmailDocument = {
+  type: "round_data_csv",        // string
+  round: 2,                      // number — next decision round this data supports
+  availableAfterRound: 1,        // number — last completed round included in CSV
+  recipientPlayerId: "uid_abc",  // string
+  subject: "Round 1 data is ready",
+  sender: "Bakery Bash Analytics",
+  body: "Use this CSV before Round 2 to update your model and plan decisions.",
+  read: false,                   // boolean — frontend may track read state locally
+  createdAt: null,               // Timestamp
+  attachments: [
+    {
+      filename: "bakery-bash-through-round-1.csv",
+      contentType: "text/csv",
+      csvText: "day,revenue,num_products,...", // string — full CSV payload
+      rowCount: 1,               // number
+      includedThroughRound: 1,   // number
+    },
+  ],
+};
+
+// ─────────────────────────────────────────────────────────────
 // COLLECTION HIERARCHY SUMMARY
 // ─────────────────────────────────────────────────────────────
 //
@@ -434,6 +461,7 @@ const CsvRowsDocument = {
 // /games/{gameId}/players/{playerId}       ← PlayerDocument
 // /games/{gameId}/players/{playerId}/decisions/{roundId}  ← DecisionDocument
 // /games/{gameId}/players/{playerId}/rounds/{roundId}     ← RoundResultDocument
+// /games/{gameId}/players/{playerId}/emails/{emailId}     ← PlayerEmailDocument
 // /games/{gameId}/rounds/{roundId}         ← AggregateRoundDocument
 // /games/{gameId}/leaderboard/current      ← LeaderboardDocument
 // /games/{gameId}/csvRows/{playerId}/rounds/{roundId}  ← CsvRowsDocument
@@ -473,6 +501,11 @@ const CsvRowsDocument = {
 //         allow read: if request.auth.uid == playerId;
 //         allow write: if false; // Cloud Functions only
 //       }
+//
+//       match /emails/{emailId} {
+//         allow read: if request.auth.uid == playerId;
+//         allow write: if false; // Cloud Functions only
+//       }
 //     }
 //
 //     // Leaderboard and aggregate rounds are readable by all players
@@ -505,4 +538,5 @@ module.exports = {
   AggregateRoundDocument,
   LeaderboardDocument,
   CsvRowsDocument,
+  PlayerEmailDocument,
 };

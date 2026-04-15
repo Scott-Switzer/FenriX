@@ -191,16 +191,25 @@ async function main() {
 
   await waitForSimulation(db);
 
-  const [playerASnap, playerBSnap, resultASnap, resultBSnap, roundSnap, leaderboardSnap, csvSnap] =
-    await Promise.all([
-      db.doc(`games/${GAME_ID}/players/${PLAYER_A}`).get(),
-      db.doc(`games/${GAME_ID}/players/${PLAYER_B}`).get(),
-      db.doc(`games/${GAME_ID}/players/${PLAYER_A}/rounds/${ROUND_ID}`).get(),
-      db.doc(`games/${GAME_ID}/players/${PLAYER_B}/rounds/${ROUND_ID}`).get(),
-      db.doc(`games/${GAME_ID}/rounds/${ROUND_ID}`).get(),
-      db.doc(`games/${GAME_ID}/leaderboard/current`).get(),
-      db.doc(`games/${GAME_ID}/csvRows/${PLAYER_A}/rounds/${ROUND_ID}`).get(),
-    ]);
+  const [
+    playerASnap,
+    playerBSnap,
+    resultASnap,
+    resultBSnap,
+    roundSnap,
+    leaderboardSnap,
+    csvSnap,
+    emailSnap,
+  ] = await Promise.all([
+    db.doc(`games/${GAME_ID}/players/${PLAYER_A}`).get(),
+    db.doc(`games/${GAME_ID}/players/${PLAYER_B}`).get(),
+    db.doc(`games/${GAME_ID}/players/${PLAYER_A}/rounds/${ROUND_ID}`).get(),
+    db.doc(`games/${GAME_ID}/players/${PLAYER_B}/rounds/${ROUND_ID}`).get(),
+    db.doc(`games/${GAME_ID}/rounds/${ROUND_ID}`).get(),
+    db.doc(`games/${GAME_ID}/leaderboard/current`).get(),
+    db.doc(`games/${GAME_ID}/csvRows/${PLAYER_A}/rounds/${ROUND_ID}`).get(),
+    db.doc(`games/${GAME_ID}/players/${PLAYER_A}/emails/round_2_data`).get(),
+  ]);
 
   assertEqual(resultASnap.get("revenue"), 1345, "Player A revenue mismatch.");
   assertEqual(resultASnap.get("budgetAfter"), 2915, "Player A budget mismatch.");
@@ -217,6 +226,24 @@ async function main() {
     "Leaderboard winner mismatch."
   );
   assertEqual(csvSnap.get("row.revenue"), 1345, "CSV row revenue mismatch.");
+  assertEqual(emailSnap.get("type"), "round_data_csv", "Email type mismatch.");
+  assertEqual(emailSnap.get("round"), 2, "Email target round mismatch.");
+  const emailAttachment = emailSnap.data().attachments[0];
+  assertEqual(
+    emailAttachment.contentType,
+    "text/csv",
+    "Email attachment content type mismatch."
+  );
+  assertEqual(
+    emailAttachment.rowCount,
+    1,
+    "Email attachment row count mismatch."
+  );
+
+  const emailCsv = emailAttachment.csvText;
+  if (!emailCsv.includes("day,revenue,num_products") || !emailCsv.includes("1,1345,3")) {
+    throw new Error("Email CSV attachment did not include the expected round row.");
+  }
 
   console.log("Revenue simulation flow passed.");
 }
