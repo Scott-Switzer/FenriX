@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useGame, useGameDispatch } from "../contexts/GameContext";
 import { RoundHeader } from "../components/game/RoundHeader";
 import { BakeryView } from "../components/game/BakeryView";
@@ -9,6 +11,13 @@ import { ResultsPhase } from "./phases/ResultsPhase";
 export function GamePage() {
   const { phase } = useGame();
   const dispatch = useGameDispatch();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (phase === "auction") {
+      navigate("/auction");
+    }
+  }, [phase, navigate]);
 
   const isDecisionPhase = phase === "decide" || phase === "bid";
 

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" shape-rendering="crispEdges">
+  <title>Billboard Advertisement</title>
+  <!-- posts -->
+  <rect x="9" y="16" width="2" height="12" fill="#6b6b6b"/>
+  <rect x="21" y="16" width="2" height="12" fill="#6b6b6b"/>
+  <!-- billboard frame -->
+  <rect x="4" y="3" width="24" height="2" fill="#4a4a4a"/>
+  <rect x="4" y="3" width="1" height="14" fill="#4a4a4a"/>
+  <rect x="27" y="3" width="1" height="14" fill="#4a4a4a"/>
+  <rect x="4" y="15" width="24" height="2" fill="#4a4a4a"/>
+  <!-- billboard face -->
+  <rect x="5" y="5" width="22" height="10" fill="#f5e6c8"/>
+  <!-- bakery ad content: cupcake icon -->
+  <rect x="8" y="7" width="4" height="3" fill="#e8a849"/>
+  <rect x="9" y="6" width="2" height="1" fill="#c0392b"/>
+  <rect x="7" y="10" width="6" height="1" fill="#d4976a"/>
+  <!-- ad text blocks -->
+  <rect x="15" y="7" width="8" height="1" fill="#c0392b"/>
+  <rect x="15" y="9" width="6" height="1" fill="#3d3d3d"/>
+  <rect x="15" y="11" width="8" height="1" fill="#3d3d3d"/>
+  <!-- lights on top -->
+  <rect x="8" y="3" width="2" height="1" fill="#e8c44a"/>
+  <rect x="15" y="3" width="2" height="1" fill="#e8c44a"/>
+  <rect x="22" y="3" width="2" height="1" fill="#e8c44a"/>
+  <!-- ground -->
+  <rect x="4" y="28" width="24" height="1" fill="#8a8070"/>
+</svg>

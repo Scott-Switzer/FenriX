@@ -1,21 +1,25 @@
 import { Link } from "react-router-dom";
-import { useGameDispatch } from "../../contexts/GameContext";
+import { useGame, useGameDispatch } from "../../contexts/GameContext";
 import type { GamePhase } from "../../types/game";
 
 const PHASES: GamePhase[] = ["decide", "simulate", "results"];
 
 export function DevNav() {
+  const { phase, auctionTab } = useGame();
   const dispatch = useGameDispatch();
 
   if (import.meta.env.PROD) return null;
 
-  const setPhase = (phase: GamePhase) => {
-    if (phase === "decide") {
+  const setPhase = (p: GamePhase) => {
+    if (p === "decide") {
       dispatch({ type: "ADVANCE_ROUND" });
     } else {
-      dispatch({ type: "SET_PHASE", payload: phase });
+      dispatch({ type: "SET_PHASE", payload: p });
     }
   };
+
+  const auctionTabLabel =
+    phase === "auction" ? "auction (active)" : "auction";
 
   return (
     <nav className="dev-nav">
@@ -27,8 +31,20 @@ export function DevNav() {
           {p}
         </Link>
       ))}
+      <Link
+        to="/auction"
+        className={phase === "auction" ? "dev-nav__link--active" : ""}
+        onClick={() => dispatch({ type: "SET_PHASE", payload: "auction" })}
+      >
+        {auctionTabLabel}
+      </Link>
       <Link to="/leaderboard">Board</Link>
       <Link to="/professor">Prof</Link>
+      {phase === "auction" && (
+        <span className="dev-nav__phase-indicator">
+          auction tab: {auctionTab === "chefs" ? "Chef Hiring" : "Advertisements"}
+        </span>
+      )}
     </nav>
   );
 }

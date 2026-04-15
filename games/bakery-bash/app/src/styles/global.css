@@ -730,6 +730,328 @@ h3 { font-size: 0.7rem; }
   border-color: var(--caramel);
 }
 
+/* ─── Auction Page ───────────────────────────────────────── */
+
+.auction-page {
+  max-width: 860px;
+}
+
+.auction-page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--espresso);
+  border: var(--border);
+  box-shadow: var(--shadow-pixel-sm);
+  padding: 0;
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+}
+
+.auction-page__tabs {
+  display: flex;
+}
+
+.auction-page__tab {
+  font-family: var(--font-pixel);
+  font-size: 0.55rem;
+  padding: 0.75rem 1.25rem;
+  border: none;
+  background: transparent;
+  color: var(--dough);
+  cursor: pointer;
+  text-transform: uppercase;
+  position: relative;
+  transition: background 0.1s, color 0.1s;
+}
+
+.auction-page__tab--active {
+  background: var(--cream);
+  color: var(--espresso);
+}
+
+.auction-page__tab--active::after {
+  content: "";
+  position: absolute;
+  bottom: -3px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--cream);
+}
+
+.auction-page__tab--locked {
+  opacity: 0.4;
+}
+
+.auction-page__timer {
+  font-family: var(--font-pixel);
+  font-size: 0.9rem;
+  color: var(--sage);
+  padding: 0 1.25rem;
+}
+
+.auction-page__timer--urgent {
+  color: var(--berry);
+  animation: blink 0.6s step-end infinite;
+}
+
+.auction-page__hint {
+  font-size: 0.85rem;
+  color: var(--dark-roast);
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.auction-page__content {
+  flex: 1;
+  min-height: 0;
+}
+
+.auction-page__submit {
+  width: 100%;
+  margin-top: 1.25rem;
+}
+
+/* ─── Chef Hiring Grid ──────────────────────────────────── */
+
+.auction-chefs__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.65rem;
+}
+
+.auction-chef {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.5rem;
+  background: var(--flour);
+  border: 3px solid var(--dough);
+  text-align: center;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.auction-chef--low {
+  border-color: #c0392b;
+  box-shadow: inset 0 0 0 1px #e74c3c44;
+}
+
+.auction-chef--medium {
+  border-color: #b8860b;
+  box-shadow: inset 0 0 0 1px #daa52044;
+}
+
+.auction-chef--high {
+  border-color: #5ea05e;
+  box-shadow: inset 0 0 0 1px #7bc97b44;
+}
+
+.auction-chef__portrait {
+  position: relative;
+  flex-shrink: 0;
+  width: 64px;
+  height: 56px;
+  background: var(--cream);
+  border: 2px solid var(--dough);
+  overflow: hidden;
+}
+
+.auction-chef__icon {
+  width: 64px;
+  height: 96px;
+  image-rendering: pixelated;
+  position: relative;
+  top: -4px;
+}
+
+.auction-chef__skill-tag {
+  font-family: var(--font-pixel);
+  font-size: 0.35rem;
+  padding: 2px 8px;
+  white-space: nowrap;
+  text-transform: uppercase;
+  border: 1px solid;
+}
+
+.auction-chef__skill-tag--low {
+  background: #c0392b;
+  color: #fff;
+  border-color: #922b21;
+}
+
+.auction-chef__skill-tag--medium {
+  background: #b8860b;
+  color: #fff;
+  border-color: #8b6508;
+}
+
+.auction-chef__skill-tag--high {
+  background: #5ea05e;
+  color: #fff;
+  border-color: #3e7a3e;
+}
+
+.auction-chef__info {
+  display: flex;
+  flex-direction: column;
+}
+
+.auction-chef__name {
+  font-weight: 700;
+  font-size: 0.75rem;
+}
+
+.auction-chef__top-bid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  width: 100%;
+  padding: 0.3rem 0;
+  border-top: 1px solid var(--dough);
+}
+
+.auction-chef__top-bid-label {
+  font-family: var(--font-pixel);
+  font-size: 0.35rem;
+  color: var(--dark-roast);
+  text-transform: uppercase;
+}
+
+.auction-chef__top-bid-value {
+  font-family: var(--font-pixel);
+  font-size: 0.55rem;
+  color: var(--berry);
+}
+
+.auction-chef__bid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  width: 100%;
+}
+
+.auction-chef__bid-label {
+  font-family: var(--font-pixel);
+  font-size: 0.35rem;
+  color: var(--dark-roast);
+  text-transform: uppercase;
+}
+
+.auction-chef__bid-input {
+  width: 70px;
+  padding: 0.3rem 0.4rem;
+  border: var(--border);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  text-align: center;
+  background: var(--cream);
+}
+
+.auction-chef__bid-input:focus {
+  outline: none;
+  border-color: var(--caramel);
+}
+
+/* ─── Advertisements Grid ───────────────────────────────── */
+
+.auction-ads__grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.auction-ad {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  background: var(--flour);
+  border: 2px solid var(--dough);
+}
+
+.auction-ad__icon {
+  width: 32px;
+  height: 32px;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+.auction-ad__info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.auction-ad__name {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.auction-ad__desc {
+  font-family: var(--font-pixel);
+  font-size: 0.4rem;
+  color: var(--dark-roast);
+}
+
+.auction-ad__top-bid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  flex-shrink: 0;
+  padding: 0 0.75rem;
+  border-left: 1px solid var(--dough);
+  border-right: 1px solid var(--dough);
+}
+
+.auction-ad__top-bid-label {
+  font-family: var(--font-pixel);
+  font-size: 0.35rem;
+  color: var(--dark-roast);
+  text-transform: uppercase;
+}
+
+.auction-ad__top-bid-value {
+  font-family: var(--font-pixel);
+  font-size: 0.55rem;
+  color: var(--berry);
+}
+
+.auction-ad__bid {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2rem;
+  flex-shrink: 0;
+}
+
+.auction-ad__bid-label {
+  font-family: var(--font-pixel);
+  font-size: 0.35rem;
+  color: var(--dark-roast);
+  text-transform: uppercase;
+}
+
+.auction-ad__bid-input {
+  width: 70px;
+  padding: 0.3rem 0.4rem;
+  border: var(--border);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  text-align: center;
+  background: var(--cream);
+}
+
+.auction-ad__bid-input:focus {
+  outline: none;
+  border-color: var(--caramel);
+}
+
 /* ─── Simulate Phase ─────────────────────────────────────── */
 
 .simulate-phase {
@@ -937,11 +1259,29 @@ h3 { font-size: 0.7rem; }
   color: var(--honey);
 }
 
+.dev-nav__link--active {
+  background: var(--sage);
+  color: var(--cream) !important;
+}
+
+.dev-nav__phase-indicator {
+  color: var(--honey);
+  background: var(--dark-roast);
+  padding: 0.2rem 0.5rem;
+  margin-left: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
+  border: 1px solid var(--caramel);
+}
+
 /* ─── Responsive ─────────────────────────────────────────── */
 
 @media (max-width: 580px) {
   .game-page__dashboard {
     grid-template-columns: 1fr;
+  }
+  .auction-chefs__grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
