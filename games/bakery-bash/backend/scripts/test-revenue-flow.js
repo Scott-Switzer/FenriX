@@ -98,7 +98,7 @@ function decision(overrides = {}) {
 async function seedGame(db) {
   await db.doc(`games/${GAME_ID}`).set({
     joinCode: "REV001",
-    phase: "decide",
+    phase: "closing_hours",
     currentRound: 1,
     totalRounds: 5,
     phaseEndTime: null,
@@ -148,7 +148,7 @@ async function waitForSimulation(db) {
 
   while (Date.now() < deadline) {
     const gameSnap = await gameRef.get();
-    if (gameSnap.get("phase") === "results_ready") {
+    if (gameSnap.get("phase") === "results") {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));

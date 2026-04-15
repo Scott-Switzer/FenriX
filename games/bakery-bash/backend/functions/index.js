@@ -25,6 +25,13 @@ const PRODUCT_KEYS = [
 
 const AD_TYPES = ["TV", "Billboard", "Radio", "Newspaper"];
 
+const ROUND_PHASES = [
+  "closing_hours",
+  "auction",
+  "open_for_business",
+  "results",
+];
+
 const CSV_COLUMNS = [
   "day",
   "revenue",
@@ -64,6 +71,12 @@ const DEFAULT_CONFIG = {
   },
   chefBonusPerPoint: 5,
   customerPoolMultiplier: 100,
+  phaseDurations: {
+    closing_hours: 180,
+    auction: 90,
+    open_for_business: 30,
+    results: 60,
+  },
   attractivenessWeights: {
     priceWeight: 100,
     staffWeight: 5,
@@ -136,6 +149,10 @@ function mergeConfig(rawConfig = {}) {
     rawConfig.attractivenessWeights,
     DEFAULT_CONFIG.attractivenessWeights
   );
+  const phaseDurations = objectOrDefault(
+    rawConfig.phaseDurations,
+    DEFAULT_CONFIG.phaseDurations
+  );
 
   return {
     costPerStaffPerRound: numberOrDefault(
@@ -187,6 +204,24 @@ function mergeConfig(rawConfig = {}) {
       rawConfig.customerPoolMultiplier,
       DEFAULT_CONFIG.customerPoolMultiplier
     ),
+    phaseDurations: {
+      closing_hours: numberOrDefault(
+        phaseDurations.closing_hours ?? phaseDurations.decide,
+        DEFAULT_CONFIG.phaseDurations.closing_hours
+      ),
+      auction: numberOrDefault(
+        phaseDurations.auction ?? phaseDurations.bid,
+        DEFAULT_CONFIG.phaseDurations.auction
+      ),
+      open_for_business: numberOrDefault(
+        phaseDurations.open_for_business ?? phaseDurations.simulate,
+        DEFAULT_CONFIG.phaseDurations.open_for_business
+      ),
+      results: numberOrDefault(
+        phaseDurations.results,
+        DEFAULT_CONFIG.phaseDurations.results
+      ),
+    },
     attractivenessWeights: {
       priceWeight: numberOrDefault(
         attractivenessWeights.priceWeight,
@@ -388,6 +423,87 @@ function roundNumberFromId(roundId) {
   return match ? Number.parseInt(match[1], 10) : Number.NaN;
 }
 
+function cleanGameId(value) {
+  const gameId = cleanString(value);
+
+  if (!/^[A-Za-z0-9_-]{3,80}$/.test(gameId)) {
+    throw new HttpsError(
+      "invalid-argument",
+      "gameId must be a valid game document id."
+    );
+  }
+
+  return gameId;
+}
+
+function phaseEndTimeFromNow(config, phase) {
+  const durationSeconds = numberOrDefault(
+    config.phaseDurations[phase],
+    DEFAULT_CONFIG.phaseDurations[phase] || 60
+  );
+
+  return Timestamp.fromMillis(Date.now() + durationSeconds * 1000);
+}
+
+function nextPhaseFor(game) {
+  const currentRound = numberOrDefault(game.currentRound, 1);
+  const totalRounds = numberOrDefault(game.totalRounds, 5);
+
+  if (game.phase === "lobby") {
+    return { phase: "closing_hours", round: 1 };
+  }
+
+  if (game.phase === "closing_hours" || game.phase === "decide") {
+    return { phase: "auction", round: currentRound };
+  }
+
+  if (game.phase === "auction" || game.phase === "bid") {
+    return { phase: "open_for_business", round: currentRound };
+  }
+
+  if (game.phase === "open_for_business" || game.phase === "simulating") {
+    return { phase: "results", round: currentRound };
+  }
+
+  if (game.phase === "results" || game.phase === "results_ready") {
+    if (currentRound >= totalRounds) {
+      return { phase: "game_over", round: currentRound };
+    }
+
+    return { phase: "closing_hours", round: currentRound + 1 };
+  }
+
+  if (game.phase === "game_over") {
+    throw new HttpsError("failed-precondition", "This game is already over.");
+  }
+
+  throw new HttpsError(
+    "failed-precondition",
+    `Cannot advance unknown phase: ${game.phase}`
+  );
+}
+
+async function assertProfessor(request, gameRef) {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Sign in before controlling a game.");
+  }
+
+  const gameSnap = await gameRef.get();
+
+  if (!gameSnap.exists) {
+    throw new HttpsError("not-found", "Game not found.");
+  }
+
+  if (gameSnap.get("professorId") !== request.auth.uid) {
+    throw new HttpsError(
+      "permission-denied",
+      "Only the professor can control game phases."
+    );
+  }
+
+  return gameSnap;
+}
+
 function csvCell(value) {
   if (value === null || value === undefined) {
     return "";
@@ -475,7 +591,13 @@ async function claimSimulationRun(gameId, roundId) {
     const game = gameSnap.data();
     const phase = game.phase;
 
-    if (phase !== "decide" && phase !== "bid") {
+    if (
+      phase !== "closing_hours" &&
+      phase !== "auction" &&
+      phase !== "open_for_business" &&
+      phase !== "decide" &&
+      phase !== "bid"
+    ) {
       logger.info("Decision submitted outside simulation-ready phase.", {
         gameId,
         roundId,
@@ -493,6 +615,8 @@ async function claimSimulationRun(gameId, roundId) {
       return;
     }
 
+    const configSnap = await transaction.get(gameRef.collection("config").doc("params"));
+    const config = mergeConfig(configSnap.exists ? configSnap.data() : {});
     const playersSnap = await transaction.get(gameRef.collection("players"));
 
     if (playersSnap.empty) {
@@ -549,8 +673,10 @@ async function claimSimulationRun(gameId, roundId) {
       { merge: true }
     );
     transaction.update(gameRef, {
-      phase: "simulating",
+      phase: "open_for_business",
+      phaseEndTime: phaseEndTimeFromNow(config, "open_for_business"),
       submittedCount,
+      phaseStartedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
     shouldRun = true;
@@ -585,7 +711,9 @@ async function runRoundSimulation(gameId, roundId) {
 
   const playerInputs = playerDocs.map((playerDoc, index) => {
     const player = playerDoc.data();
-    const decision = decisionSnaps[index].data();
+    const decision = decisionSnaps[index].exists
+      ? decisionSnaps[index].data()
+      : objectOrDefault(player.pendingDecision, DEFAULT_PENDING_DECISION);
     const avgPrice = averagePrice(decision.menu, decision.productPrices);
     const numProducts = activeProducts(decision.menu).length;
 
@@ -803,8 +931,9 @@ async function runRoundSimulation(gameId, roundId) {
     round: roundNumber,
   });
   batch.update(gameRef, {
-    phase: "results_ready",
-    phaseEndTime: null,
+    phase: "results",
+    phaseEndTime: phaseEndTimeFromNow(config, "results"),
+    phaseStartedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
 
@@ -849,6 +978,97 @@ exports.onDecisionSubmitted = onDocumentCreated(
     }
   }
 );
+
+exports.startGame = onCall(async (request) => {
+  const gameId = cleanGameId(request.data?.gameId);
+  const gameRef = db.collection("games").doc(gameId);
+  const gameSnap = await assertProfessor(request, gameRef);
+
+  if (gameSnap.get("phase") !== "lobby") {
+    throw new HttpsError(
+      "failed-precondition",
+      "Only lobby games can be started."
+    );
+  }
+
+  const configSnap = await gameRef.collection("config").doc("params").get();
+  const config = mergeConfig(configSnap.exists ? configSnap.data() : {});
+  const phaseEndTime = phaseEndTimeFromNow(config, "closing_hours");
+
+  await gameRef.update({
+    phase: "closing_hours",
+    currentRound: 1,
+    submittedCount: 0,
+    phaseStartedAt: FieldValue.serverTimestamp(),
+    phaseEndTime,
+    startedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  return {
+    gameId,
+    phase: "closing_hours",
+    currentRound: 1,
+    phaseEndTime: phaseEndTime.toMillis(),
+  };
+});
+
+exports.advanceGamePhase = onCall(async (request) => {
+  const gameId = cleanGameId(request.data?.gameId);
+  const gameRef = db.collection("games").doc(gameId);
+  await assertProfessor(request, gameRef);
+
+  let nextPhase;
+  let currentRound;
+  let shouldRunSimulation = false;
+
+  await db.runTransaction(async (transaction) => {
+    const gameSnap = await transaction.get(gameRef);
+    const configSnap = await transaction.get(gameRef.collection("config").doc("params"));
+    const game = gameSnap.data();
+    const config = mergeConfig(configSnap.exists ? configSnap.data() : {});
+    const next = nextPhaseFor(game);
+    const update = {
+      phase: next.phase,
+      currentRound: next.round,
+      phaseStartedAt: FieldValue.serverTimestamp(),
+      phaseEndTime:
+        next.phase === "game_over"
+          ? null
+          : phaseEndTimeFromNow(config, next.phase),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    if (next.phase === "closing_hours") {
+      update.submittedCount = 0;
+    }
+
+    if (next.phase === "game_over") {
+      update.endedAt = FieldValue.serverTimestamp();
+    }
+
+    transaction.update(gameRef, update);
+    nextPhase = next.phase;
+    currentRound = next.round;
+    shouldRunSimulation = next.phase === "open_for_business";
+  });
+
+  if (shouldRunSimulation) {
+    await runRoundSimulation(gameId, `round_${currentRound}`);
+  }
+
+  const updatedGameSnap = await gameRef.get();
+  const phaseEndTime = updatedGameSnap.get("phaseEndTime");
+
+  return {
+    gameId,
+    phase: updatedGameSnap.get("phase"),
+    requestedPhase: nextPhase,
+    currentRound: updatedGameSnap.get("currentRound"),
+    phaseEndTime:
+      phaseEndTime instanceof Timestamp ? phaseEndTime.toMillis() : null,
+  };
+});
 
 function validateJoinInput(data) {
   const joinCode = cleanString(data.joinCode).toUpperCase();

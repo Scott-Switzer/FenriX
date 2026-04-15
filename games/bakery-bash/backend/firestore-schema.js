@@ -11,7 +11,7 @@
  */
 
 /**
- * @typedef {"lobby" | "email" | "decide" | "bid" | "simulating" | "results_ready" | "game_over"} GamePhase
+ * @typedef {"lobby" | "closing_hours" | "auction" | "open_for_business" | "results" | "game_over"} GamePhase
  */
 
 // ─────────────────────────────────────────────────────────────
@@ -23,14 +23,16 @@ const GameDocument = {
   joinCode: "ABC123",             // string
 
   // Current phase of the state machine
-  // Transitions: lobby → email → decide → bid → simulating → results_ready → (next round email or game_over)
+  // Transitions: lobby → closing_hours → auction → open_for_business → results → (next round closing_hours or game_over)
   phase: "lobby",                 // GamePhase
 
   // Current round number (1-indexed)
   currentRound: 1,                // number (1–5)
   totalRounds: 5,                 // number
 
-  // Server-side timestamp for when current phase ends (used by clients to sync countdown)
+  // Server-owned timestamps for the current phase. Clients calculate time remaining
+  // from phaseEndTime and must not run local authoritative countdowns.
+  phaseStartedAt: null,           // Timestamp | null
   phaseEndTime: null,             // Timestamp | null
 
   // Track submission progress so professor dashboard can show "X/Y submitted"
@@ -108,10 +110,9 @@ const GameConfigDocument = {
 
   // Phase durations (seconds)
   phaseDurations: {
-    email: 60,
-    decide: 300,                  // 5 minutes
-    bid: 120,                     // 2 minutes (2 × 60s auctions)
-    simulate: 30,
+    closing_hours: 180,           // 3 minutes
+    auction: 90,                  // 3 × 30s sealed-bid auctions
+    open_for_business: 30,
     results: 60,
   },
 };

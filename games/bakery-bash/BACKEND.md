@@ -24,18 +24,26 @@
 
 ### Game State Machine
 
-Backend is the source of truth for game state. Valid transitions:
+Backend is the source of truth for game state. Every phase transition writes the same `phase`, `currentRound`, and server-generated `phaseEndTime` to `/games/{gameId}` so every client calculates time remaining from the same Firestore timestamp. Clients must not run authoritative local countdowns.
 
 ```
 lobby
-  → round_N_email      (round briefing / company emails)
-  → round_N_decide     (professor starts / advances)
-  → round_N_bid        (decide timer expires or professor advances)
-  → simulating         (all bids in or timer expires)
-  → results_ready      (simulation complete)
-  → round_N+1_email    (professor advances)
+  → round_N_closing_hours      (players make menu, staffing, pricing, and bid decisions)
+  → round_N_auction            (three sealed-bid auctions)
+  → round_N_open_for_business  (café runs, revenue calculated)
+  → round_N_results            (leaderboard updates, CSV data drops exported)
+  → round_N+1_closing_hours    (professor advances)
   → game_over          (after round 5)
 ```
+
+Phase durations are stored in `/games/{gameId}/config/params.phaseDurations`:
+
+| Phase | Default |
+|---|---:|
+| `closing_hours` | 180s |
+| `auction` | 90s |
+| `open_for_business` | 30s |
+| `results` | 60s |
 
 ---
 
