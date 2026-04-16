@@ -132,13 +132,15 @@ customer_count, customer_satisfaction, headchef_skill,
 croissant, cookie, bagel, sandwich, latte, matcha_latte, ad_type
 ```
 
-During the `email` phase, the backend creates a per-player email data drop at:
+During the simulation step (`open_for_business` phase), the backend creates a per-player email data drop at:
 
 ```
 /games/{gameId}/players/{playerId}/emails/round_{nextRound}_data
 ```
 
-The email contains a `text/csv` attachment with all CSV rows available through the just-completed round. The frontend should read this backend-owned email document and let the owning player download the attached CSV before making the next round's decisions.
+There is no separate "email phase" — emails are written as part of `runRoundSimulation` and are available by the time the game transitions to `results`. The email contains a `text/csv` attachment with all CSV rows available through the just-completed round. The frontend should read this backend-owned email document and let the owning player download the attached CSV before making the next round's decisions.
+
+Emails are skipped after the final round since there is no next round to deliver them for.
 
 ---
 

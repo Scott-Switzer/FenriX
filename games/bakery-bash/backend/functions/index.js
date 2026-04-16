@@ -363,9 +363,11 @@ function decisionRoundCost(config, decision) {
     : 0;
   const chefBidAmount = Math.max(0, numberOrDefault(chefBid.amount, 0));
 
+  // adSpend is NOT added separately — adBidAmount already represents the
+  // player's ad expenditure (validateDecisionInput sets adBid.amount = adSpend).
+  // Adding both would double-charge the player.
   return (
     staffCount * config.costPerStaffPerRound +
-    adSpend +
     stockCost +
     adBidAmount +
     chefBidAmount
@@ -985,6 +987,15 @@ async function claimSimulationRun(gameId, roundId) {
   return shouldRun;
 }
 
+/**
+ * Mark a simulation as failed and roll the game phase back to closing_hours.
+ *
+ * Recovery path: professor calls advanceGamePhase again, which walks through
+ * auction → open_for_business and re-triggers the simulation. Rolling back to
+ * closing_hours (not auction) gives players the option to revise decisions if
+ * the failure was caused by invalid data, while keeping existing decisions
+ * intact if they choose not to resubmit.
+ */
 async function markSimulationFailed(gameId, roundId, error) {
   const gameRef = db.collection("games").doc(gameId);
   const configSnap = await gameRef.collection("config").doc("params").get();
@@ -998,8 +1009,8 @@ async function markSimulationFailed(gameId, roundId, error) {
 
   await gameRef.collection("rounds").doc(roundId).set(failureUpdate, { merge: true });
   await gameRef.update({
-    phase: "auction",
-    phaseEndTime: phaseEndTimeFromNow(config, "auction"),
+    phase: "closing_hours",
+    phaseEndTime: phaseEndTimeFromNow(config, "closing_hours"),
     phaseStartedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
@@ -1082,8 +1093,11 @@ async function runRoundSimulation(gameId, roundId) {
       config.unitCostPerProduct
     );
     const creditCost = 0;
+    // adSpend is NOT added separately — adWinningBid is the actual cost
+    // the player pays if they win the ad auction. Adding adSpend on top
+    // would double-charge them (adSpend = the bid amount).
     const totalCosts =
-      staffingCost + adSpend + stockCost + adWinningBid + chefWinningBid + creditCost;
+      staffingCost + stockCost + adWinningBid + chefWinningBid + creditCost;
     const budgetBefore = numberOrDefault(player.budgetCurrent, 0);
     const creditBalanceBefore = numberOrDefault(player.creditBalance, 0);
     const revenue = Math.round(
@@ -1176,17 +1190,25 @@ async function runRoundSimulation(gameId, roundId) {
 
   const revenues = results.map((result) => result.result.revenue);
   const customerCountsList = results.map((result) => result.result.customerCount);
-  const emailDocs = await Promise.all(
-    results.map((result) =>
-      buildPlayerCsvEmail({
-        gameRef,
-        playerId: result.playerId,
-        displayName: result.displayName,
-        completedRound: roundNumber,
-        currentRow: result.csvRow,
-      })
-    )
-  );
+  const totalRounds = numberOrDefault(gameSnap.get("totalRounds"), 5);
+  const isLastRound = roundNumber >= totalRounds;
+
+  // Only build email docs if this is NOT the last round — there is no
+  // round N+1 to deliver the email to, so writing round_6_data when
+  // totalRounds=5 would create orphaned documents.
+  const emailDocs = isLastRound
+    ? []
+    : await Promise.all(
+        results.map((result) =>
+          buildPlayerCsvEmail({
+            gameRef,
+            playerId: result.playerId,
+            displayName: result.displayName,
+            completedRound: roundNumber,
+            currentRow: result.csvRow,
+          })
+        )
+      );
   const batch = db.batch();
 
   for (const [index, result] of results.entries()) {
@@ -1220,7 +1242,10 @@ async function runRoundSimulation(gameId, roundId) {
       round: roundNumber,
       row: result.csvRow,
     });
-    batch.set(emailRef, emailDocs[index]);
+    // Only write the email doc if we built one (skipped on last round)
+    if (!isLastRound && emailDocs[index]) {
+      batch.set(emailRef, emailDocs[index]);
+    }
   }
 
   batch.set(
@@ -1363,12 +1388,11 @@ exports.advanceGamePhase = onCall(async (request) => {
     nextPhase = next.phase;
     currentRound = next.round;
 
+    transaction.update(gameRef, update);
+
     if (next.phase === "open_for_business") {
       shouldClaimSimulation = true;
-      return;
     }
-
-    transaction.update(gameRef, update);
   });
 
   if (shouldClaimSimulation) {
@@ -1469,12 +1493,24 @@ exports.submitDecision = onCall(async (request) => {
 
     const config = mergeConfig(configSnap.exists ? configSnap.data() : {});
     const budgetCurrent = numberOrDefault(playerSnap.get("budgetCurrent"), 0);
-    const maxRoundCost = decisionRoundCost(config, decision);
 
-    if (maxRoundCost > budgetCurrent) {
+    // Compute individual cost components to match DecisionDocument schema
+    const staffingCost = decision.staffCount * config.costPerStaffPerRound;
+    const creditCost = 0; // Pending Game Design sign-off (Open Q #6)
+    const stockCost = totalQuantityCost(
+      objectOrDefault(decision.quantities, {}),
+      config.unitCostPerProduct
+    );
+    const adBidAmount = decision.adBid.adType
+      ? Math.max(0, numberOrDefault(decision.adBid.amount, 0))
+      : 0;
+    const chefBidAmount = Math.max(0, numberOrDefault(decision.chefBid.amount, 0));
+    const totalCosts = staffingCost + stockCost + adBidAmount + chefBidAmount + creditCost;
+
+    if (totalCosts > budgetCurrent) {
       throw new HttpsError(
         "failed-precondition",
-        `This decision costs $${maxRoundCost.toFixed(2)}, but your current budget is $${budgetCurrent.toFixed(2)}.`
+        `This decision costs $${totalCosts.toFixed(2)}, but your current budget is $${budgetCurrent.toFixed(2)}.`
       );
     }
 
@@ -1490,7 +1526,10 @@ exports.submitDecision = onCall(async (request) => {
       chefBid: decision.chefBid,
       numProducts: decision.numProducts,
       budgetBefore: budgetCurrent,
-      maxRoundCost,
+      // Match DecisionDocument schema fields (staffingCost, creditCost, totalCosts)
+      staffingCost,
+      creditCost,
+      totalCosts,
     };
 
     transaction.set(decisionRef, decisionDoc);
