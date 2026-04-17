@@ -1,33 +1,51 @@
-import { useState } from "react";
-import type { MenuItemId } from "../../../types/game";
+import { useGame, useGameDispatch } from "../../../contexts/GameContext";
+import {
+  BASE_MENU,
+  PRODUCT_KEYS,
+  type ProductKey,
+} from "../../../types/game";
 
-interface MenuEntry {
-  id: MenuItemId;
-  name: string;
-  basePrice: number;
-  unlocked: boolean;
-}
-
-const MENU_ITEMS: MenuEntry[] = [
-  { id: "croissant", name: "Croissant", basePrice: 3.5, unlocked: true },
-  { id: "cookie", name: "Cookie", basePrice: 2.0, unlocked: true },
-  { id: "bagel", name: "Bagel", basePrice: 4.0, unlocked: true },
-  { id: "sandwich", name: "Sandwich", basePrice: 7.0, unlocked: false },
-  { id: "latte", name: "Latte", basePrice: 5.0, unlocked: false },
-  { id: "matcha-latte", name: "Matcha Latte", basePrice: 6.0, unlocked: false },
-];
+/**
+ * Product display metadata. Prices are fixed per FRONTEND.md rule #2 — no
+ * price inputs, read-only labels only. Matches backend
+ * `config.js::PRODUCT_CATALOG`.
+ */
+const PRODUCT_DISPLAY: Record<ProductKey, { name: string; price: number }> = {
+  croissant: { name: "Croissant", price: 4.75 },
+  cookie: { name: "Cookie", price: 2.5 },
+  bagel: { name: "Bagel", price: 3.0 },
+  sandwich: { name: "Sandwich", price: 8.75 },
+  coffee: { name: "Coffee", price: 4.0 },
+  matcha: { name: "Matcha", price: 6.25 },
+};
 
 export function MenuTab() {
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const { pendingDecision } = useGame();
+  const dispatch = useGameDispatch();
 
-  const setQty = (id: string, value: number) => {
-    setQuantities((prev) => ({ ...prev, [id]: Math.max(0, value) }));
+  const setQty = (product: ProductKey, value: number) => {
+    const clamped = Math.max(0, Math.floor(value) || 0);
+    dispatch({
+      type: "UPDATE_PENDING_DECISION",
+      payload: { quantities: { [product]: clamped } },
+    });
   };
 
-  const totalCost = MENU_ITEMS.reduce((sum, item) => {
-    if (!item.unlocked) return sum;
-    const qty = quantities[item.id] ?? 0;
-    return sum + item.basePrice * qty;
+  const toggleMenu = (product: ProductKey, checked: boolean) => {
+    if (BASE_MENU.includes(product)) return;
+    dispatch({
+      type: "UPDATE_PENDING_DECISION",
+      payload: {
+        menu: { [product]: checked },
+        ...(checked ? {} : { quantities: { [product]: 0 } }),
+      },
+    });
+  };
+
+  const totalCost = PRODUCT_KEYS.reduce((sum, product) => {
+    if (!pendingDecision.menu[product]) return sum;
+    const qty = pendingDecision.quantities[product] ?? 0;
+    return sum + PRODUCT_DISPLAY[product].price * qty;
   }, 0);
 
   return (
@@ -36,40 +54,53 @@ export function MenuTab() {
       <p className="sidebar-tab__hint">Set how many of each item to stock.</p>
 
       <div className="menu-tab__list">
-        {MENU_ITEMS.map((item) => (
-          <div
-            key={item.id}
-            className={`menu-tab__item ${
-              !item.unlocked ? "menu-tab__item--locked" : ""
-            }`}
-          >
-            <div className="menu-tab__item-info">
-              <span className="menu-tab__item-name">{item.name}</span>
-              <span className="menu-tab__item-price">
-                ${item.basePrice.toFixed(2)}
-              </span>
+        {PRODUCT_KEYS.map((product) => {
+          const display = PRODUCT_DISPLAY[product];
+          const isBase = BASE_MENU.includes(product);
+          const isOnMenu = pendingDecision.menu[product];
+          return (
+            <div
+              key={product}
+              className={`menu-tab__item ${
+                !isOnMenu ? "menu-tab__item--locked" : ""
+              }`}
+            >
+              <div className="menu-tab__item-info">
+                <span className="menu-tab__item-name">{display.name}</span>
+                <span className="menu-tab__item-price">
+                  ${display.price.toFixed(2)}
+                </span>
+              </div>
+              {isOnMenu ? (
+                <input
+                  type="number"
+                  className="menu-tab__qty-input"
+                  placeholder="0"
+                  min={0}
+                  step={1}
+                  value={pendingDecision.quantities[product] ?? 0}
+                  onChange={(e) =>
+                    setQty(product, parseInt(e.target.value, 10) || 0)
+                  }
+                />
+              ) : (
+                <label className="menu-tab__unlock">
+                  <input
+                    type="checkbox"
+                    checked={false}
+                    onChange={(e) => toggleMenu(product, e.target.checked)}
+                    disabled={isBase}
+                  />
+                  <span className="menu-tab__locked-badge">Add</span>
+                </label>
+              )}
             </div>
-            {item.unlocked ? (
-              <input
-                type="number"
-                className="menu-tab__qty-input"
-                placeholder="0"
-                min={0}
-                step={1}
-                value={quantities[item.id] ?? ""}
-                onChange={(e) =>
-                  setQty(item.id, parseInt(e.target.value) || 0)
-                }
-              />
-            ) : (
-              <span className="menu-tab__locked-badge">Locked</span>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="menu-tab__total">
-        Stock Cost: <strong>${totalCost.toFixed(2)}</strong>
+        Stock Revenue (max): <strong>${totalCost.toFixed(2)}</strong>
       </div>
     </div>
   );

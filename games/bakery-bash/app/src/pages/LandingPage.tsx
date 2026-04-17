@@ -1,8 +1,47 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import { httpsCallable, type FunctionsError } from "firebase/functions";
 import { useGameDispatch } from "../contexts/GameContext";
 import { useAuth } from "../contexts/AuthContext";
 import { PageShell } from "../components/ui/PageShell";
+import { functions } from "../lib/firebase";
+
+/**
+ * Response shape returned by the `joinGame` Cloud Function.
+ * Backend only sends back `{ gameId, playerId }` — the display name we sent
+ * in the request is what we use locally.
+ * See `backend/functions/index.js::exports.joinGame`.
+ */
+interface JoinGameResponse {
+  gameId: string;
+  playerId: string;
+}
+
+/** Accepted join code format: 6 chars, A–Z / 0–9 (backend requires `2–9` subset
+ * but we stay permissive client-side and let the server be the arbiter). */
+const JOIN_CODE_REGEX = /^[A-Z0-9]{6}$/;
+
+const JOIN_FAILURE_MESSAGES: Record<string, string> = {
+  unauthenticated: "Couldn't sign you in. Please reload and try again.",
+  "invalid-argument":
+    "Check the join code (6 letters/digits) and name (2–40 characters).",
+  "not-found": "No game matches that join code. Double-check with your professor.",
+  "failed-precondition": "This game has already started and isn't accepting new players.",
+};
+
+function humanizeJoinError(err: unknown): string {
+  if (err && typeof err === "object" && "code" in err) {
+    const fnErr = err as FunctionsError;
+    const rawCode = fnErr.code || "";
+    // Firebase error codes come through as `functions/not-found`, etc.
+    const suffix = rawCode.split("/").pop() || rawCode;
+    if (suffix && JOIN_FAILURE_MESSAGES[suffix]) {
+      return JOIN_FAILURE_MESSAGES[suffix];
+    }
+    if (fnErr.message) return fnErr.message;
+  }
+  return "Could not join game. Please try again.";
+}
 
 export function LandingPage() {
   const [playerName, setPlayerName] = useState("");
@@ -12,47 +51,66 @@ export function LandingPage() {
 
   const navigate = useNavigate();
   const dispatch = useGameDispatch();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   const handleJoin = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!playerName.trim()) {
-      setError("Please enter your name.");
+    const trimmedName = playerName.trim();
+    const normalizedCode = gameCode.trim().toUpperCase();
+
+    if (trimmedName.length < 2 || trimmedName.length > 40) {
+      setError("Please enter a display name between 2 and 40 characters.");
       return;
     }
-    if (!gameCode.trim()) {
-      setError("Please enter a game code.");
+    if (!JOIN_CODE_REGEX.test(normalizedCode)) {
+      setError("Join code must be 6 letters or digits (e.g. ABC123).");
+      return;
+    }
+    if (authLoading || !user) {
+      setError("Still signing you in… please try again in a moment.");
       return;
     }
 
     setJoining(true);
 
     try {
-      // TODO: Validate game code against Firestore and join the game session.
-      // For now, simulate joining with a local state update.
+      const joinGame = httpsCallable<
+        { joinCode: string; displayName: string },
+        JoinGameResponse
+      >(functions, "joinGame");
+
+      const result = await joinGame({
+        joinCode: normalizedCode,
+        displayName: trimmedName,
+      });
+      const { gameId, playerId } = result.data;
+
       dispatch({
         type: "JOIN_GAME",
         payload: {
-          gameId: gameCode.toUpperCase(),
-          gameCode: gameCode.toUpperCase(),
+          gameId,
+          playerId,
+          gameCode: normalizedCode,
           player: {
-            id: user?.uid ?? crypto.randomUUID(),
-            name: playerName.trim(),
-            bakeryName: `${playerName.trim()}'s Bakery`,
-            budget: 5000,
+            id: playerId,
+            name: trimmedName,
+            bakeryName: `${trimmedName}'s Bakery`,
+            budget: 0,
             cumulativeRevenue: 0,
           },
         },
       });
       navigate("/lobby");
-    } catch {
-      setError("Could not join game. Check the code and try again.");
+    } catch (err) {
+      setError(humanizeJoinError(err));
     } finally {
       setJoining(false);
     }
   };
+
+  const disabled = joining || authLoading;
 
   return (
     <PageShell className="landing-page">
@@ -71,7 +129,7 @@ export function LandingPage() {
               placeholder="e.g. John"
               value={playerName}
               onChange={(e) => setPlayerName(e.target.value)}
-              maxLength={24}
+              maxLength={40}
             />
           </label>
 
@@ -83,7 +141,7 @@ export function LandingPage() {
               placeholder="e.g. ABC123"
               value={gameCode}
               onChange={(e) => setGameCode(e.target.value.toUpperCase())}
-              maxLength={8}
+              maxLength={6}
             />
           </label>
 
@@ -92,9 +150,13 @@ export function LandingPage() {
           <button
             type="submit"
             className="btn btn--primary"
-            disabled={joining}
+            disabled={disabled}
           >
-            {joining ? "Joining…" : "Join Game"}
+            {joining
+              ? "Joining…"
+              : authLoading
+              ? "Signing you in…"
+              : "Join Game"}
           </button>
         </form>
       </div>
