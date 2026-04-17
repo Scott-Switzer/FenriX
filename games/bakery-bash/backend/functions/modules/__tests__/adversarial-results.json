@@ -1,0 +1,47 @@
+{
+  "totalTests": 192,
+  "totalPassed": 184,
+  "totalFailed": 8,
+  "failures": [
+    {
+      "name": "mergeConfig: null input → full defaults",
+      "error": "startingBudget default",
+      "severity": "HIGH"
+    },
+    {
+      "name": "mergeConfig: NaN budget → default",
+      "error": "NaN budget should fall back to default, got 500000",
+      "severity": "HIGH"
+    },
+    {
+      "name": "mergeConfig: Infinity budget → default",
+      "error": "Infinity budget should fall back to default, got 500000",
+      "severity": "HIGH"
+    },
+    {
+      "name": "mergeConfig: -Infinity budget → default",
+      "error": "-Infinity budget should fall back to default",
+      "severity": "HIGH"
+    },
+    {
+      "name": "mergeConfig: injection string in startingBudget → default",
+      "error": "SQL injection in budget → default",
+      "severity": "CRITICAL"
+    },
+    {
+      "name": "mergeConfig: script tag in startingBudget → default",
+      "error": "XSS in budget → default",
+      "severity": "CRITICAL"
+    },
+    {
+      "name": "mergeConfig: empty nested objects → nested defaults",
+      "error": "empty obj → adBonuses.TV default",
+      "severity": "MEDIUM"
+    },
+    {
+      "name": "fillRateToSatisfactionPct: fill rate 2.0 → excellent max (100)",
+      "error": "fill rate 2.0 → 100, got 86",
+      "severity": "MEDIUM"
+    }
+  ]
+}

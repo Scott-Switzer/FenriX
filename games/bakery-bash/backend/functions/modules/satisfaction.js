@@ -34,7 +34,7 @@ const {
  * @returns {number}
  */
 function calculateFillRate(effectiveOutput, baseDemand) {
-  if (!baseDemand || baseDemand <= 0) return 0;
+  if (!Number.isFinite(effectiveOutput) || !baseDemand || baseDemand <= 0) return 0;
   return effectiveOutput / baseDemand;
 }
 
@@ -70,14 +70,16 @@ function fillRateToSatisfactionPct(fillRate) {
     if (fillRate < tier.maxFillRate) {
       const prevMax = i === 0 ? 0 : SATISFACTION_TIERS[i - 1].maxFillRate;
       const bandSize = tier.maxFillRate - prevMax;
-      // Interpolate linearly inside the band.
+      // For the last tier (Infinity band), position = (fr - prevMax) / Inf = 0,
+      // so result = minSat (86 for excellent). This is correct: exactly meeting
+      // demand earns the start of excellent, surplus doesn't increase further.
       const position = bandSize > 0 ? (fillRate - prevMax) / bandSize : 0;
       const clampedPos = Math.max(0, Math.min(1, position));
       return tier.minSat + clampedPos * (tier.maxSat - tier.minSat);
     }
   }
 
-  // Fill rate >= the last finite threshold (>=1.0 → excellent max).
+  // Unreachable with Infinity as last maxFillRate, but safe fallback.
   const last = SATISFACTION_TIERS[SATISFACTION_TIERS.length - 1];
   return last.maxSat;
 }
@@ -157,7 +159,8 @@ function calculateAggregateSatisfaction(perProductSatisfaction) {
   for (const [product, entry] of Object.entries(perProductSatisfaction)) {
     if (!entry) continue; // not offered
     const weight = (PRODUCT_CATALOG[product] && PRODUCT_CATALOG[product].satisfactionWeight) || 0;
-    weightedSum += entry.satisfactionPct * weight;
+    const sat = Number.isFinite(entry.satisfactionPct) ? entry.satisfactionPct : 0;
+    weightedSum += sat * weight;
     totalWeight += weight;
   }
 
@@ -201,7 +204,8 @@ function getFootTrafficModifier(
   sousChefCount,
 ) {
   // 1. Satisfaction modifier (-0.40 .. +0.40)
-  const satMod = ((aggregateSatisfactionPct - 50) / 50) * 0.40;
+  const sat = Number.isFinite(aggregateSatisfactionPct) ? aggregateSatisfactionPct : 0;
+  const satMod = ((sat - 50) / 50) * 0.40;
 
   // 2. Premium product bonus (croissant and matcha at Excellent, stackable)
   let premiumBonus = 0;
@@ -242,8 +246,9 @@ function getFootTrafficModifier(
  */
 function getReturningCustomerBonus(aggregateSatisfactionPct, priorRoundCustomerCount, config) {
   const { excellent, good } = config.returningCustomerBonuses;
-  if (aggregateSatisfactionPct >= 86) return priorRoundCustomerCount * excellent;
-  if (aggregateSatisfactionPct >= 66) return priorRoundCustomerCount * good;
+  const count = Math.max(0, Number(priorRoundCustomerCount) || 0);
+  if (aggregateSatisfactionPct >= 86) return count * excellent;
+  if (aggregateSatisfactionPct >= 66) return count * good;
   return 0;
 }
 

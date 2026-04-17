@@ -227,7 +227,8 @@ function calculateTotalProductOutput(product, specialtyChefs, sousChefAssignment
  * @returns {number} satisfaction score in [floor, 100]
  */
 function calculateChefSatisfactionScore(sousChefCount, config) {
-  const over = Math.max(0, sousChefCount - config.chefSatisfactionThreshold);
+  const n = Number.isFinite(sousChefCount) ? Math.max(0, sousChefCount) : 0;
+  const over = Math.max(0, n - config.chefSatisfactionThreshold);
   const raw = 100 - over * config.chefSatisfactionDecay;
   return Math.max(config.chefSatisfactionFloor, raw);
 }
@@ -270,12 +271,13 @@ function calculateEffectiveOutput(totalOutput, chefSatisfactionScore) {
  * @returns {number} dollar cost of the next hire
  */
 function getSousChefCost(currentCount, config) {
+  const n = Number.isFinite(currentCount) ? Math.max(0, Math.floor(currentCount)) : 0;
   const table = [1.0, 1.5, 2.25, 3.0];
   let multiplier;
-  if (currentCount < table.length) {
-    multiplier = table[currentCount];
+  if (n < table.length) {
+    multiplier = table[n];
   } else {
-    multiplier = 3.0 + 0.75 * (currentCount - 3);
+    multiplier = 3.0 + 0.75 * (n - 3);
   }
   return multiplier * config.sousChefBaseCost;
 }
@@ -329,17 +331,19 @@ function getTotalSousChefHireCost(count, config) {
  * @returns {{ winners: Map<string, object[]>, payments: Map<string, number> }}
  */
 function resolveChefAuction(chefPool, playerBids) {
+  const pool = Array.isArray(chefPool) ? chefPool : [];
+  const bids = Array.isArray(playerBids) ? playerBids : [];
   const winners = new Map();
   const payments = new Map();
 
   // Group bids by chefId for O(chefs + bids) lookup.
   const bidsByChef = new Map();
-  for (const bid of playerBids) {
+  for (const bid of bids) {
     if (!bidsByChef.has(bid.chefId)) bidsByChef.set(bid.chefId, []);
     bidsByChef.get(bid.chefId).push(bid);
   }
 
-  for (const chef of chefPool) {
+  for (const chef of pool) {
     const bids = bidsByChef.get(chef.id);
     if (!bids || bids.length === 0) continue;
 

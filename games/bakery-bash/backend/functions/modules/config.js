@@ -133,7 +133,7 @@ const SATISFACTION_TIERS = [
 // ---------------------------------------------------------------------------
 
 const DEFAULT_GAME_CONFIG = {
-  startingBudget: 2000,
+  startingBudget: 500000,
   sousChefBaseCost: 50,
   unitCostPerProduct: 1,
 
@@ -148,10 +148,10 @@ const DEFAULT_GAME_CONFIG = {
   },
 
   adBonuses: {
-    TV: 200,
-    Billboard: 150,
-    Radio: 100,
-    Newspaper: 75,
+    TV: 50000,
+    Billboard: 37500,
+    Radio: 25000,
+    Newspaper: 18750,
   },
 
   phaseDurations: {

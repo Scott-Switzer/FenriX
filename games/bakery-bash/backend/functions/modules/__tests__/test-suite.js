@@ -94,7 +94,7 @@ describe('config.js', () => {
   const cfg = config.mergeConfig({});
 
   it('has correct defaults', () => {
-    eq(cfg.startingBudget, 2000);
+    eq(cfg.startingBudget, 500000);
     eq(cfg.sousChefBaseCost, 50);
     eq(cfg.loanSharkInterestRate, 0.10);
     eq(cfg.totalRounds, 5);
@@ -126,13 +126,13 @@ describe('config.js', () => {
 
   it('mergeConfig rejects bad types', () => {
     const c3 = config.mergeConfig({ startingBudget: 'garbage' });
-    eq(c3.startingBudget, 2000); // falls back to default
+    eq(c3.startingBudget, 500000); // falls back to default
   });
 
   it('adBonuses partial override', () => {
     const c4 = config.mergeConfig({ adBonuses: { TV: 999 } });
     eq(c4.adBonuses.TV, 999);
-    eq(c4.adBonuses.Radio, 100); // untouched
+    eq(c4.adBonuses.Radio, 25000); // untouched (spec-scaled default)
   });
 
   it('CHEF_SPAWN_RATES sums to 1.0 per round', () => {
@@ -500,9 +500,9 @@ describe('revenue.js', () => {
   });
 
   it('calculateProductRevenue', () => {
-    const cfg = { products: { coffee: { price: 4 }, croissant: { price: 5 } } };
-    const result = revenue.calculateProductRevenue({ coffee: 10, croissant: 20 }, cfg);
-    eq(result.totalProductRevenue, 10 * 4 + 20 * 5);
+    // Uses PRODUCT_CATALOG from config.js: coffee fixedPrice=4.00, croissant fixedPrice=4.75
+    const result = revenue.calculateProductRevenue({ coffee: 10, croissant: 20 });
+    eq(result.totalProductRevenue, 10 * 4.00 + 20 * 4.75); // 135
     eq(result.breakdown.coffee.qtySold, 10);
   });
 

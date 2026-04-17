@@ -146,10 +146,16 @@ function validateDecision(data, currentRound, _config) {
   }
 
   // --- sousChefCount ---
+  // HIGH-11 fix: cap sous chefs at a reasonable maximum to prevent
+  // accidental self-bankruptcy from absurd values.
+  const MAX_SOUS_CHEFS = 20;
   const sousChefCount =
     data.sousChefCount == null || data.sousChefCount === ''
       ? 0
       : requireNonNegInt(data.sousChefCount, 'sousChefCount');
+  if (sousChefCount > MAX_SOUS_CHEFS) {
+    fail('invalid-argument', `sousChefCount (${sousChefCount}) exceeds maximum of ${MAX_SOUS_CHEFS}`);
+  }
 
   // --- sousChefAssignments ---
   const rawAssign =
@@ -220,9 +226,11 @@ function validateAdBids(data) {
     }
   }
 
-  // Reject unknown keys (typos shouldn't silently pass).
+  // MED-07 fix: reject unknown keys, but whitelist protocol keys that may
+  // appear in the raw payload when adBids was not wrapped in a sub-object.
+  const KNOWN_NON_BID_KEYS = new Set(['adBids', 'gameId', 'bidType', 'round']);
   for (const key of Object.keys(raw)) {
-    if (key === 'adBids') continue;
+    if (KNOWN_NON_BID_KEYS.has(key)) continue;
     if (!AD_TYPES.includes(key)) {
       fail('invalid-argument', `Unknown ad type in bids: "${key}"`);
     }

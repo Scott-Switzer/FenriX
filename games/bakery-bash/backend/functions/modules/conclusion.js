@@ -138,7 +138,11 @@ function rankPlayers(playerAggregates) {
 // ---------------------------------------------------------------------------
 
 /**
+ * normalizeChef
  * Normalize a chef object into the conclusion winner-roster shape.
+ *
+ * @param {object} chef raw chef record from Firestore or simulation output
+ * @returns {object|null} normalized chef with name, nationality, skillTier, variant; or null if invalid
  */
 function normalizeChef(chef) {
   if (!chef || typeof chef !== 'object') return null;
@@ -184,6 +188,30 @@ function buildConclusionData(rankedPlayers, winnerChefRoster) {
 }
 
 // ---------------------------------------------------------------------------
+// computeConclusion — convenience wrapper called by index.js
+// ---------------------------------------------------------------------------
+
+/**
+ * computeConclusion
+ * Accepts pre-ranked player data from index.js and wraps it into the full
+ * conclusion payload. This bridges the index.js persistConclusion path with
+ * the richer buildConclusionData formatting.
+ *
+ * @param {object[]} rankings  pre-sorted rankings from persistConclusion
+ * @param {object}   opts      { totalRounds, config }
+ * @returns {object} conclusion payload
+ */
+function computeConclusion(rankings, opts = {}) {
+  const ranked = Array.isArray(rankings) ? rankings : [];
+  // Find the winner (rank 1) and include their chef roster if available.
+  const winner = ranked.find((p) => p.rank === 1) || ranked[0] || null;
+  const winnerChefs = winner && Array.isArray(winner.specialtyChefs)
+    ? winner.specialtyChefs
+    : [];
+  return buildConclusionData(ranked, winnerChefs);
+}
+
+// ---------------------------------------------------------------------------
 // Exports
 // ---------------------------------------------------------------------------
 
@@ -192,4 +220,5 @@ module.exports = {
   rankPlayers,
   buildConclusionData,
   normalizeChef,
+  computeConclusion,
 };

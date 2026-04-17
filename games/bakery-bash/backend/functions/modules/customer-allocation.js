@@ -23,6 +23,9 @@ const satisfaction = require('./satisfaction');
  *
  * demandPool(P) = baseDemand(P) × roundModifier(P)
  *
+ * Non-numeric or non-finite demand modifiers default to 1.0 to prevent NaN
+ * from propagating into the pool values.
+ *
  * @param {Object} allPlayersPerProductSatisfaction - (unused here but kept
  *        in the signature per spec; per-product totals don't depend on
  *        satisfaction at this stage — Stage 1 is market-wide demand.)
@@ -40,8 +43,10 @@ function calculateBaseTrafficPool(allPlayersPerProductSatisfaction, roundPrefere
   const pools = {};
   for (const product of config.PRODUCT_KEYS) {
     const baseDemand = (catalog[product] && catalog[product].baseDemand) || 0;
-    const modifier = (modifiers[product] != null) ? modifiers[product] : 1.0;
-    pools[product] = Math.round(baseDemand * modifier);
+    const mod = (typeof modifiers[product] === 'number' && Number.isFinite(modifiers[product]))
+      ? modifiers[product]
+      : 1.0;
+    pools[product] = Math.round(baseDemand * mod);
   }
   return pools;
 }
@@ -57,7 +62,7 @@ function calculateBaseTrafficPool(allPlayersPerProductSatisfaction, roundPrefere
  *      eligible players proportionally to that player's satisfaction pct for
  *      this product.
  *
- * @param {string} product
+ * @param {string} product - product key.
  * @param {number} demandPool - total customers wanting this product this round.
  * @param {Array<{playerId: string, perProductSatisfaction: Object<string,number>}>} allPlayersSatisfaction
  * @param {Map<string, number>} returningCustomers - playerId → returning count
@@ -123,7 +128,7 @@ function allocateCustomersPerProduct(product, demandPool, allPlayersSatisfaction
 }
 
 /**
- * Master allocation function.
+ * Master allocation function — runs all three allocation stages for a round.
  *
  * @param {Array<{
  *   playerId: string,
@@ -132,14 +137,14 @@ function allocateCustomersPerProduct(product, demandPool, allPlayersSatisfaction
  *   sousChefCount: number,
  *   numProductsOffered: number,
  *   aggregateSatisfactionPct: number
- * }>} allPlayersState
- * @param {Object<string,number>} roundPreferences - product → modifier.
- * @param {Object} cfg
+ * }>} allPlayersState - array of per-player state objects.
+ * @param {Object<string,number>} roundPreferences - product → demand modifier.
+ * @param {Object} cfg - game config.
  * @returns {Map<string, {
  *   totalCustomers: number,
  *   perProductCustomers: Object<string, number>,
  *   footTrafficModifier: number
- * }>}
+ * }>} playerId → allocation result.
  */
 function allocateAllCustomers(allPlayersState, roundPreferences, cfg = config) {
   // Step A: market demand per product.

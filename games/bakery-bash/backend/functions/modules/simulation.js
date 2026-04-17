@@ -47,6 +47,7 @@ const {
 
 const {
   calculateLoanShark,
+  updateBudget,
 } = require('./loan-shark');
 
 const {
@@ -198,9 +199,12 @@ const SELLOUT_SAT_CAP = 45;
 function applySelloutCap(perProductStats, product) {
   const stats = perProductStats[product];
   if (!stats) return { sellout: false };
-  const capped = Math.min(stats.satisfactionPct, SELLOUT_SAT_CAP);
-  stats.satisfactionPct = capped;
-  stats.tier = 'poor';
+  // HIGH-06 fix: clone the entry before mutation to avoid corrupting
+  // Pass 1 data that may be referenced later.
+  const cloned = { ...stats };
+  cloned.satisfactionPct = Math.min(stats.satisfactionPct, SELLOUT_SAT_CAP);
+  cloned.tier = 'poor';
+  perProductStats[product] = cloned;
   return { sellout: true };
 }
 
@@ -240,8 +244,11 @@ function computeReturningCustomersEarned(aggregateSatPct, customerCount, config)
  * @param {object}        config            merged game config
  * @returns {Array<object>} per-player results
  */
-function runSimulation(players, roundPreferences, config) {
+function runSimulation(players, roundPreferences, config, { gameId = 'game', round = 0 } = {}) {
   const safePlayers = Array.isArray(players) ? players : [];
+
+  // Numeric sanitizer: coerces value to a finite number, defaulting to 0.
+  const _num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 
   // ---------------------------------------------------------------------
   // Pass 1 — per-player output, chef-sat score, per-product satisfaction
@@ -368,7 +375,7 @@ function runSimulation(players, roundPreferences, config) {
       adSpend: adBidPaid,
       numProducts: pp.offeredProducts.length,
       totalProductRevenue,
-      noiseSeed: `${p.playerId}:${Date.now()}`,
+      noiseSeed: `${gameId || 'game'}:${round}:${p.playerId}`,
     }, config);
 
     // --- Round costs (excluding loan shark) ---
@@ -384,21 +391,19 @@ function runSimulation(players, roundPreferences, config) {
     const totalSpent = roundCosts.totalSpent;
 
     // --- Loan shark ---
-    const budgetCurrent = Number(p.budgetCurrent) || 0;
+    const budgetCurrent = _num(p.budgetCurrent);
     const loanResult = calculateLoanShark(totalSpent, budgetCurrent, config);
     const amountBorrowed = loanResult.borrowed;
     const interestCharged = loanResult.interest;
     const loanSharkDeduction = loanResult.loanSharkDeduction;
     const revenueNet = revenueGross - loanSharkDeduction;
 
-    // budgetAfter: start with current budget, subtract spending, add net revenue.
-    // When borrowing occurs, the loan covers the shortfall up-front so
-    // post-spend budget floors at 0; then net revenue lands on top.
-    // Final budget is floored at 0 — the loan shark deduction can eat into
-    // revenue but we never show a negative balance to the player. A 0 budget
-    // means the player starts the next round fully dependent on borrowing.
-    const budgetAfterSpend = Math.max(0, budgetCurrent - totalSpent);
-    const budgetAfter = Math.max(0, Math.round(budgetAfterSpend + revenueNet));
+    // HIGH-07 fix: use the canonical updateBudget formula from loan-shark.js
+    // instead of the incorrect inline version that discarded starting budget
+    // when borrowing occurred.
+    const budgetAfter = Math.max(0, Math.round(
+      updateBudget(budgetCurrent, revenueNet, totalSpent)
+    ));
 
     // --- Returning customers earned (for NEXT round) ---
     const returningCustomersEarned = computeReturningCustomersEarned(
