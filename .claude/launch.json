@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "firebase-react-starter",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start"],
+      "cwd": "templates/firebase-react-starter",
+      "port": 3000
+    }
+  ]
+}
