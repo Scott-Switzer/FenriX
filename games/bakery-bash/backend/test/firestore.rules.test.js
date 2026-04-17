@@ -144,6 +144,40 @@ async function seedBaseGame() {
       revenue: 610,
     });
 
+    await setDoc(doc(db, "games", GAME_ID, "players", PLAYER_A, "emails", "round_2_data"), {
+      type: "round_data_csv",
+      round: 2,
+      availableAfterRound: 1,
+      recipientPlayerId: PLAYER_A,
+      subject: "Round 1 data is ready",
+      sender: "Bakery Bash Analytics",
+      body: "Use this CSV before Round 2 to update your model.",
+      read: false,
+      createdAt: null,
+      attachments: [
+        {
+          filename: "bakery-bash-through-round-1.csv",
+          contentType: "text/csv",
+          csvText: "day,revenue\n1,650",
+          rowCount: 1,
+          includedThroughRound: 1,
+        },
+      ],
+    });
+
+    await setDoc(doc(db, "games", GAME_ID, "players", PLAYER_B, "emails", "round_2_data"), {
+      type: "round_data_csv",
+      round: 2,
+      availableAfterRound: 1,
+      recipientPlayerId: PLAYER_B,
+      subject: "Round 1 data is ready",
+      sender: "Bakery Bash Analytics",
+      body: "Use this CSV before Round 2 to update your model.",
+      read: false,
+      createdAt: null,
+      attachments: [],
+    });
+
     await setDoc(doc(db, "games", GAME_ID, "csvRows", PLAYER_A, "rounds", "round_1"), {
       playerId: PLAYER_A,
       round: 1,
@@ -233,6 +267,12 @@ describe("Bakery Bash Firestore security rules", () => {
     await assertFails(
       getDoc(doc(db, "games", GAME_ID, "csvRows", PLAYER_B, "rounds", "round_1"))
     );
+    await assertSucceeds(
+      getDoc(doc(db, "games", GAME_ID, "players", PLAYER_A, "emails", "round_2_data"))
+    );
+    await assertFails(
+      getDoc(doc(db, "games", GAME_ID, "players", PLAYER_B, "emails", "round_2_data"))
+    );
   });
 
   it("does not let clients create initial player documents", async () => {
@@ -272,9 +312,15 @@ describe("Bakery Bash Firestore security rules", () => {
         "classStats.avgRevenue": 999999,
       })
     );
+    await assertFails(
+      updateDoc(
+        doc(db, "games", GAME_ID, "players", PLAYER_A, "emails", "round_2_data"),
+        { read: true }
+      )
+    );
   });
 
-  it("lets players create but not edit or delete their own decision snapshots", async () => {
+  it("does not let players write decision snapshots directly", async () => {
     const db = authedDb(PLAYER_A);
     const decisionRef = doc(
       db,
@@ -286,7 +332,7 @@ describe("Bakery Bash Firestore security rules", () => {
       "round_1"
     );
 
-    await assertSucceeds(
+    await assertFails(
       setDoc(decisionRef, {
         round: 1,
         submittedAt: null,

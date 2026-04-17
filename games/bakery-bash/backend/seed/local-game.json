@@ -9,6 +9,7 @@
         "currentRound": 1,
         "totalRounds": 5,
         "phaseEndTime": null,
+        "phaseStartedAt": null,
         "submittedCount": 0,
         "totalPlayers": 2,
         "paused": false,
@@ -42,7 +43,14 @@
           "noiseMin": -100,
           "noiseMax": 100
         },
-        "customerPoolMultiplier": 100
+        "chefBonusPerPoint": 5,
+        "customerPoolMultiplier": 100,
+        "phaseDurations": {
+          "closing_hours": 180,
+          "auction": 90,
+          "open_for_business": 30,
+          "results": 60
+        }
       }
     },
     {

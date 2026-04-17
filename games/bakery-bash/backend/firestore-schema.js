@@ -11,7 +11,7 @@
  */
 
 /**
- * @typedef {"lobby" | "email" | "decide" | "bid" | "simulating" | "results_ready" | "game_over"} GamePhase
+ * @typedef {"lobby" | "closing_hours" | "auction" | "open_for_business" | "results" | "game_over"} GamePhase
  */
 
 // ─────────────────────────────────────────────────────────────
@@ -23,14 +23,16 @@ const GameDocument = {
   joinCode: "ABC123",             // string
 
   // Current phase of the state machine
-  // Transitions: lobby → email → decide → bid → simulating → results_ready → (next round email or game_over)
+  // Transitions: lobby → closing_hours → auction → open_for_business → results → (next round closing_hours or game_over)
   phase: "lobby",                 // GamePhase
 
   // Current round number (1-indexed)
   currentRound: 1,                // number (1–5)
   totalRounds: 5,                 // number
 
-  // Server-side timestamp for when current phase ends (used by clients to sync countdown)
+  // Server-owned timestamps for the current phase. Clients calculate time remaining
+  // from phaseEndTime and must not run local authoritative countdowns.
+  phaseStartedAt: null,           // Timestamp | null
   phaseEndTime: null,             // Timestamp | null
 
   // Track submission progress so professor dashboard can show "X/Y submitted"
@@ -93,7 +95,7 @@ const GameConfigDocument = {
 
   // Chef auction: skill level (0–100) won maps to a revenue bonus
   // bonus = chefSkill * chefBonusPerPoint
-  chefBonusPerPoint: 2,           // number
+  chefBonusPerPoint: 5,           // number
 
   // Customer pool = customerPoolMultiplier × numPlayers
   customerPoolMultiplier: 100,
@@ -108,10 +110,9 @@ const GameConfigDocument = {
 
   // Phase durations (seconds)
   phaseDurations: {
-    email: 60,
-    decide: 300,                  // 5 minutes
-    bid: 120,                     // 2 minutes (2 × 60s auctions)
-    simulate: 30,
+    closing_hours: 180,           // 3 minutes
+    auction: 90,                  // 3 × 30s sealed-bid auctions
+    open_for_business: 30,
     results: 60,
   },
 };
@@ -207,7 +208,8 @@ const PlayerDocument = {
 
 // ─────────────────────────────────────────────────────────────
 // /games/{gameId}/players/{playerId}/decisions/{roundId}
-// Immutable historical snapshot of the player's submitted decision for a round.
+// Immutable historical snapshot written by the submitDecision Cloud Function
+// after server-side validation of the player's Closing Hours choices.
 // roundId = "round_1", "round_2", … "round_5"
 // ─────────────────────────────────────────────────────────────
 const DecisionDocument = {
@@ -426,6 +428,33 @@ const CsvRowsDocument = {
 };
 
 // ─────────────────────────────────────────────────────────────
+// /games/{gameId}/players/{playerId}/emails/{emailId}
+// Backend-owned email phase messages. Used to drop the current CSV dataset
+// before the next decision round so players can update their models.
+// emailId = "round_2_data", "round_3_data", …
+// ─────────────────────────────────────────────────────────────
+const PlayerEmailDocument = {
+  type: "round_data_csv",        // string
+  round: 2,                      // number — next decision round this data supports
+  availableAfterRound: 1,        // number — last completed round included in CSV
+  recipientPlayerId: "uid_abc",  // string
+  subject: "Round 1 data is ready",
+  sender: "Bakery Bash Analytics",
+  body: "Use this CSV before Round 2 to update your model and plan decisions.",
+  read: false,                   // boolean — frontend may track read state locally
+  createdAt: null,               // Timestamp
+  attachments: [
+    {
+      filename: "bakery-bash-through-round-1.csv",
+      contentType: "text/csv",
+      csvText: "day,revenue,num_products,...", // string — full CSV payload
+      rowCount: 1,               // number
+      includedThroughRound: 1,   // number
+    },
+  ],
+};
+
+// ─────────────────────────────────────────────────────────────
 // COLLECTION HIERARCHY SUMMARY
 // ─────────────────────────────────────────────────────────────
 //
@@ -434,6 +463,7 @@ const CsvRowsDocument = {
 // /games/{gameId}/players/{playerId}       ← PlayerDocument
 // /games/{gameId}/players/{playerId}/decisions/{roundId}  ← DecisionDocument
 // /games/{gameId}/players/{playerId}/rounds/{roundId}     ← RoundResultDocument
+// /games/{gameId}/players/{playerId}/emails/{emailId}     ← PlayerEmailDocument
 // /games/{gameId}/rounds/{roundId}         ← AggregateRoundDocument
 // /games/{gameId}/leaderboard/current      ← LeaderboardDocument
 // /games/{gameId}/csvRows/{playerId}/rounds/{roundId}  ← CsvRowsDocument
@@ -466,10 +496,15 @@ const CsvRowsDocument = {
 //
 //       match /decisions/{roundId} {
 //         allow read: if request.auth.uid == playerId;
-//         allow write: if request.auth.uid == playerId;
+//         allow write: if false; // Cloud Functions only
 //       }
 //
 //       match /rounds/{roundId} {
+//         allow read: if request.auth.uid == playerId;
+//         allow write: if false; // Cloud Functions only
+//       }
+//
+//       match /emails/{emailId} {
 //         allow read: if request.auth.uid == playerId;
 //         allow write: if false; // Cloud Functions only
 //       }
@@ -505,4 +540,5 @@ module.exports = {
   AggregateRoundDocument,
   LeaderboardDocument,
   CsvRowsDocument,
+  PlayerEmailDocument,
 };

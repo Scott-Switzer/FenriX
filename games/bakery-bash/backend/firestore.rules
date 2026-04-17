@@ -42,17 +42,23 @@ service cloud.firestore {
                .changedKeys()
                .hasOnly(["displayName", "pendingDecision", "pendingBids"]);
 
-        // Immutable decision snapshots — player can write once per round,
-        // but never delete or overwrite a submitted decision.
+        // Immutable decision snapshots are written by Cloud Functions after
+        // server-side validation in submitDecision.
         match /decisions/{roundId} {
           allow read: if isOwner(playerId);
-          allow create: if isOwner(playerId);
+          allow create: if false;
           allow update: if false;
           allow delete: if false;
         }
 
         // Round results are written exclusively by Cloud Functions.
         match /rounds/{roundId} {
+          allow read: if isOwner(playerId);
+          allow write: if false;
+        }
+
+        // Email phase data drops are written exclusively by Cloud Functions.
+        match /emails/{emailId} {
           allow read: if isOwner(playerId);
           allow write: if false;
         }
