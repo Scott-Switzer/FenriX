@@ -1,0 +1,1446 @@
+#!/usr/bin/env node
+/**
+ * Comprehensive Test Suite for Bakery Bash Backend
+ * 
+ * Covers: config, chef-system, satisfaction, customer-allocation,
+ * revenue, loan-shark, round-preferences, phases, csv-export,
+ * conclusion, decision-validation, simulation
+ * 
+ * Run: node modules/test-suite.js
+ */
+
+// ============================================================================
+// Test framework (minimal, zero-dep)
+// ============================================================================
+let passed = 0;
+let failed = 0;
+let currentModule = '';
+const failures = [];
+
+function describe(name, fn) {
+  currentModule = name;
+  console.log(`\n=== ${name} ===`);
+  fn();
+}
+
+function it(name, fn) {
+  try {
+    fn();
+    passed++;
+    // Only show dots for passing, saves log space
+    process.stdout.write('.');
+  } catch (e) {
+    failed++;
+    const msg = `  FAIL: ${currentModule} > ${name}\n    ${e.message}`;
+    failures.push(msg);
+    console.log(`\n  ✗ ${name}`);
+    console.log(`    ${e.message}`);
+  }
+}
+
+function eq(actual, expected, msg = '') {
+  if (actual !== expected) {
+    throw new Error(`${msg} — expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+  }
+}
+
+function near(actual, expected, eps = 0.01, msg = '') {
+  if (Math.abs(actual - expected) > eps) {
+    throw new Error(`${msg} — expected ~${expected}, got ${actual} (eps=${eps})`);
+  }
+}
+
+function ok(val, msg = '') {
+  if (!val) throw new Error(`${msg} — expected truthy, got ${JSON.stringify(val)}`);
+}
+
+function throws(fn, pattern, msg = '') {
+  let threw = false;
+  try { fn(); } catch (e) {
+    threw = true;
+    if (pattern && !pattern.test(e.message)) {
+      throw new Error(`${msg} — threw but message "${e.message}" didn't match ${pattern}`);
+    }
+  }
+  if (!threw) throw new Error(`${msg} — expected to throw but didn't`);
+}
+
+function deepEq(actual, expected, msg = '') {
+  const a = JSON.stringify(actual);
+  const b = JSON.stringify(expected);
+  if (a !== b) throw new Error(`${msg} — expected ${b}, got ${a}`);
+}
+
+// ============================================================================
+// Load modules
+// ============================================================================
+const config = require('../config');
+const chefSys = require('../chef-system');
+const sat = require('../satisfaction');
+const custAlloc = require('../customer-allocation');
+const revenue = require('../revenue');
+const loanShark = require('../loan-shark');
+const roundPrefs = require('../round-preferences');
+const phases = require('../phases');
+const csvExport = require('../csv-export');
+const conclusion = require('../conclusion');
+const validation = require('../decision-validation');
+const simulation = require('../simulation');
+
+// ============================================================================
+// 1. CONFIG MODULE
+// ============================================================================
+describe('config.js', () => {
+  const cfg = config.mergeConfig({});
+
+  it('has correct defaults', () => {
+    eq(cfg.startingBudget, 2000);
+    eq(cfg.sousChefBaseCost, 50);
+    eq(cfg.loanSharkInterestRate, 0.10);
+    eq(cfg.totalRounds, 5);
+  });
+
+  it('PRODUCT_KEYS has 6 products', () => {
+    eq(config.PRODUCT_KEYS.length, 6);
+    ok(config.PRODUCT_KEYS.includes('croissant'));
+    ok(config.PRODUCT_KEYS.includes('coffee'));
+    ok(config.PRODUCT_KEYS.includes('cookie'));
+    ok(config.PRODUCT_KEYS.includes('bagel'));
+    ok(config.PRODUCT_KEYS.includes('sandwich'));
+    ok(config.PRODUCT_KEYS.includes('matcha'));
+  });
+
+  it('PRODUCT_CATALOG has baseDemand and fixedPrice for each product', () => {
+    for (const k of config.PRODUCT_KEYS) {
+      ok(config.PRODUCT_CATALOG[k], `catalog missing ${k}`);
+      ok(typeof config.PRODUCT_CATALOG[k].baseDemand === 'number', `baseDemand for ${k}`);
+      ok(typeof config.PRODUCT_CATALOG[k].fixedPrice === 'number', `fixedPrice for ${k}`);
+    }
+  });
+
+  it('mergeConfig applies overrides', () => {
+    const c2 = config.mergeConfig({ startingBudget: 5000 });
+    eq(c2.startingBudget, 5000);
+    eq(c2.sousChefBaseCost, 50); // unchanged
+  });
+
+  it('mergeConfig rejects bad types', () => {
+    const c3 = config.mergeConfig({ startingBudget: 'garbage' });
+    eq(c3.startingBudget, 2000); // falls back to default
+  });
+
+  it('adBonuses partial override', () => {
+    const c4 = config.mergeConfig({ adBonuses: { TV: 999 } });
+    eq(c4.adBonuses.TV, 999);
+    eq(c4.adBonuses.Radio, 100); // untouched
+  });
+
+  it('CHEF_SPAWN_RATES sums to 1.0 per round', () => {
+    for (const r of config.CHEF_SPAWN_RATES) {
+      near(r.novel + r.intermediate + r.advanced, 1.0, 0.001, 'spawn rate sum');
+    }
+  });
+
+  it('numberOrDefault works', () => {
+    eq(config.numberOrDefault('7', 0), 7);
+    eq(config.numberOrDefault(undefined, 5), 5);
+    eq(config.numberOrDefault(null, 3), 3);
+    eq(config.numberOrDefault(NaN, 42), 42);
+  });
+
+  it('cleanString trims', () => {
+    eq(config.cleanString('  hello  '), 'hello');
+    eq(config.cleanString(123), ''); // non-string → empty
+    eq(config.cleanString(null), '');
+  });
+
+  it('returningCustomerBonuses defaults', () => {
+    eq(cfg.returningCustomerBonuses.excellent, 0.15);
+    eq(cfg.returningCustomerBonuses.good, 0.08);
+  });
+});
+
+// ============================================================================
+// 2. CHEF SYSTEM
+// ============================================================================
+describe('chef-system.js', () => {
+  const cfg = config.mergeConfig({});
+
+  it('getChefOutputForProduct — advanced with specialty', () => {
+    const chef = { skillTier: 'advanced', specialties: ['croissant', 'coffee'] };
+    eq(chefSys.getChefOutputForProduct(chef, 'croissant'), 30 * 2.2);
+  });
+
+  it('getChefOutputForProduct — advanced without specialty', () => {
+    const chef = { skillTier: 'advanced', specialties: ['croissant', 'coffee'] };
+    eq(chefSys.getChefOutputForProduct(chef, 'bagel'), 30 * 1.6);
+  });
+
+  it('getChefOutputForProduct — base chef', () => {
+    eq(chefSys.getChefOutputForProduct({ skillTier: 'base' }, 'anything'), 30);
+  });
+
+  it('getChefOutputForProduct — novel tier', () => {
+    const chef = { skillTier: 'novel', specialties: ['matcha'] };
+    const output = chefSys.getChefOutputForProduct(chef, 'matcha');
+    ok(output > 0, 'novel output > 0');
+  });
+
+  it('calculateTotalProductOutput with sous chef', () => {
+    const chefs = [{ skillTier: 'advanced', specialties: ['croissant', 'coffee'] }];
+    const total = chefSys.calculateTotalProductOutput('croissant', chefs, { croissant: 1 });
+    // base(30) + advanced specialty(66) + sous(0.5 × 66 = 33) = 129
+    near(total, 129, 0.01, 'total output');
+  });
+
+  it('calculateTotalProductOutput without sous', () => {
+    const chefs = [{ skillTier: 'advanced', specialties: ['croissant', 'coffee'] }];
+    const total = chefSys.calculateTotalProductOutput('croissant', chefs, {});
+    // base(30) + advanced specialty(66) = 96
+    near(total, 96, 0.01, 'total output no sous');
+  });
+
+  it('calculateChefSatisfactionScore — 4 or fewer chefs = 100', () => {
+    eq(chefSys.calculateChefSatisfactionScore(0, cfg), 100);
+    eq(chefSys.calculateChefSatisfactionScore(4, cfg), 100);
+  });
+
+  it('calculateChefSatisfactionScore — diminishes above 4', () => {
+    eq(chefSys.calculateChefSatisfactionScore(5, cfg), 84);
+    eq(chefSys.calculateChefSatisfactionScore(8, cfg), 36);
+  });
+
+  it('calculateChefSatisfactionScore — floor at 35', () => {
+    eq(chefSys.calculateChefSatisfactionScore(9, cfg), 35);
+    eq(chefSys.calculateChefSatisfactionScore(100, cfg), 35);
+  });
+
+  it('calculateEffectiveOutput applies chef satisfaction', () => {
+    eq(chefSys.calculateEffectiveOutput(200, 50), 100);
+    eq(chefSys.calculateEffectiveOutput(100, 100), 100);
+    eq(chefSys.calculateEffectiveOutput(100, 0), 0);
+  });
+
+  it('getSousChefCost escalation', () => {
+    eq(chefSys.getSousChefCost(0, cfg), 50);
+    eq(chefSys.getSousChefCost(1, cfg), 75);
+    eq(chefSys.getSousChefCost(2, cfg), 112.5);
+    eq(chefSys.getSousChefCost(3, cfg), 150);
+  });
+
+  it('getTotalSousChefHireCost sums correctly', () => {
+    near(chefSys.getTotalSousChefHireCost(4, cfg), 50 + 75 + 112.5 + 150, 0.01);
+  });
+
+  it('resolveChefAuction — highest bid wins', () => {
+    const pool = [{ id: 'A' }, { id: 'B' }];
+    const bids = [
+      { playerId: 'p1', chefId: 'A', amount: 200, submittedAt: 10 },
+      { playerId: 'p2', chefId: 'A', amount: 100, submittedAt: 5 },
+    ];
+    const result = chefSys.resolveChefAuction(pool, bids);
+    ok(result.winners.get('p1').length === 1);
+    eq(result.winners.get('p1')[0].id, 'A');
+    eq(result.payments.get('p1'), 200);
+  });
+
+  it('resolveChefAuction — tie breaks by submittedAt', () => {
+    const pool = [{ id: 'A' }];
+    const bids = [
+      { playerId: 'p1', chefId: 'A', amount: 100, submittedAt: 10 },
+      { playerId: 'p2', chefId: 'A', amount: 100, submittedAt: 5 },
+    ];
+    const result = chefSys.resolveChefAuction(pool, bids);
+    ok(result.winners.get('p2').length === 1);
+    eq(result.winners.get('p2')[0].id, 'A');
+  });
+
+  it('generateChefPool produces valid chefs', () => {
+    const pool = chefSys.generateChefPool(1, cfg);
+    ok(pool.length >= 6 && pool.length <= 8, `pool size ${pool.length}`);
+    for (const c of pool) {
+      ok(typeof c.id === 'string');
+      ok(['novel', 'intermediate', 'advanced'].includes(c.skillTier));
+      ok(Array.isArray(c.specialties) && c.specialties.length === 2);
+      ok(c.minBidFloor > 0);
+    }
+  });
+
+  it('generateChefPool varies by round', () => {
+    const p1 = chefSys.generateChefPool(1, cfg);
+    const p3 = chefSys.generateChefPool(3, cfg);
+    // Can't guarantee different content but sizes can differ
+    ok(p1.length >= 6);
+    ok(p3.length >= 6);
+  });
+});
+
+// ============================================================================
+// 3. SATISFACTION
+// ============================================================================
+describe('satisfaction.js', () => {
+  it('calculateFillRate basic', () => {
+    eq(sat.calculateFillRate(60, 60), 1);
+    eq(sat.calculateFillRate(30, 60), 0.5);
+    eq(sat.calculateFillRate(10, 0), 0);
+  });
+
+  it('fillRateToSatisfactionPct — boundaries', () => {
+    eq(sat.fillRateToSatisfactionPct(0), 0);
+    eq(sat.fillRateToSatisfactionPct(1.0), 86); // start of excellent
+    ok(sat.fillRateToSatisfactionPct(0.5) <= 21, 'border of critical/poor');
+  });
+
+  it('fillRateToSatisfactionPct — mid-poor', () => {
+    // fr 0.60 → poor band [0.50, 0.70), position 0.5 → 21 + 0.5×24 = 33
+    near(sat.fillRateToSatisfactionPct(0.60), 33, 1);
+  });
+
+  it('fillRateToSatisfactionPct — surplus stays excellent', () => {
+    const s = sat.fillRateToSatisfactionPct(2.0);
+    ok(s >= 86 && s <= 100, `surplus ${s} should be excellent`);
+  });
+
+  it('tierForSatisfaction returns correct tiers', () => {
+    eq(sat.tierForSatisfaction(0), 'critical');
+    eq(sat.tierForSatisfaction(10), 'critical');
+    eq(sat.tierForSatisfaction(25), 'poor');
+    eq(sat.tierForSatisfaction(50), 'adequate');
+    eq(sat.tierForSatisfaction(70), 'good');
+    eq(sat.tierForSatisfaction(90), 'excellent');
+  });
+
+  it('calculatePerProductSatisfaction — multiple products', () => {
+    const state = {
+      menu: { croissant: true, coffee: true, cookie: true, bagel: false, sandwich: false, matcha: false },
+      effectiveOutputs: { croissant: 60, coffee: 42, cookie: 50 },
+    };
+    const pps = sat.calculatePerProductSatisfaction(state);
+    eq(pps.croissant.tier, 'excellent');
+    eq(pps.bagel, null);
+    ok(pps.coffee.satisfactionPct > 0, 'coffee has satisfaction');
+  });
+
+  it('calculateAggregateSatisfaction — weighted average', () => {
+    const pps = {
+      croissant: { satisfactionPct: 86, tier: 'excellent' },
+      coffee: { satisfactionPct: 33, tier: 'poor' },
+      cookie: { satisfactionPct: 86, tier: 'excellent' },
+    };
+    const agg = sat.calculateAggregateSatisfaction(pps);
+    ok(agg.aggregateSatisfactionPct > 0);
+    ok(agg.aggregateSatisfactionPct < 100);
+  });
+
+  it('getFootTrafficModifier — returns reasonable value', () => {
+    const pps = {
+      croissant: { satisfactionPct: 86, tier: 'excellent' },
+    };
+    const ftm = sat.getFootTrafficModifier(100, pps, 3, 2);
+    ok(typeof ftm === 'number');
+    ok(ftm >= 0, 'foot traffic >= 0');
+  });
+
+  it('getReturningCustomerBonus', () => {
+    const cfg = config.mergeConfig({});
+    near(sat.getReturningCustomerBonus(90, 100, cfg), 15, 1);
+    near(sat.getReturningCustomerBonus(70, 100, cfg), 8, 1);
+    eq(sat.getReturningCustomerBonus(50, 100, cfg), 0);
+  });
+
+  it('applySellOut — caps satisfaction at 45', () => {
+    const pps = {
+      croissant: { fillRate: 1.2, satisfactionPct: 100, tier: 'excellent' },
+      coffee: { fillRate: 0.5, satisfactionPct: 21, tier: 'poor' },
+      cookie: null,
+    };
+    const so = sat.applySellOut(
+      pps,
+      { croissant: 50, coffee: 70 },
+      { croissant: 50, coffee: 35 },
+    );
+    eq(so.perProductSatisfaction.croissant.satisfactionPct, 45);
+    eq(so.perProductSatisfaction.croissant.tier, 'poor');
+    eq(so.selloutFlags.croissant, true);
+    eq(so.perProductSatisfaction.coffee.satisfactionPct, 21);
+    eq(so.selloutFlags.coffee, false);
+    eq(so.perProductSatisfaction.cookie, null);
+  });
+});
+
+// ============================================================================
+// 4. CUSTOMER ALLOCATION
+// ============================================================================
+describe('customer-allocation.js', () => {
+  const cfg = config.mergeConfig({});
+
+  it('calculateBaseTrafficPool returns pools for all products', () => {
+    const pools = custAlloc.calculateBaseTrafficPool(null, {}, cfg);
+    for (const k of config.PRODUCT_KEYS) {
+      ok(typeof pools[k] === 'number', `pool for ${k}`);
+      ok(pools[k] >= 0, `non-negative pool for ${k}`);
+    }
+  });
+
+  it('calculateBaseTrafficPool — modifiers scale demand', () => {
+    const pools1 = custAlloc.calculateBaseTrafficPool(null, { modifiers: { coffee: 1.4 } }, cfg);
+    const pools2 = custAlloc.calculateBaseTrafficPool(null, { modifiers: { coffee: 1.0 } }, cfg);
+    ok(pools1.coffee > pools2.coffee, 'trending modifier increases pool');
+  });
+
+  it('allocateCustomersPerProduct — single player gets all', () => {
+    const players = [
+      { playerId: 'p1', perProductSatisfaction: { coffee: 80 } },
+    ];
+    const result = custAlloc.allocateCustomersPerProduct('coffee', 100, players, new Map());
+    eq(result.get('p1'), 100);
+  });
+
+  it('allocateCustomersPerProduct — proportional split', () => {
+    const players = [
+      { playerId: 'p1', perProductSatisfaction: { coffee: 80 } },
+      { playerId: 'p2', perProductSatisfaction: { coffee: 20 } },
+    ];
+    const result = custAlloc.allocateCustomersPerProduct('coffee', 100, players, new Map());
+    // 80% and 20%
+    eq(result.get('p1'), 80);
+    eq(result.get('p2'), 20);
+  });
+
+  it('allocateCustomersPerProduct — returning customers seeded first', () => {
+    const returning = new Map([['p1', 10]]);
+    const players = [
+      { playerId: 'p1', perProductSatisfaction: { coffee: 50 } },
+      { playerId: 'p2', perProductSatisfaction: { coffee: 50 } },
+    ];
+    const result = custAlloc.allocateCustomersPerProduct('coffee', 100, players, returning);
+    // p1 gets 10 returning + 45 competitive = 55; p2 gets 45
+    ok(result.get('p1') > result.get('p2'), 'returning customer advantage');
+  });
+
+  it('allocateCustomersPerProduct — skips players not offering product', () => {
+    const players = [
+      { playerId: 'p1', perProductSatisfaction: { coffee: 80 } },
+      { playerId: 'p2', perProductSatisfaction: {} }, // doesn't offer coffee
+    ];
+    const result = custAlloc.allocateCustomersPerProduct('coffee', 100, players, new Map());
+    eq(result.get('p1'), 100);
+    eq(result.has('p2'), false);
+  });
+
+  it('allocateAllCustomers — full multi-player', () => {
+    const state = [
+      {
+        playerId: 'p1',
+        perProductSatisfaction: { croissant: { satisfactionPct: 80 }, coffee: { satisfactionPct: 60 } },
+        returningCustomers: 0,
+        footTrafficMultiplier: 1.0,
+        sousChefCount: 0,
+        numProductsOffered: 2,
+        aggregateSatisfactionPct: 70,
+      },
+      {
+        playerId: 'p2',
+        perProductSatisfaction: { croissant: { satisfactionPct: 40 }, coffee: { satisfactionPct: 80 } },
+        returningCustomers: 0,
+        footTrafficMultiplier: 1.0,
+        sousChefCount: 0,
+        numProductsOffered: 2,
+        aggregateSatisfactionPct: 60,
+      },
+    ];
+    const alloc = custAlloc.allocateAllCustomers(state, {}, cfg);
+    ok(alloc instanceof Map);
+    ok(alloc.has('p1'));
+    ok(alloc.has('p2'));
+    ok(alloc.get('p1').totalCustomers > 0);
+    ok(alloc.get('p2').totalCustomers > 0);
+  });
+
+  it('processCustomerDefections — redistributes on sellout', () => {
+    const alloc = new Map([
+      ['p1', { totalCustomers: 100, perProductCustomers: { coffee: 80, croissant: 20 }, footTrafficModifier: 1.0 }],
+      ['p2', { totalCustomers: 50, perProductCustomers: { coffee: 30, croissant: 20 }, footTrafficModifier: 1.0 }],
+    ]);
+    const selloutFlags = new Map([['p1', { coffee: true }]]);
+    const playersSat = [
+      { playerId: 'p1', perProductSatisfaction: { coffee: 80, croissant: 20 } },
+      { playerId: 'p2', perProductSatisfaction: { coffee: 60, croissant: 20 } },
+    ];
+    const result = custAlloc.processCustomerDefections(alloc, selloutFlags, playersSat);
+    // p1 loses coffee customers (80). 60% (48) go to p2 for coffee. 40% (32) redirect to croissant.
+    ok(result.get('p2').perProductCustomers.coffee > 30, 'p2 gains coffee customers');
+    eq(result.get('p1').perProductCustomers.coffee, 0, 'p1 loses sold-out product');
+  });
+
+  it('processCustomerDefections — no sellouts, no change', () => {
+    const alloc = new Map([
+      ['p1', { totalCustomers: 100, perProductCustomers: { coffee: 100 }, footTrafficModifier: 1.0 }],
+    ]);
+    const result = custAlloc.processCustomerDefections(alloc, new Map(), []);
+    eq(result.get('p1').totalCustomers, 100);
+  });
+});
+
+// ============================================================================
+// 5. REVENUE
+// ============================================================================
+describe('revenue.js', () => {
+  it('gaussianNoise — seeded is deterministic', () => {
+    const a = revenue.gaussianNoise(-100, 100, 'test-seed');
+    const b = revenue.gaussianNoise(-100, 100, 'test-seed');
+    eq(a, b);
+  });
+
+  it('gaussianNoise — within bounds', () => {
+    for (let i = 0; i < 50; i++) {
+      const n = revenue.gaussianNoise(-100, 100, `seed-${i}`);
+      ok(n >= -100 && n <= 100, `noise ${n} out of bounds`);
+    }
+  });
+
+  it('calculateProductRevenue', () => {
+    const cfg = { products: { coffee: { price: 4 }, croissant: { price: 5 } } };
+    const result = revenue.calculateProductRevenue({ coffee: 10, croissant: 20 }, cfg);
+    eq(result.totalProductRevenue, 10 * 4 + 20 * 5);
+    eq(result.breakdown.coffee.qtySold, 10);
+  });
+
+  it('computeGrossRevenue — deterministic with seed', () => {
+    const cfg = config.mergeConfig({});
+    const inputs = {
+      sousChefCount: 2,
+      aggregateSatisfactionPct: 80,
+      adSpend: 200,
+      numProducts: 4,
+      totalProductRevenue: 1000,
+      noiseSeed: 'deterministic-test',
+    };
+    const r1 = revenue.computeGrossRevenue(inputs, cfg);
+    const r2 = revenue.computeGrossRevenue(inputs, cfg);
+    eq(r1, r2);
+    ok(r1 > 0, 'revenue positive');
+  });
+
+  it('computeGrossRevenue — formula components', () => {
+    const cfg = {
+      revenueCoefficients: {
+        base: 500, sousChefCoeff: 12, satisfactionCoeff: 8,
+        adSpendCoeff: 0.8, numProductsCoeff: 50, noiseMin: 0, noiseMax: 0,
+      },
+    };
+    const inputs = {
+      sousChefCount: 2,
+      aggregateSatisfactionPct: 80,
+      adSpend: 200,
+      numProducts: 4,
+      totalProductRevenue: 1000,
+    };
+    const r = revenue.computeGrossRevenue(inputs, cfg);
+    // 500 + 12*2 + 8*80 + 0.8*200 + 50*4 + 1000 + 0 = 500+24+640+160+200+1000 = 2524
+    near(r, 2524, 1);
+  });
+
+  it('calculateRoundCosts — all components', () => {
+    const cfg = config.mergeConfig({});
+    const decision = {
+      perProductQtyStocked: { croissant: 50, coffee: 30 },
+      sousChefCount: 2,
+    };
+    const auction = { adAuctionWinningBid: 150, chefAuctionWinningBid: 200 };
+    const costs = revenue.calculateRoundCosts(decision, auction, cfg);
+    ok(costs.stockCost >= 0);
+    ok(costs.sousChefHireCost > 0);
+    eq(costs.adBidCost, 150);
+    eq(costs.chefBidCost, 200);
+    eq(costs.totalSpent, costs.stockCost + costs.sousChefHireCost + 150 + 200);
+  });
+
+  it('_sousChefHireCost escalation matches chef-system', () => {
+    near(revenue._sousChefHireCost(1, 50), 50, 0.01);
+    near(revenue._sousChefHireCost(2, 50), 125, 0.01);
+    near(revenue._sousChefHireCost(4, 50), 387.5, 0.01);
+  });
+});
+
+// ============================================================================
+// 6. LOAN SHARK
+// ============================================================================
+describe('loan-shark.js', () => {
+  it('no borrowing when under budget', () => {
+    const r = loanShark.calculateLoanShark(500, 2000);
+    eq(r.borrowed, 0);
+    eq(r.interest, 0);
+    eq(r.loanSharkDeduction, 0);
+    eq(r.didBorrow, false);
+  });
+
+  it('borrowing when over budget', () => {
+    const r = loanShark.calculateLoanShark(2500, 2000);
+    eq(r.borrowed, 500);
+    eq(r.interest, 50); // 10% of 500
+    eq(r.loanSharkDeduction, 550);
+    eq(r.didBorrow, true);
+  });
+
+  it('custom interest rate', () => {
+    const r = loanShark.calculateLoanShark(300, 100, { loanSharkInterestRate: 0.20 });
+    eq(r.borrowed, 200);
+    eq(r.interest, 40);
+    eq(r.loanSharkDeduction, 240);
+  });
+
+  it('calculateNetRevenue', () => {
+    eq(loanShark.calculateNetRevenue(1000, 550), 450);
+    eq(loanShark.calculateNetRevenue(100, 200), -100); // can go negative
+  });
+
+  it('updateBudget', () => {
+    eq(loanShark.updateBudget(2000, 800, 500), 2300);
+    eq(loanShark.updateBudget(0, 500, 600), -100); // can go negative
+  });
+
+  it('edge case — zero budget, zero spending', () => {
+    const r = loanShark.calculateLoanShark(0, 0);
+    eq(r.borrowed, 0);
+    eq(r.didBorrow, false);
+  });
+});
+
+// ============================================================================
+// 7. ROUND PREFERENCES
+// ============================================================================
+describe('round-preferences.js', () => {
+  it('generateGamePreferences — correct number of rounds', () => {
+    const prefs = roundPrefs.generateGamePreferences(5);
+    eq(prefs.length, 5);
+  });
+
+  it('each round has 2 trending, 2 warm, 1 neutral, 1 cold', () => {
+    const prefs = roundPrefs.generateGamePreferences(5);
+    for (const r of prefs) {
+      eq(r.trending.length, 2);
+      eq(r.warm.length, 2);
+      eq(r.neutral.length, 1);
+      eq(r.cold.length, 1);
+    }
+  });
+
+  it('each round covers all 6 products exactly', () => {
+    const prefs = roundPrefs.generateGamePreferences(5);
+    for (const r of prefs) {
+      const all = [...r.trending, ...r.warm, ...r.neutral, ...r.cold];
+      eq(all.length, 6);
+      eq(new Set(all).size, 6, 'no duplicates');
+    }
+  });
+
+  it('no product trending in two consecutive rounds', () => {
+    // Run multiple times due to randomness
+    for (let trial = 0; trial < 10; trial++) {
+      const prefs = roundPrefs.generateGamePreferences(5);
+      for (let i = 1; i < prefs.length; i++) {
+        const prevTrending = new Set(prefs[i - 1].trending);
+        for (const t of prefs[i].trending) {
+          ok(!prevTrending.has(t), `${t} trending in consecutive rounds ${i - 1} and ${i}`);
+        }
+      }
+    }
+  });
+
+  it('modifiers have correct values', () => {
+    const prefs = roundPrefs.generateGamePreferences(3);
+    for (const r of prefs) {
+      for (const p of r.trending) eq(r.modifiers[p], roundPrefs.MOD_TRENDING);
+      for (const p of r.warm) eq(r.modifiers[p], roundPrefs.MOD_WARM);
+      for (const p of r.neutral) eq(r.modifiers[p], roundPrefs.MOD_NEUTRAL);
+      for (const p of r.cold) eq(r.modifiers[p], roundPrefs.MOD_COLD);
+    }
+  });
+
+  it('generateMarketInsightEmail — returns valid email', () => {
+    const prefs = roundPrefs.generateGamePreferences(1);
+    const email = roundPrefs.generateMarketInsightEmail(prefs[0]);
+    eq(email.from, 'The Plaza Times');
+    ok(email.subject.length > 0);
+    ok(email.body.length > 0);
+  });
+
+  it('generateMarketInsightEmail — fallback for empty trending', () => {
+    const email = roundPrefs.generateMarketInsightEmail({ trending: [] });
+    ok(email.body.includes('Quiet Week') || email.body.includes('tea leaves'));
+  });
+
+  it('getDemandModifiers returns copy', () => {
+    const prefs = roundPrefs.generateGamePreferences(1);
+    const mods = roundPrefs.getDemandModifiers(prefs[0]);
+    ok(Object.keys(mods).length === 6);
+    mods.coffee = 999; // mutate copy
+    eq(prefs[0].modifiers.coffee !== 999, true); // original unchanged
+  });
+});
+
+// ============================================================================
+// 8. PHASES
+// ============================================================================
+describe('phases.js', () => {
+  const cfg = config.mergeConfig({});
+
+  it('parsePhase — lobby', () => {
+    deepEq(phases.parsePhase('lobby'), { round: 0, phase: 'lobby' });
+  });
+
+  it('parsePhase — game_over', () => {
+    deepEq(phases.parsePhase('game_over'), { round: null, phase: 'game_over' });
+  });
+
+  it('parsePhase — round_N_phase', () => {
+    deepEq(phases.parsePhase('round_2_decide'), { round: 2, phase: 'decide' });
+    deepEq(phases.parsePhase('round_1_bid_ad'), { round: 1, phase: 'bid_ad' });
+    deepEq(phases.parsePhase('round_3_roster'), { round: 3, phase: 'roster' });
+  });
+
+  it('parsePhase — legacy aliases', () => {
+    deepEq(phases.parsePhase('round_1_closing_hours'), { round: 1, phase: 'decide' });
+  });
+
+  it('parsePhase — simulating with roundHint', () => {
+    deepEq(phases.parsePhase('simulating', 3), { round: 3, phase: 'simulating' });
+  });
+
+  it('formatPhase', () => {
+    eq(phases.formatPhase(2, 'decide'), 'round_2_decide');
+    eq(phases.formatPhase(0, 'lobby'), 'lobby');
+    eq(phases.formatPhase(null, 'game_over'), 'game_over');
+    eq(phases.formatPhase(3, 'simulating'), 'simulating');
+  });
+
+  it('getNextPhase — full progression', () => {
+    deepEq(phases.getNextPhase('lobby', 0, 5), { phase: 'round_1_email', round: 1 });
+    deepEq(phases.getNextPhase('round_1_email', 1, 5), { phase: 'round_1_decide', round: 1 });
+    deepEq(phases.getNextPhase('round_1_decide', 1, 5), { phase: 'round_1_bid_ad', round: 1 });
+    deepEq(phases.getNextPhase('round_1_bid_ad', 1, 5), { phase: 'round_1_bid_chef', round: 1 });
+    deepEq(phases.getNextPhase('round_1_bid_chef', 1, 5), { phase: 'round_1_roster', round: 1 });
+    deepEq(phases.getNextPhase('round_1_roster', 1, 5), { phase: 'simulating', round: 1 });
+    deepEq(phases.getNextPhase('simulating', 1, 5), { phase: 'results_ready', round: 1 });
+    deepEq(phases.getNextPhase('results_ready', 1, 5), { phase: 'round_2_email', round: 2 });
+  });
+
+  it('getNextPhase — last round → game_over', () => {
+    deepEq(phases.getNextPhase('results_ready', 5, 5), { phase: 'game_over', round: 5 });
+  });
+
+  it('isValidTransition', () => {
+    eq(phases.isValidTransition('lobby', 'round_1_email'), true);
+    eq(phases.isValidTransition('round_1_email', 'round_1_decide'), true);
+    eq(phases.isValidTransition('simulating', 'results_ready'), true);
+    eq(phases.isValidTransition('lobby', 'round_2_email'), false);
+  });
+
+  it('getPhaseDuration', () => {
+    eq(phases.getPhaseDuration('decide', cfg), 300);
+    ok(phases.getPhaseDuration('results_ready', cfg) > 0);
+  });
+
+  it('canSubmitDecision', () => {
+    eq(phases.canSubmitDecision('round_2_decide'), true);
+    eq(phases.canSubmitDecision('round_2_bid_ad'), false);
+    eq(phases.canSubmitDecision('lobby'), false);
+  });
+
+  it('canSubmitBids', () => {
+    eq(phases.canSubmitBids('round_2_bid_ad', 'ad'), true);
+    eq(phases.canSubmitBids('round_2_bid_chef', 'chef'), true);
+    eq(phases.canSubmitBids('round_2_bid_ad', 'chef'), false);
+  });
+
+  it('isGameActive', () => {
+    eq(phases.isGameActive('lobby'), false);
+    eq(phases.isGameActive('game_over'), false);
+    eq(phases.isGameActive('round_1_decide'), true);
+    eq(phases.isGameActive('simulating'), true);
+  });
+});
+
+// ============================================================================
+// 9. CSV EXPORT
+// ============================================================================
+describe('csv-export.js', () => {
+  const roundResult = {
+    round: 2,
+    decision: {
+      menu: { croissant: true, cookie: true, bagel: true, sandwich: true, coffee: false, matcha: false },
+      quantities: { croissant: 40, cookie: 30, bagel: 20, sandwich: 15, coffee: 0, matcha: 0 },
+      sousChefCount: 2,
+      adBids: { TV: 200, Billboard: 0, Radio: 50, Newspaper: 0 },
+    },
+    specialtyChefs: [
+      { nationality: 'french', skillTier: 'advanced' },
+      { nationality: 'italian', skillTier: 'intermediate' },
+    ],
+    revenueGross: 2100.55,
+    amountBorrowed: 100,
+    interestCharged: 10,
+    customerCount: 87,
+    aggregateSatisfactionPct: 78.4,
+    chefSatisfactionScore: 100,
+    perProductSatisfaction: { croissant: 85, cookie: 60, bagel: 70, sandwich: 55 },
+    perProductSold: { croissant: 40, cookie: 28, bagel: 18, sandwich: 10 },
+    selloutFlags: { croissant: true, cookie: false, bagel: false, sandwich: false },
+  };
+
+  it('buildCsvRow — correct field extraction', () => {
+    const row = csvExport.buildCsvRow(roundResult);
+    eq(row.round, 2);
+    eq(row.num_products, 4);
+    eq(row.sous_chef_count, 2);
+    eq(row.revenue, 2100.55);
+  });
+
+  it('buildCsvRow — specialty chefs mapped', () => {
+    const row = csvExport.buildCsvRow(roundResult);
+    eq(row.specialty_chef_1_nationality, 'french');
+    eq(row.specialty_chef_1_skill, 'advanced');
+    eq(row.specialty_chef_2_nationality, 'italian');
+    eq(row.specialty_chef_3_nationality, '');
+  });
+
+  it('buildCsvRow — off-menu products are null', () => {
+    const row = csvExport.buildCsvRow(roundResult);
+    eq(row.coffee_qty_stocked, null);
+    eq(row.matcha_qty_stocked, null);
+  });
+
+  it('buildCsvRow — sellout flags', () => {
+    const row = csvExport.buildCsvRow(roundResult);
+    eq(row.sellout_croissant, true);
+    eq(row.sellout_cookie, false);
+    eq(row.sellout_coffee, null);
+  });
+
+  it('buildCsvString — generates valid CSV', () => {
+    const row = csvExport.buildCsvRow(roundResult);
+    const csv = csvExport.buildCsvString([row], false);
+    ok(csv.startsWith('round,num_products'));
+    ok(csv.includes('2,4,2'));
+  });
+
+  it('buildCsvString — professor mode adds player columns', () => {
+    const row = csvExport.buildCsvRow(roundResult);
+    row.player_id = 'p1';
+    row.bakery_name = 'The Loaf';
+    row.display_name = 'Alice';
+    const csv = csvExport.buildCsvString([row], true);
+    ok(csv.startsWith('player_id,bakery_name,display_name'));
+  });
+
+  it('csvEscape — handles commas and quotes', () => {
+    eq(csvExport.csvEscape('hello'), 'hello');
+    eq(csvExport.csvEscape('hel,lo'), '"hel,lo"');
+    eq(csvExport.csvEscape('he"llo'), '"he""llo"');
+  });
+
+  it('buildFirestoreCsvRow — has columnOrder', () => {
+    const fsRow = csvExport.buildFirestoreCsvRow(roundResult);
+    ok(Array.isArray(fsRow.columnOrder));
+    eq(fsRow.round, 2);
+  });
+});
+
+// ============================================================================
+// 10. CONCLUSION
+// ============================================================================
+describe('conclusion.js', () => {
+  const cfg = config.mergeConfig({});
+
+  it('aggregatePlayerResults — totals', () => {
+    const agg = conclusion.aggregatePlayerResults([
+      { round: 1, revenueGross: 1000, revenueNet: 900, amountBorrowed: 50, interestCharged: 5, totalSpent: 700 },
+      { round: 2, revenueGross: 1500, revenueNet: 1400, amountBorrowed: 0, interestCharged: 0, totalSpent: 800 },
+    ], cfg);
+    eq(agg.totalRevenue, 2500);
+    eq(agg.totalInterest, 5);
+    eq(agg.totalBorrowed, 50);
+  });
+
+  it('aggregatePlayerResults — net revenue', () => {
+    const agg = conclusion.aggregatePlayerResults([
+      { round: 1, revenueGross: 1000, revenueNet: 900, amountBorrowed: 50, interestCharged: 5, totalSpent: 700 },
+    ], cfg);
+    eq(agg.netRevenue, 1000 - 5 - 50);
+  });
+
+  it('rankPlayers — sorts by netRevenue then budget', () => {
+    const ranked = conclusion.rankPlayers([
+      { playerId: 'a', netRevenue: 1000, budgetRemaining: 500 },
+      { playerId: 'b', netRevenue: 2000, budgetRemaining: 100 },
+      { playerId: 'c', netRevenue: 1000, budgetRemaining: 800 },
+    ]);
+    eq(ranked[0].playerId, 'b');
+    eq(ranked[0].rank, 1);
+    eq(ranked[1].playerId, 'c');
+    eq(ranked[1].rank, 2);
+    eq(ranked[2].playerId, 'a');
+    eq(ranked[2].rank, 3);
+  });
+
+  it('rankPlayers — handles ties', () => {
+    const ranked = conclusion.rankPlayers([
+      { playerId: 'a', netRevenue: 1000, budgetRemaining: 500 },
+      { playerId: 'b', netRevenue: 1000, budgetRemaining: 500 },
+      { playerId: 'c', netRevenue: 500, budgetRemaining: 200 },
+    ]);
+    eq(ranked[0].rank, 1);
+    eq(ranked[1].rank, 1);
+    eq(ranked[2].rank, 3);
+  });
+
+  it('buildConclusionData — winner and roster', () => {
+    const ranked = conclusion.rankPlayers([
+      { playerId: 'b', netRevenue: 2000, budgetRemaining: 100 },
+      { playerId: 'a', netRevenue: 1000, budgetRemaining: 500 },
+    ]);
+    const data = conclusion.buildConclusionData(ranked, [
+      { name: 'Chef A', nationality: 'french', skillTier: 'advanced', variant: 'v1' },
+    ]);
+    eq(data.winner.playerId, 'b');
+    eq(data.winner.chefRoster.length, 1);
+    ok(typeof data.timestamp === 'number');
+    eq(data.rankings.length, 2);
+  });
+});
+
+// ============================================================================
+// 11. DECISION VALIDATION
+// ============================================================================
+describe('decision-validation.js', () => {
+  const cfg = config.mergeConfig({});
+
+  it('validateDecision — valid input', () => {
+    const result = validation.validateDecision({
+      menu: { croissant: true, cookie: true, bagel: true, sandwich: true, coffee: false, matcha: false },
+      quantities: { croissant: 30, cookie: 20, bagel: 15, sandwich: 10 },
+      sousChefCount: 3,
+      sousChefAssignments: { croissant: 2, sandwich: 1 },
+    }, 2, cfg);
+    eq(result.numProducts, 4);
+    eq(result.sousChefCount, 3);
+  });
+
+  it('validateDecision — base product can\'t be disabled', () => {
+    throws(() => validation.validateDecision({
+      menu: { croissant: false, cookie: true, bagel: true },
+    }, 1, cfg), /Base product/);
+  });
+
+  it('validateDecision — sous assignment sum must match count', () => {
+    throws(() => validation.validateDecision({
+      menu: { croissant: true, cookie: true, bagel: true },
+      quantities: { croissant: 10, cookie: 10, bagel: 10 },
+      sousChefCount: 3,
+      sousChefAssignments: { croissant: 1 },
+    }, 1, cfg), /sousChefAssignments sum/);
+  });
+
+  it('validateDecision — can\'t assign sous to off-menu product', () => {
+    throws(() => validation.validateDecision({
+      menu: { croissant: true, cookie: true, bagel: true, sandwich: false },
+      quantities: {},
+      sousChefCount: 1,
+      sousChefAssignments: { sandwich: 1 },
+    }, 1, cfg), /not on the menu/);
+  });
+
+  it('validateAdBids — fills missing with 0', () => {
+    const bids = validation.validateAdBids({ TV: 100, Billboard: 50 });
+    eq(bids.TV, 100);
+    eq(bids.Billboard, 50);
+    eq(bids.Radio, 0);
+    eq(bids.Newspaper, 0);
+  });
+
+  it('validateAdBids — rejects negative', () => {
+    throws(() => validation.validateAdBids({ TV: -1 }), /non-negative/);
+  });
+
+  it('validateAdBids — rejects unknown types', () => {
+    throws(() => validation.validateAdBids({ Skywriting: 50 }), /Unknown ad type/);
+  });
+
+  it('validateChefBids — filters zero bids, validates floor', () => {
+    const pool = [{ id: 'c1', minBidFloor: 100 }, { id: 'c2', minBidFloor: 200 }];
+    const bids = validation.validateChefBids([
+      { chefId: 'c1', amount: 150 },
+      { chefId: 'c2', amount: 0 },
+    ], pool);
+    eq(bids.length, 1);
+    eq(bids[0].chefId, 'c1');
+  });
+
+  it('validateChefBids — below floor throws', () => {
+    const pool = [{ id: 'c1', minBidFloor: 100 }];
+    throws(() => validation.validateChefBids([{ chefId: 'c1', amount: 50 }], pool), /below minBidFloor/);
+  });
+
+  it('validateChefBids — unknown chef throws', () => {
+    const pool = [{ id: 'c1', minBidFloor: 100 }];
+    throws(() => validation.validateChefBids([{ chefId: 'unknown', amount: 100 }], pool), /not in the current pool/);
+  });
+
+  it('buildDefaultDecision — sane defaults', () => {
+    const def = validation.buildDefaultDecision(cfg);
+    eq(def.menu.croissant, true);
+    eq(def.menu.sandwich, false);
+    eq(def.sousChefCount, 0);
+    eq(def.numProducts, 3);
+  });
+
+  it('buildDefaultBids', () => {
+    const bids = validation.buildDefaultBids();
+    deepEq(bids.adBids, { TV: 0, Billboard: 0, Radio: 0, Newspaper: 0 });
+    deepEq(bids.chefBids, []);
+  });
+
+  it('ValidationError class', () => {
+    try { validation.validateAdBids({ TV: -1 }); } catch (e) {
+      ok(e instanceof validation.ValidationError);
+      eq(e.code, 'invalid-argument');
+    }
+  });
+});
+
+// ============================================================================
+// 12. SIMULATION (Integration)
+// ============================================================================
+describe('simulation.js — Integration', () => {
+  const cfg = config.mergeConfig({});
+
+  it('runSimulation — single player produces valid result', () => {
+    const players = [{
+      playerId: 'p1',
+      displayName: 'Alice',
+      bakeryName: 'The Loaf',
+      budgetCurrent: 2000,
+      sousChefCount: 0,
+      specialtyChefs: [],
+      returningCustomersPending: 0,
+      decision: {
+        menu: { croissant: true, cookie: true, bagel: true, sandwich: false, coffee: false, matcha: false },
+        quantities: { croissant: 40, cookie: 30, bagel: 20 },
+        sousChefCount: 0,
+        sousChefAssignments: {},
+      },
+      auctionResults: { adWon: null, adBidPaid: 0, chefBidPaid: 0 },
+    }];
+    const prefs = { modifiers: { croissant: 1.0, cookie: 1.0, bagel: 1.0, sandwich: 1.0, coffee: 1.0, matcha: 1.0 } };
+    const results = simulation.runSimulation(players, prefs, cfg);
+    eq(results.length, 1);
+    eq(results[0].playerId, 'p1');
+    ok(typeof results[0].revenueGross === 'number');
+    ok(typeof results[0].customerCount === 'number');
+    ok(typeof results[0].aggregateSatisfactionPct === 'number');
+    ok(typeof results[0].budgetAfter === 'number');
+    ok(results[0].csvRow != null);
+    ok(typeof results[0].perProductSatisfaction === 'object');
+    ok(typeof results[0].returningCustomersEarned === 'number');
+  });
+
+  it('runSimulation — 3 players competitive', () => {
+    const makePl = (id, name, specialties) => ({
+      playerId: id,
+      displayName: name,
+      bakeryName: `${name}'s Bakery`,
+      budgetCurrent: 2000,
+      sousChefCount: 0,
+      specialtyChefs: specialties,
+      returningCustomersPending: 0,
+      decision: {
+        menu: { croissant: true, cookie: true, bagel: true, sandwich: false, coffee: false, matcha: false },
+        quantities: { croissant: 40, cookie: 30, bagel: 20 },
+        sousChefCount: 0,
+        sousChefAssignments: {},
+      },
+      auctionResults: { adWon: null, adBidPaid: 0, chefBidPaid: 0 },
+    });
+
+    const players = [
+      makePl('p1', 'Alice', [{ skillTier: 'advanced', specialties: ['croissant', 'coffee'] }]),
+      makePl('p2', 'Bob', []),
+      makePl('p3', 'Carol', [{ skillTier: 'intermediate', specialties: ['cookie', 'bagel'] }]),
+    ];
+    const prefs = { modifiers: { croissant: 1.4, cookie: 1.15, bagel: 1.0, sandwich: 1.0, coffee: 1.0, matcha: 1.0 } };
+    const results = simulation.runSimulation(players, prefs, cfg);
+    eq(results.length, 3);
+    
+    // All players should have customers
+    for (const r of results) {
+      ok(r.customerCount >= 0, `${r.playerId} customerCount >= 0`);
+      ok(typeof r.revenueGross === 'number');
+      ok(typeof r.budgetAfter === 'number');
+    }
+  });
+
+  it('runSimulation — loan shark triggers when overspending', () => {
+    const players = [{
+      playerId: 'p1',
+      displayName: 'Broke',
+      bakeryName: 'Broke Bakery',
+      budgetCurrent: 100, // Very low budget
+      sousChefCount: 2,
+      specialtyChefs: [],
+      returningCustomersPending: 0,
+      decision: {
+        menu: { croissant: true, cookie: true, bagel: true, sandwich: true, coffee: true, matcha: true },
+        quantities: { croissant: 100, cookie: 100, bagel: 100, sandwich: 100, coffee: 100, matcha: 100 },
+        sousChefCount: 4, // Expensive!
+        sousChefAssignments: { croissant: 2, cookie: 1, bagel: 1 },
+      },
+      auctionResults: { adWon: 'TV', adBidPaid: 500, chefBidPaid: 300 },
+    }];
+    const prefs = { modifiers: { croissant: 1.0, cookie: 1.0, bagel: 1.0, sandwich: 1.0, coffee: 1.0, matcha: 1.0 } };
+    const results = simulation.runSimulation(players, prefs, cfg);
+    ok(results[0].amountBorrowed > 0, 'should have borrowed');
+    ok(results[0].interestCharged > 0, 'should have interest');
+  });
+
+  it('runSimulation — empty players array', () => {
+    const results = simulation.runSimulation([], {}, cfg);
+    eq(results.length, 0);
+  });
+
+  it('runSimulation — returning customers carry over', () => {
+    const players = [{
+      playerId: 'p1',
+      displayName: 'Good',
+      bakeryName: 'Good Bakery',
+      budgetCurrent: 2000,
+      sousChefCount: 0,
+      specialtyChefs: [{ skillTier: 'advanced', specialties: ['croissant', 'coffee'] }],
+      returningCustomersPending: 30, // 30 returning from last round
+      decision: {
+        menu: { croissant: true, cookie: true, bagel: true, sandwich: false, coffee: false, matcha: false },
+        quantities: { croissant: 80, cookie: 60, bagel: 40 },
+        sousChefCount: 0,
+        sousChefAssignments: {},
+      },
+      auctionResults: { adWon: null, adBidPaid: 0, chefBidPaid: 0 },
+    }];
+    const prefs = { modifiers: { croissant: 1.0, cookie: 1.0, bagel: 1.0, sandwich: 1.0, coffee: 1.0, matcha: 1.0 } };
+    const results = simulation.runSimulation(players, prefs, cfg);
+    ok(results[0].customerCount > 0, 'has customers');
+  });
+
+  it('computePlayerOutputAndSatisfaction — exposed for testing', () => {
+    const player = {
+      decision: {
+        menu: { croissant: true, cookie: true, bagel: false },
+        quantities: { croissant: 50, cookie: 40 },
+        sousChefCount: 1,
+        sousChefAssignments: { croissant: 1 },
+      },
+      specialtyChefs: [{ skillTier: 'advanced', specialties: ['croissant', 'coffee'] }],
+    };
+    const prefs = { modifiers: { croissant: 1.0, cookie: 1.0 } };
+    const result = simulation.computePlayerOutputAndSatisfaction(player, prefs, cfg);
+    ok(result.offeredProducts.includes('croissant'));
+    ok(result.offeredProducts.includes('cookie'));
+    ok(!result.offeredProducts.includes('bagel'));
+    ok(result.chefSatisfactionScore > 0);
+    ok(result.perProduct.croissant.effectiveOutput > 0);
+  });
+
+  it('computeReturningCustomersEarned — excellent → 15%', () => {
+    const earned = simulation.computeReturningCustomersEarned(90, 100, cfg);
+    eq(earned, 15);
+  });
+
+  it('computeReturningCustomersEarned — good → 8%', () => {
+    const earned = simulation.computeReturningCustomersEarned(70, 100, cfg);
+    eq(earned, 8);
+  });
+
+  it('computeReturningCustomersEarned — poor → 0', () => {
+    const earned = simulation.computeReturningCustomersEarned(40, 100, cfg);
+    eq(earned, 0);
+  });
+
+  it('SELLOUT_SAT_CAP is 45', () => {
+    eq(simulation.SELLOUT_SAT_CAP, 45);
+  });
+});
+
+// ============================================================================
+// 13. REGRESSION TESTS — known edge cases
+// ============================================================================
+describe('Regression Tests', () => {
+  const cfg = config.mergeConfig({});
+
+  it('REG-001: zero-quantity products should not crash simulation', () => {
+    const players = [{
+      playerId: 'p1', displayName: 'A', bakeryName: 'B', budgetCurrent: 2000,
+      specialtyChefs: [], returningCustomersPending: 0,
+      decision: {
+        menu: { croissant: true, cookie: true, bagel: true, sandwich: false, coffee: false, matcha: false },
+        quantities: { croissant: 0, cookie: 0, bagel: 0 },
+        sousChefCount: 0, sousChefAssignments: {},
+      },
+      auctionResults: { adWon: null, adBidPaid: 0, chefBidPaid: 0 },
+    }];
+    const results = simulation.runSimulation(players, {}, cfg);
+    eq(results.length, 1);
+    ok(typeof results[0].revenueGross === 'number');
+  });
+
+  it('REG-002: NaN/undefined quantities treated as 0', () => {
+    const players = [{
+      playerId: 'p1', displayName: 'A', bakeryName: 'B', budgetCurrent: 2000,
+      specialtyChefs: [], returningCustomersPending: 0,
+      decision: {
+        menu: { croissant: true, cookie: true, bagel: true },
+        quantities: { croissant: undefined, cookie: NaN, bagel: 'bad' },
+        sousChefCount: 0, sousChefAssignments: {},
+      },
+      auctionResults: { adWon: null, adBidPaid: 0, chefBidPaid: 0 },
+    }];
+    const results = simulation.runSimulation(players, {}, cfg);
+    eq(results.length, 1);
+    // Should not throw
+  });
+
+  it('REG-003: missing decision fields use defaults', () => {
+    const players = [{
+      playerId: 'p1', displayName: 'A', bakeryName: 'B', budgetCurrent: 2000,
+      specialtyChefs: [], returningCustomersPending: 0,
+      decision: {}, // totally empty
+      auctionResults: {},
+    }];
+    const results = simulation.runSimulation(players, {}, cfg);
+    eq(results.length, 1);
+  });
+
+  it('REG-004: large player count (150+) should not crash', () => {
+    const players = [];
+    for (let i = 0; i < 160; i++) {
+      players.push({
+        playerId: `p${i}`, displayName: `Player ${i}`, bakeryName: `Bakery ${i}`,
+        budgetCurrent: 2000, specialtyChefs: [], returningCustomersPending: 0,
+        decision: {
+          menu: { croissant: true, cookie: true, bagel: true, sandwich: false, coffee: false, matcha: false },
+          quantities: { croissant: 30, cookie: 20, bagel: 15 },
+          sousChefCount: 0, sousChefAssignments: {},
+        },
+        auctionResults: { adWon: null, adBidPaid: 0, chefBidPaid: 0 },
+      });
+    }
+    const results = simulation.runSimulation(players, {}, cfg);
+    eq(results.length, 160);
+    // Verify no NaN in results
+    for (const r of results) {
+      ok(!isNaN(r.revenueGross), `NaN revenue for ${r.playerId}`);
+      ok(!isNaN(r.customerCount), `NaN customers for ${r.playerId}`);
+      ok(!isNaN(r.budgetAfter), `NaN budget for ${r.playerId}`);
+    }
+  });
+
+  it('REG-005: sell-out caps satisfaction correctly', () => {
+    // Player with high output but low stock → should trigger sellout
+    const players = [{
+      playerId: 'p1', displayName: 'A', bakeryName: 'B', budgetCurrent: 2000,
+      specialtyChefs: [{ skillTier: 'advanced', specialties: ['croissant', 'coffee'] }],
+      returningCustomersPending: 0,
+      decision: {
+        menu: { croissant: true, cookie: false, bagel: false, sandwich: false, coffee: false, matcha: false },
+        quantities: { croissant: 5 }, // Very low stock
+        sousChefCount: 0, sousChefAssignments: {},
+      },
+      auctionResults: { adWon: null, adBidPaid: 0, chefBidPaid: 0 },
+    }];
+    const results = simulation.runSimulation(players, {}, cfg);
+    // If sellout occurs, sat should be capped at 45
+    if (results[0].selloutAnywhere) {
+      ok(results[0].perProductSatisfaction.croissant.satisfactionPct <= 45,
+        'sellout caps at 45');
+    }
+  });
+
+  it('REG-006: phases survive invalid transitions gracefully', () => {
+    eq(phases.isValidTransition('game_over', 'lobby'), false);
+    eq(phases.isValidTransition('round_1_decide', 'game_over'), false);
+  });
+
+  it('REG-007: CSV row handles missing specialtyChefs', () => {
+    const row = csvExport.buildCsvRow({
+      round: 1,
+      decision: { menu: { croissant: true }, quantities: { croissant: 10 }, sousChefCount: 0, adBids: {} },
+      specialtyChefs: [], // empty
+      revenueGross: 500,
+      customerCount: 20,
+      aggregateSatisfactionPct: 50,
+      chefSatisfactionScore: 100,
+      perProductSatisfaction: {},
+      selloutFlags: {},
+    });
+    eq(row.specialty_chef_1_nationality, '');
+    eq(row.specialty_chef_1_skill, '');
+  });
+
+  it('REG-008: conclusion handles single player', () => {
+    const ranked = conclusion.rankPlayers([
+      { playerId: 'solo', netRevenue: 5000, budgetRemaining: 1000 },
+    ]);
+    eq(ranked.length, 1);
+    eq(ranked[0].rank, 1);
+    const data = conclusion.buildConclusionData(ranked, []);
+    eq(data.winner.playerId, 'solo');
+  });
+
+  it('REG-009: customer allocation with all zero satisfaction → even split', () => {
+    const players = [
+      { playerId: 'p1', perProductSatisfaction: { coffee: 0 } },
+      { playerId: 'p2', perProductSatisfaction: { coffee: 0 } },
+    ];
+    const result = custAlloc.allocateCustomersPerProduct('coffee', 100, players, new Map());
+    // Even split
+    eq(result.get('p1'), 50);
+    eq(result.get('p2'), 50);
+  });
+
+  it('REG-010: loan shark with exact budget match → no borrowing', () => {
+    const r = loanShark.calculateLoanShark(2000, 2000);
+    eq(r.borrowed, 0);
+    eq(r.didBorrow, false);
+  });
+
+  it('REG-011: revenue noise is bounded', () => {
+    for (let i = 0; i < 100; i++) {
+      const n = revenue.gaussianNoise(-100, 100, `bound-test-${i}`);
+      ok(n >= -100 && n <= 100, `noise ${n} out of bounds`);
+    }
+  });
+
+  it('REG-012: round preferences consecutive trending constraint (10 trials)', () => {
+    for (let trial = 0; trial < 10; trial++) {
+      const prefs = roundPrefs.generateGamePreferences(5);
+      for (let i = 1; i < prefs.length; i++) {
+        const prev = new Set(prefs[i - 1].trending);
+        for (const t of prefs[i].trending) {
+          ok(!prev.has(t), `trial ${trial}: ${t} trending rounds ${i - 1} and ${i}`);
+        }
+      }
+    }
+  });
+
+  it('REG-013: budget never goes negative (floor at 0)', () => {
+    // Player with tiny budget, massive spending, and negative net revenue
+    const players = [{
+      playerId: 'broke', displayName: 'Broke', bakeryName: 'Bankrupt Bakery',
+      budgetCurrent: 50, specialtyChefs: [], returningCustomersPending: 0,
+      decision: {
+        menu: { croissant: true, cookie: true, bagel: true, sandwich: true, coffee: true, matcha: true },
+        quantities: { croissant: 200, cookie: 200, bagel: 200, sandwich: 200, coffee: 200, matcha: 200 },
+        sousChefCount: 4, sousChefAssignments: { croissant: 2, cookie: 1, bagel: 1 },
+      },
+      auctionResults: { adWon: 'TV', adBidPaid: 500, chefBidPaid: 500 },
+    }];
+    const results = simulation.runSimulation(players, {}, cfg);
+    ok(results[0].budgetAfter >= 0, `budget should be >= 0, got ${results[0].budgetAfter}`);
+  });
+
+  it('REG-014: mergeConfig deep merge of nested objects', () => {
+    const c = config.mergeConfig({
+      returningCustomerBonuses: { excellent: 0.25 },
+    });
+    eq(c.returningCustomerBonuses.excellent, 0.25);
+    eq(c.returningCustomerBonuses.good, 0.08); // untouched
+  });
+});
+
+// ============================================================================
+// 14. STRESS / PERFORMANCE TESTS
+// ============================================================================
+describe('Stress Tests', () => {
+  const cfg = config.mergeConfig({});
+
+  it('STRESS-001: 150-player simulation completes under 5 seconds', () => {
+    const players = [];
+    for (let i = 0; i < 150; i++) {
+      players.push({
+        playerId: `stress_${i}`,
+        displayName: `Player ${i}`,
+        bakeryName: `Bakery ${i}`,
+        budgetCurrent: 2000,
+        specialtyChefs: i % 3 === 0 ? [{ skillTier: 'advanced', specialties: ['croissant', 'coffee'] }] : [],
+        returningCustomersPending: i % 5 === 0 ? 10 : 0,
+        decision: {
+          menu: { croissant: true, cookie: true, bagel: true, sandwich: i % 2 === 0, coffee: i % 3 === 0, matcha: i % 4 === 0 },
+          quantities: { croissant: 30 + i, cookie: 20, bagel: 15, sandwich: i % 2 === 0 ? 10 : 0, coffee: i % 3 === 0 ? 25 : 0, matcha: i % 4 === 0 ? 15 : 0 },
+          sousChefCount: i % 5,
+          sousChefAssignments: i % 5 > 0 ? { croissant: Math.min(i % 5, 3), cookie: Math.max(0, (i % 5) - 3) } : {},
+        },
+        auctionResults: { adWon: i === 0 ? 'TV' : null, adBidPaid: i === 0 ? 200 : 0, chefBidPaid: 0 },
+      });
+    }
+    const prefs = { modifiers: { croissant: 1.4, cookie: 1.15, bagel: 1.0, sandwich: 0.75, coffee: 1.0, matcha: 1.15 } };
+    
+    const start = Date.now();
+    const results = simulation.runSimulation(players, prefs, cfg);
+    const elapsed = Date.now() - start;
+    
+    eq(results.length, 150);
+    ok(elapsed < 5000, `took ${elapsed}ms, expected < 5000ms`);
+    console.log(`\n  (150-player sim: ${elapsed}ms)`);
+    
+    // Verify no NaN or undefined in any result
+    for (const r of results) {
+      ok(Number.isFinite(r.revenueGross), `finite revenue for ${r.playerId}`);
+      ok(Number.isFinite(r.customerCount), `finite customers for ${r.playerId}`);
+      ok(Number.isFinite(r.budgetAfter), `finite budget for ${r.playerId}`);
+      ok(Number.isFinite(r.aggregateSatisfactionPct), `finite satisfaction for ${r.playerId}`);
+    }
+  });
+
+  it('STRESS-002: 5-round full game simulation', () => {
+    const prefs = roundPrefs.generateGamePreferences(5);
+    let budget = 2000;
+    let returning = 0;
+    
+    for (let round = 0; round < 5; round++) {
+      const players = [{
+        playerId: 'stress_single',
+        displayName: 'Stress Tester',
+        bakeryName: 'Stress Bakery',
+        budgetCurrent: budget,
+        specialtyChefs: round >= 2 ? [{ skillTier: 'advanced', specialties: ['croissant', 'coffee'] }] : [],
+        returningCustomersPending: returning,
+        decision: {
+          menu: { croissant: true, cookie: true, bagel: true, sandwich: round >= 1, coffee: round >= 2, matcha: false },
+          quantities: { croissant: 40, cookie: 30, bagel: 20, sandwich: round >= 1 ? 15 : 0, coffee: round >= 2 ? 25 : 0 },
+          sousChefCount: Math.min(round, 3),
+          sousChefAssignments: round > 0 ? { croissant: Math.min(round, 3) } : {},
+        },
+        auctionResults: { adWon: null, adBidPaid: 0, chefBidPaid: 0 },
+      }];
+      
+      const results = simulation.runSimulation(players, prefs[round], cfg);
+      eq(results.length, 1);
+      const r = results[0];
+      ok(Number.isFinite(r.revenueGross), `round ${round + 1} finite revenue`);
+      ok(Number.isFinite(r.budgetAfter), `round ${round + 1} finite budget`);
+      
+      budget = r.budgetAfter;
+      returning = r.returningCustomersEarned;
+    }
+  });
+});
+
+// ============================================================================
+// FINAL REPORT
+// ============================================================================
+console.log('\n\n========================================');
+console.log(`RESULTS: ${passed} passed, ${failed} failed`);
+console.log('========================================');
+if (failures.length > 0) {
+  console.log('\nFAILURES:');
+  for (const f of failures) console.log(f);
+}
+process.exit(failed > 0 ? 1 : 0);

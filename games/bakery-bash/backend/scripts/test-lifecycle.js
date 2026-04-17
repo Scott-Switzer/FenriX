@@ -17,7 +17,7 @@ const { getAuth, connectAuthEmulator, signInAnonymously } = require("firebase/au
 const { httpsCallable } = require("firebase/functions");
 
 // ─── Config ───────────────────────────────────────────────────
-const PROJECT_ID = "demo-bakery-bash-54d12";
+const PROJECT_ID = "bakery-bash-54d12";
 const FUNCTIONS_HOST = "127.0.0.1";
 const FUNCTIONS_PORT = 5001;
 const AUTH_PORT = 9099;
