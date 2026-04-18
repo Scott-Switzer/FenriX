@@ -403,6 +403,20 @@ const LeaderboardDocument = {
 };
 
 // ─────────────────────────────────────────────────────────────
+// /games/{gameId}/roster/{playerId}
+// Public-safe lobby roster. Written only by the joinGame callable.
+// Readable (get + list) by any signed-in user so the lobby can subscribe
+// to the player list. Intentionally excludes financial state.
+// ─────────────────────────────────────────────────────────────
+const RosterMemberDocument = {
+  uid: "uid_abc",                 // string — Firebase Auth uid, matches doc id
+  displayName: "The Rolling Scone", // string (2–40 chars, validated in joinGame)
+  bakeryName: "Rolling Scone Bakery", // string (≤60 chars)
+  joinedAt: null,                 // Timestamp — set on first join, preserved on rejoin
+  updatedAt: null,                // Timestamp — refreshed on each join/rejoin
+};
+
+// ─────────────────────────────────────────────────────────────
 // /games/{gameId}/csvRows/{playerId}/rounds/{roundId}
 // Append-only array of row objects for CSV export.
 // Matches the 17-column schema from the game design spec exactly.

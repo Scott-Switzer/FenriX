@@ -418,7 +418,7 @@ async function main() {
     });
 
     await test(`R${round}: Leaderboard updated`, async () => {
-      const lbSnap = await gameRef.collection("leaderboard").doc("current").get();
+      const lbSnap = await gameRef.collection("leaderboard").doc("latest").get();
       assert(lbSnap.exists, "Leaderboard exists");
       const rankings = lbSnap.get("rankings");
       assert(Array.isArray(rankings), "Rankings is array");
@@ -567,7 +567,7 @@ async function main() {
 
   // ─── Final Summary ─────────────────────────────────────────
   await test("Final leaderboard has correct cumulative revenues", async () => {
-    const lbSnap = await gameRef.collection("leaderboard").doc("current").get();
+    const lbSnap = await gameRef.collection("leaderboard").doc("latest").get();
     const rankings = lbSnap.get("rankings");
     
     for (const ranking of rankings) {
