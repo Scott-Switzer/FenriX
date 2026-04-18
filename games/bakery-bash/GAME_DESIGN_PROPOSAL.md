@@ -1,6 +1,6 @@
 # Game Design Proposal — Bakery Bash
 
-**Date:** April 1, 2026 · Updated April 8, 2026 (all-hands decisions) · Updated April 15, 2026 (Chef System, Loan Shark mechanic)
+**Date:** April 1, 2026 · Updated April 8, 2026 (all-hands decisions) · Updated April 15, 2026 (Chef System, Loan Shark mechanic) · Updated April 17, 2026 (Maintenance System, Station Architecture, Chef Satisfaction overhaul)
 **Team:** Game Design (Dylan M. + Mia) · Frontend (AB + Kavin) · Backend (Daniel + Scott + Dylan B.)
 **Target Launch:** April 27 or May 1, 2026
 **Course:** MGSC 310 · Prof. Frenzel · Chapman University
@@ -202,21 +202,28 @@ Head Chef Output on Product X =
 
 ### Chef Satisfaction Score
 
-Hiring too many sous chefs creates kitchen chaos — the "too many cooks" effect. A **Chef Satisfaction Score (0–100)** tracks kitchen cohesion and acts as a throughput multiplier on total daily output.
+*Updated April 17, 2026 — now incorporates cleanliness and voluntary departure mechanic.*
 
-**Threshold: 4 sous chefs.** At or below 4, the kitchen runs efficiently. Beyond 4, each additional sous chef reduces the score.
+Kitchen cohesion is tracked by a **Chef Satisfaction Score (0–100)** that acts as a throughput multiplier on total daily output. Two factors now drive it: **overcrowding** (too many sous chefs) and **cleanliness** (maintained by Maintenance Guys — see [Maintenance System](#maintenance-system)).
+
+**Overcrowding penalty — Threshold: 4 sous chefs.** At or below 4, the kitchen runs efficiently. Beyond 4, each additional sous chef reduces the score.
+
+**Cleanliness bonus.** Higher store cleanliness adds to the score, rewarding players who invest in Maintenance Guys.
 
 ```
 Chef Satisfaction Score = max(35, 100 − max(0, sous_chef_count − 4) × 16)
+                          + (cleanliness_pct × 0.10)   ← up to +10 bonus points at 100% clean
 ```
 
-| Sous Chef Count | Chef Satisfaction Score | Kitchen State |
-|---|---|---|
-| 0–4 | 100 | Optimal — full efficiency |
-| 5 | 84 | Slightly crowded |
-| 6 | 68 | Coordination breaking down |
-| 7 | 52 | Noticeably chaotic |
-| 9+ | 35 (floor) | Severe disruption — marginal sous chefs are net-negative |
+> The cleanliness bonus is capped so it cannot push the score above 100. A perfectly clean kitchen at 4 sous chefs scores 100 (no further benefit from cleanliness). But a messy kitchen with 6 sous chefs at 50% cleanliness scores 68 + 5 = 73 — cleanliness partially offsets the overcrowding penalty.
+
+| Sous Chef Count | Score (at 100% clean) | Score (at 50% clean) | Score (at 0% clean) |
+|---|---|---|---|
+| 0–4 | 100 (capped) | 95 | 85 |
+| 5 | 94 | 89 | 79 |
+| 6 | 78 | 73 | 63 |
+| 7 | 62 | 57 | 47 |
+| 8+ | 45 | 40 | 35 (floor) |
 
 **Effect on throughput (sole penalty mechanism):**
 
@@ -224,9 +231,40 @@ Chef Satisfaction Score = max(35, 100 − max(0, sous_chef_count − 4) × 16)
 Effective Daily Output = Total Calculated Output × (Chef Satisfaction Score ÷ 100)
 ```
 
-A kitchen at score 52 produces only 52% of theoretical maximum throughput. Chef Satisfaction Score is the only penalty — there is no separate regression coefficient for it. The throughput reduction flows naturally into lower fill rates → lower satisfaction % → lower foot traffic → lower revenue. Players feel the penalty through their satisfaction % signal, not a direct revenue deduction.
+A kitchen at score 52 produces only 52% of theoretical maximum throughput. Chef Satisfaction Score is the only penalty — there is no separate regression coefficient for it. The throughput reduction flows naturally into lower fill rates → lower satisfaction % → lower foot traffic → lower revenue.
 
-> **Intentional design:** Hiring 5+ sous chefs is a net-negative decision in most scenarios. A player with 8 sous chefs runs at 35% efficiency — their extra production capacity from added sous chefs is more than wiped out by the throughput multiplier. This is by design to create a meaningful strategic ceiling on kitchen size.
+---
+
+### Specialty Chef Voluntary Departure
+
+**Specialty chefs (not sous chefs or the base chef) have individual satisfaction scores that decay over time.** If a specialty chef's personal satisfaction drops to or below **30%**, they voluntarily leave the establishment and immediately re-enter the **auction pool** for the next round. Players receive an in-game notification: *"[Chef Name] has left the kitchen."*
+
+**Satisfaction decay rate by skill level:**
+
+| Skill Level | Satisfaction Decay Per Round |
+|---|---|
+| **Novel** | −8 points/round |
+| **Intermediate** | −14 points/round |
+| **Advanced** | −20 points/round |
+
+> Higher-skill chefs have higher standards. An Advanced chef who joins at 100% satisfaction will leave after ~3.5 rounds of neglect (100 → 80 → 60 → 40 → 20). An Intermediate takes ~5 rounds. A Novel chef takes ~8 rounds.
+
+**What raises specialty chef satisfaction:**
+- Cleanliness above 70%: +5 points/round per specialty chef
+- Cleanliness above 90%: +10 points/round per specialty chef
+- Keeping sous chef count ≤ 4: +3 points/round per specialty chef (orderly kitchen signal)
+- All station machines above 70% health: +3 points/round per specialty chef (well-maintained workspace)
+- The specialty chef's own station machine above 90% health: additional +5 points/round (their primary tool is in excellent condition)
+
+**What accelerates satisfaction loss:**
+- Cleanliness below 30%: additional −5 points/round per specialty chef
+- Sous chef count ≥ 7: additional −5 points/round per specialty chef (chaotic kitchen)
+- Any station machine below 40% health: −5 points/round per specialty chef (degraded working conditions)
+- The specialty chef's own station machine below 20% health: additional −8 points/round (their primary tool is nearly broken)
+
+> **Machine-to-chef station mapping for satisfaction:** A French chef (specialty: Croissant, Coffee) is tied to the Bakery Station (Oven) and the Barista Station (Espresso Machine). A Japanese chef (Matcha, Croissant) is tied to both the Barista Station and Bakery Station. An Italian chef (Sandwich, Coffee) is tied to the Deli and Barista Station. An American chef (Bagel, Cookie) is tied to the Deli and Bakery Station. The "own station machine" penalty/bonus uses the machine health of whichever of the chef's stations is in the worst condition.
+
+> **Strategic implication:** A player who neglects maintenance risks losing their highest-skill specialty chefs through two compounding channels — a dirty kitchen accelerates satisfaction decay, and broken machines at the chef's station stack an additional penalty on top. An Advanced chef working at a Barista Station with a broken Espresso Machine (< 20% health) and a dirty kitchen (< 30% cleanliness) loses up to −20 (base decay) − 5 (dirty) − 8 (broken primary machine) = **−33 points per round** — departing in roughly 3 rounds from full satisfaction.
 
 ---
 
@@ -471,6 +509,152 @@ Each chef is randomly generated using the framework below. Specialty products ar
 | Specialty visibility? | Hidden — nationality + skill level shown only |
 | Leveling up? | No — purchased at fixed skill level |
 | How do multiple chefs interact? | Additive — each chef independently contributes their own daily output; total = sum of all chefs. Multipliers are not compounded on top of each other. |
+
+---
+
+---
+
+## Station Architecture
+
+*Added April 17, 2026*
+
+The bakery is divided into **3 operational stations**. Each station produces a specific set of products, contains one machine, and represents the physical zone where sous chefs work and where the Maintenance Guy may need to service equipment.
+
+| Station | Products Produced | Machine |
+|---|---|---|
+| **Bakery Station** | Croissant, Cookie | Oven |
+| **Deli** | Bagel, Sandwich | Meat Slicer |
+| **Barista Station** | Matcha, Coffee | Espresso Machine |
+
+**Sous chefs are assigned per station, not per product.** When a player hires a sous chef for the Barista Station, that sous chef contributes output to both Matcha and Coffee proportionally based on round demand. Station assignment is set during the Decide phase via the Staff Tab (see [Staff Tab UI](#staff-tab-ui)).
+
+**Machine health is tracked per station** as a maintenance percentage bar (0–100%). Each time an item from a station is ordered, that station's machine health drops. If a machine's health falls to 0%, it is considered broken — production from that station is halved until a Maintenance Guy repairs it. See [Maintenance System](#maintenance-system).
+
+---
+
+## Maintenance System
+
+*Added April 17, 2026*
+
+### Overview
+
+The **Maintenance Guy** is a new staff role players hire directly (no auction). They perform two types of tasks: **janitorial work** (restoring store cleanliness) and **machine repair** (restoring a station's machine health). Each Maintenance Guy can only work on **one task at a time** — clean the store OR service one specific machine. To address multiple degrading bars simultaneously, players must hire more Maintenance Guys.
+
+Maintenance Guys are assigned at the start of each round during the Decide phase and remain on their assigned task for the full duration of that round's operating hours.
+
+---
+
+### Dirtiness Mechanic
+
+**Cleanliness** is a store-wide percentage bar (0–100%) that starts each game at 100% and degrades as customers pass through.
+
+```
+Cleanliness drops 3% for every customer who enters the store
+(regardless of whether they make a purchase)
+```
+
+> At 100 customers/round, cleanliness drops by 3 points per customer = −300% equivalent over a busy round, but it floors at 0%. The practical pace: a mid-traffic round (50 customers) drops cleanliness by ~150 raw points — but since the bar floors at 0%, a store that opens the round at 20% cleanliness will hit 0% early and remain there. Players must proactively assign Maintenance Guys to stay above dangerous thresholds.
+
+**Cleanliness thresholds and effects:**
+
+| Cleanliness % | State | Effect on Chef Satisfaction |
+|---|---|---|
+| 91–100% | Spotless | +10 to Chef Satisfaction Score |
+| 71–90% | Clean | +5 to Chef Satisfaction Score |
+| 31–70% | Acceptable | No modifier |
+| 11–30% | Dirty | −5 to specialty chef personal satisfaction/round |
+| 0–10% | Filthy | −10 to specialty chef personal satisfaction/round; additional −5 to throughput score |
+
+---
+
+### Machine Maintenance Mechanic
+
+Each station has its own **Machine Health bar** (0–100%), starting at 100% at the beginning of the game.
+
+```
+Machine Health drops 2% for every item ordered from that station
+```
+
+| Station | Machine | Drops when... |
+|---|---|---|
+| Bakery Station | Oven | A Croissant or Cookie is ordered |
+| Deli | Meat Slicer | A Bagel or Sandwich is ordered |
+| Barista Station | Espresso Machine | A Coffee or Matcha is ordered |
+
+**Machine Health thresholds and effects:**
+
+| Machine Health % | State | Effect on Station Output |
+|---|---|---|
+| 71–100% | Optimal | Full throughput |
+| 41–70% | Worn | −15% throughput for that station's products |
+| 11–40% | Degraded | −35% throughput for that station's products |
+| 0–10% | Broken | −50% throughput for that station's products |
+
+> **Example:** A Barista Station Espresso Machine at 25% health (Degraded) produces only 65% of its normal Coffee and Matcha throughput. A player with an Advanced French chef on Coffee will still suffer if they neglect the espresso machine — raw chef skill cannot compensate for a broken machine.
+
+---
+
+### Maintenance Guy Mechanics
+
+**What a Maintenance Guy does:**
+
+Each Maintenance Guy is assigned to exactly one of the following tasks at the start of a round:
+- **Clean Store** → increases Cleanliness bar
+- **Repair Oven** → increases Bakery Station machine health
+- **Repair Meat Slicer** → increases Deli machine health
+- **Repair Espresso Machine** → increases Barista Station machine health
+
+**Restoration rate:**
+
+```
+Each Maintenance Guy restores the assigned bar by +15% per operational hour
+```
+
+> Operational hours per round = number of hours the café is open during that round (exact value set by backend config; default: 8 hours/round). A single Maintenance Guy assigned to cleaning all round restores +120% cumulative — enough to recover from a high-traffic round if started from acceptable levels. A round where cleanliness opens at 20% needs a Maintenance Guy assigned to cleaning for the full round just to end above 50%.
+
+**Hiring cost:**
+
+| Maintenance Guy # | Cost per Round |
+|---|---|
+| 1st | Base cost (TBD — tune to budget economy) |
+| 2nd | 1.5× base cost |
+| 3rd | 2.25× base cost |
+| 4th+ | +0.75× per additional |
+
+> Cost escalation mirrors the sous chef hiring curve — more coverage costs more. The strategic question: do you pay for a 3rd Maintenance Guy to keep all three machines healthy, or do you invest that budget in a specialty chef instead?
+
+**One task at a time — no multi-tasking:**
+
+A single Maintenance Guy cannot split their time between cleaning and repair in the same round. If a player has 1 Maintenance Guy and assigns them to clean, all three machine health bars degrade unaddressed that round. Managing multiple degrading bars is the core resource-allocation puzzle of the Maintenance system.
+
+**Capacity planning example:**
+
+| Scenario | Maintenance Guys Needed |
+|---|---|
+| Keep cleanliness healthy only | 1 |
+| Keep cleanliness + 1 machine healthy | 2 |
+| Keep cleanliness + all 3 machines healthy | 4 (1 per task) |
+| Catch up a heavily degraded state (multiple bars near 0%) | 4+ |
+
+---
+
+### Maintenance State Persistence
+
+All four bars (cleanliness, oven, meat slicer, espresso machine) **persist between rounds** — they do not reset. A player who neglects maintenance for two rounds will enter round 3 with compounded degradation. The only way to recover is to assign Maintenance Guys.
+
+Bar values are stored on the player's Firestore document and updated by the backend simulation engine at the end of each round.
+
+---
+
+### Maintenance & CSV Export
+
+Two new columns are added to the player's CSV export to support regression modeling:
+
+| Column | Type | Description |
+|---|---|---|
+| `avg_cleanliness_pct` | float | Average cleanliness % across the round (0–100) |
+| `avg_machine_health_pct` | float | Average across all three machine health bars (0–100) |
+| `maintenance_guy_count` | int | Number of Maintenance Guys hired this round |
 
 ---
 
@@ -1078,9 +1262,9 @@ revenue = 500
 
 Same starting point for everyone. Same base-level sous chef count, same menu, same budget. No advantages at the start. Differentiation comes purely from decisions made during the game.
 
-## Budget Rules (Confirmed — All-Hands April 8; Starting amount locked April 17)
+## Budget Rules (Confirmed — All-Hands April 8)
 
-- **Starting budget: $500,000 per player** — framed in-game as seed capital from an investor. Every player starts with the same amount. (Locked April 17, projectRoadmap.md DEC-01.)
+- Budget is set at a fixed amount (TBD — exact number to be finalized).
 - Players spend across products, sous chef hiring, and auction bids.
 - **Overbidding is allowed** — players are never blocked from exceeding their budget.
 - **No in-game budget tracker during active play.** Players must track their own finances externally (Excel, paper, etc.). This is intentional — financial self-management is part of the challenge and mirrors real business operations. The game UI will never display remaining balance mid-round. Budget Remaining is revealed once, on the Conclusion Screen at the end of Round 5.
@@ -1119,12 +1303,75 @@ Revenue deduction = borrowed amount + (10% × borrowed amount)
 4. **Which ONE feature from the cut list is highest priority if we have extra time?**
    → Recommend: 1 simple curveball event OR passive AI competitor, not both.
 
-5. ~~**Exact starting budget amount?**~~ → ✅ **$500,000** per player, framed as seed capital from an investor. (April 17)
+5. **Exact starting budget amount?** — Needs to be finalized.
 
 6. ~~**Credit cost rate?** — What interest/penalty applies when players overbid beyond their budget?~~
    → ✅ **Resolved:** Loan shark mechanic — borrowed amount × 1.10 deducted from end-of-round revenue (principal + 10% interest). (April 15)
 
 7. ~~**Staffing price escalation curve?**~~ → ✅ **Resolved:** Sous chef cost escalates per additional hire per round: 1.0×, 1.5×, 2.25×, 3.0×, +0.75× per additional. See Sous Chef section.
+
+---
+
+---
+
+## Staff Tab UI
+
+*Added April 17, 2026 — replaces the single sous chef stepper.*
+
+The Staff Tab in the Decide phase sidebar is redesigned to reflect station-based hiring and the new Maintenance Guy role.
+
+### Layout
+
+The right side of the Staff Tab shows **four independent +/− hiring selectors**, one per staffing category:
+
+| Selector | Label | What it controls |
+|---|---|---|
+| 1 | Sous Chef — Bakery Station | Sous chefs assigned to Oven station (Croissant, Cookie) |
+| 2 | Sous Chef — Deli | Sous chefs assigned to Deli station (Bagel, Sandwich) |
+| 3 | Sous Chef — Barista Station | Sous chefs assigned to Espresso Machine station (Coffee, Matcha) |
+| 4 | Maintenance Guy | Maintenance staff (cleaning + machine repair) |
+
+Each selector shows:
+- Current count
+- Cost for next hire (escalating)
+- Running cost contribution to the total spend display
+
+### Visual Staff Representation (Left Panel)
+
+The left panel of the Staff Tab renders **pixel-art character assets** corresponding to the current staff count. As the player increases or decreases counts using the +/− selectors, characters appear or disappear in real-time.
+
+**Sous chefs** are grouped by their assigned station — shown in front of their respective station area (oven, deli counter, espresso machine).
+
+**Maintenance Guys** have a **dedicated standalone visualization zone**: a tiled floor section with a mop bucket asset. As the player hires more Maintenance Guys, additional character sprites appear in this zone standing beside or near the mop bucket. The tiled floor pattern distinguishes this zone visually from the cooking stations.
+
+> **Asset requirement:** A pixel-art Maintenance Guy sprite and a mop bucket prop asset are needed. Style should match the existing `barista-walk-spritesheet.svg` and `chef-walk-spritesheet.svg` in `assets/svg/characters/`. The Maintenance Guy should wear a janitor uniform (coveralls or apron, bucket hat or cap), distinct from the chef coat/apron silhouette.
+
+### Maintenance Assignment Panel
+
+Below the Maintenance Guy count selector, a second sub-panel shows **task assignment** for each Maintenance Guy hired. Each hired Maintenance Guy gets a dropdown or toggle row:
+
+```
+Maintenance Guy 1: [Clean Store ▼]
+Maintenance Guy 2: [Repair Espresso Machine ▼]
+Maintenance Guy 3: [Repair Oven ▼]
+```
+
+Task options: Clean Store / Repair Oven / Repair Meat Slicer / Repair Espresso Machine.
+
+A Maintenance Guy with no task assigned defaults to **Clean Store**.
+
+### Maintenance Status Bars
+
+Four status bars are always visible in the Staff Tab (read-only, not interactive):
+
+```
+Cleanliness        [████████░░] 82%
+Oven Health        [█████░░░░░] 54%
+Meat Slicer Health [███████░░░] 72%
+Espresso Machine   [██░░░░░░░░] 23%  ⚠
+```
+
+Bars below 30% display a warning icon (⚠) to prompt player action.
 
 ---
 
@@ -1137,3 +1384,454 @@ Revenue deduction = borrowed amount + (10% × borrowed amount)
 | April 4 | Backend starts building auth + round state machine | Backend |
 | April 4 | Frontend starts building lobby + decision dashboard | Frontend |
 | April 10 | First end-to-end playable demo — one round, ugly, but functional | All |
+
+---
+
+## Implementation Tasks — Maintenance System & Station Architecture
+
+*Added April 17, 2026. Tasks are split by team so each AI agent can operate independently.*
+
+---
+
+### 🖥️ FRONTEND TASKS
+
+---
+
+#### FE-1 — Rename all "cook" references to "sous chef"
+
+**Files to touch:**
+- `app/src/components/game/tabs/StaffTab.tsx` — rename any "cook" label text
+- `app/src/types/game.ts` — rename any type fields referencing `cook` to `sousChef`
+- `app/src/contexts/GameContext.tsx` — update any state fields or action types using "cook"
+- Search the entire `app/src/` directory for the string `"cook"` (case-insensitive) and update all display strings
+
+**Do not change:** Chef auction logic, specialty chef field names in backend schema (coordinate with backend if type names change in Firestore)
+
+---
+
+#### FE-2 — Rebuild StaffTab with 4 independent +/− selectors
+
+**File:** `app/src/components/game/tabs/StaffTab.tsx`
+
+Replace the existing single sous chef stepper with four separate stepper components:
+
+1. **Sous Chef — Bakery Station** (Croissant, Cookie)
+2. **Sous Chef — Deli** (Bagel, Sandwich)
+3. **Sous Chef — Barista Station** (Coffee, Matcha)
+4. **Maintenance Guy**
+
+Each selector row shows:
+- Station/role label with station icon or small product tags
+- Current count
+- Cost for next hire (escalating — use same curve as existing sous chef stepper: 1.0×, 1.5×, 2.25×, 3.0×, +0.75× per additional)
+- Running sub-total cost for that role
+
+The total staff cost display at the bottom should sum all four categories.
+
+**State shape to add to `GameContext` or lift to `GamePage`:**
+```ts
+staffCounts: {
+  bakerySousChefs: number;     // Bakery Station sous chefs
+  deliSousChefs: number;       // Deli sous chefs
+  baristaSousChefs: number;    // Barista Station sous chefs
+  maintenanceGuys: number;     // Maintenance crew
+}
+```
+
+**Remove:** The existing `staffCount` single integer from state after migrating all references.
+
+---
+
+#### FE-3 — Add Maintenance Guy task assignment UI
+
+**File:** `app/src/components/game/tabs/StaffTab.tsx`
+
+Below the Maintenance Guy count stepper, render a dynamic list of assignment rows — one row per Maintenance Guy hired. Each row shows:
+- Label: "Maintenance Guy [n]"
+- Dropdown or segmented toggle with 4 options:
+  - Clean Store
+  - Repair Oven (Bakery Station)
+  - Repair Meat Slicer (Deli)
+  - Repair Espresso Machine (Barista Station)
+
+Default assignment: Clean Store for all. Rows appear/disappear as the player adds/removes Maintenance Guys.
+
+**State to add:**
+```ts
+maintenanceTasks: Array<'clean' | 'repair_oven' | 'repair_slicer' | 'repair_espresso'>
+```
+
+Length must always equal `staffCounts.maintenanceGuys`.
+
+---
+
+#### FE-4 — Add 4 maintenance status bars to StaffTab
+
+**File:** `app/src/components/game/tabs/StaffTab.tsx`
+
+Add a read-only status section at the top of the Staff Tab that always shows current bar values pulled from the player's Firestore document (or GameContext if not yet connected to Firestore). Four bars:
+
+1. **Cleanliness** — store-wide, driven by customer foot traffic
+2. **Oven Health** — Bakery Station machine
+3. **Meat Slicer Health** — Deli machine
+4. **Espresso Machine Health** — Barista Station machine
+
+Each bar renders as a labeled percentage progress bar matching the existing pixel-art CSS style (use existing `.bar` or `.progress` CSS patterns from `global.css`).
+
+**Warning indicator:** If any bar is ≤ 30%, render a `⚠` warning icon beside it and apply a red/berry color tint (`var(--berry)`) to that bar. Do not block submission — this is informational only.
+
+**Initial values** (when no Firestore data yet): all four bars at 100%.
+
+---
+
+#### FE-5 — Visual staff representation in the left panel
+
+**File:** `app/src/components/game/BakeryView.tsx`
+
+The left panel of the game view currently shows a static storefront with product shelves. Update it to render **pixel-art staff sprites** corresponding to the current staff count, grouped by zone:
+
+- **Bakery Station zone** — render one sous chef sprite per `bakerySousChefs` count, positioned near/behind the bakery counter area
+- **Deli zone** — render one sous chef sprite per `deliSousChefs`, near the deli counter
+- **Barista Station zone** — render one sous chef sprite per `baristaSousChefs`, near the espresso machine area
+- **Maintenance zone** — a dedicated strip at the bottom of the view showing a **tiled floor pattern** and a **mop bucket asset**. Render one Maintenance Guy sprite per `maintenanceGuys` count, standing near the mop bucket.
+
+**Sprite behavior:**
+- Sprites should use existing character spritesheet assets from `assets/svg/characters/`
+- As count increases beyond available space, sprites should stack slightly (overlapping at ~30%) rather than overflow the container
+- Min display: 0 sprites (empty zone). Max display: cap visual render at 5 sprites per zone to prevent overflow — show "+N more" text if count exceeds 5
+
+**New asset needed:** Request a Maintenance Guy sprite and mop bucket prop from the art team. Reference the style guide at `assets/svg/_STYLE.md`. Placeholder: use the `customer-walk-spritesheet.svg` until the real asset exists.
+
+---
+
+#### FE-6 — Update `pendingDecision` submission payload
+
+**File:** `app/src/pages/GamePage.tsx` (the submit handler)
+
+When the player submits decisions, the Firestore write to `pendingDecision` must include the new staff fields:
+
+```ts
+pendingDecision: {
+  // existing fields...
+  staffCounts: {
+    bakerySousChefs: number,
+    deliSousChefs: number,
+    baristaSousChefs: number,
+    maintenanceGuys: number,
+  },
+  maintenanceTasks: string[],  // array of task assignments, length = maintenanceGuys
+}
+```
+
+Remove the old flat `staffCount: number` field from the submission payload.
+
+---
+
+#### FE-7 — Update CSV download to include new columns
+
+**File:** `app/src/components/game/RoundHeader.tsx` — `downloadResultsCsv` function
+
+Add three new columns to the CSV output:
+- `avg_cleanliness_pct`
+- `avg_machine_health_pct`
+- `maintenance_guy_count`
+
+These values come from the player's round result object — source them from `GameContext.results` once the backend populates them.
+
+---
+
+#### FE-8 — Specialty chef satisfaction warning on Results screen
+
+**File:** `app/src/pages/phases/ResultsPhase.tsx`
+
+If any specialty chef's personal satisfaction score falls at or below 40% (warning threshold — before the 30% departure threshold), display a warning card on the results screen:
+
+```
+⚠ [Chef Name]'s satisfaction is low (XX%). Clean your kitchen to keep them.
+```
+
+If a chef actually departed that round (satisfaction reached 0% or fell below 30%), display a departure notice:
+
+```
+[Chef Name] has left the kitchen and re-entered the auction pool.
+```
+
+Source these values from the round result object passed down from `GameContext`.
+
+---
+
+### ⚙️ BACKEND TASKS
+
+---
+
+#### BE-1 — Update Firestore schema — PlayerDocument
+
+**File:** `backend/firestore-schema.js`
+
+Add the following fields to `PlayerDocument`:
+
+```js
+// Maintenance state (persists between rounds — never resets to 100% automatically)
+cleanliness_pct: number,         // 0–100, starts at 100
+oven_health_pct: number,         // 0–100, starts at 100
+slicer_health_pct: number,       // 0–100, starts at 100
+espresso_health_pct: number,     // 0–100, starts at 100
+
+// Per-specialty-chef satisfaction (keyed by chefId)
+chefSatisfactionScores: {
+  [chefId: string]: number       // 0–100, starts at 100 when chef is acquired
+},
+```
+
+Update `pendingDecision` shape to replace the old flat `staffCount` with the station-based structure:
+
+```js
+pendingDecision: {
+  // ...existing fields...
+  staffCounts: {
+    bakerySousChefs: number,
+    deliSousChefs: number,
+    baristaSousChefs: number,
+    maintenanceGuys: number,
+  },
+  maintenanceTasks: string[],    // ['clean', 'repair_oven', 'repair_slicer', 'repair_espresso']
+}
+```
+
+---
+
+#### BE-2 — Update Firestore security rules
+
+**File:** `backend/firestore.rules`
+
+Allow client writes to the new `staffCounts` and `maintenanceTasks` fields within `pendingDecision`. All four maintenance health bars (`cleanliness_pct`, `oven_health_pct`, `slicer_health_pct`, `espresso_health_pct`) must remain **read-only from the client** — updated only by Cloud Functions.
+
+---
+
+#### BE-3 — Update simulation engine — dirtiness degradation
+
+**File:** `backend/functions/index.js` (simulation Cloud Function, when built)
+
+After customer allocation resolves (total `customer_count` is known for the round):
+
+```
+new_cleanliness = max(0, current_cleanliness_pct − (customer_count × 3))
+```
+
+Then apply Maintenance Guy restoration for each guy assigned to "Clean Store":
+
+```
+clean_restoration = maintenanceGuys_assigned_clean × 15 × operational_hours_per_round
+new_cleanliness = min(100, new_cleanliness + clean_restoration)
+```
+
+Write the final `cleanliness_pct` back to the player's document.
+
+---
+
+#### BE-4 — Update simulation engine — machine health degradation
+
+**File:** `backend/functions/index.js`
+
+After order quantities are resolved for the round, degrade each station's machine health:
+
+```
+new_oven_health = max(0, current_oven_health_pct − (croissant_qty_sold + cookie_qty_sold) × 2)
+new_slicer_health = max(0, current_slicer_health_pct − (bagel_qty_sold + sandwich_qty_sold) × 2)
+new_espresso_health = max(0, current_espresso_health_pct − (coffee_qty_sold + matcha_qty_sold) × 2)
+```
+
+Then apply Maintenance Guy restoration for each assigned task:
+
+```
+oven_restoration = maintenanceGuys_assigned_repair_oven × 15 × operational_hours
+slicer_restoration = maintenanceGuys_assigned_repair_slicer × 15 × operational_hours
+espresso_restoration = maintenanceGuys_assigned_repair_espresso × 15 × operational_hours
+
+final_oven_health = min(100, new_oven_health + oven_restoration)
+// same pattern for slicer and espresso
+```
+
+Write all three machine health fields back to the player's document.
+
+---
+
+#### BE-5 — Update throughput calculation — machine health penalty
+
+**File:** `backend/functions/index.js`
+
+Before calculating output for each station, apply the machine health multiplier:
+
+```
+function machineMultiplier(health_pct):
+    if health_pct >= 71: return 1.0
+    if health_pct >= 41: return 0.85    // Worn — −15%
+    if health_pct >= 11: return 0.65    // Degraded — −35%
+    return 0.50                          // Broken — −50%
+
+bakery_throughput = calculated_bakery_output × machineMultiplier(oven_health_pct)
+deli_throughput = calculated_deli_output × machineMultiplier(slicer_health_pct)
+barista_throughput = calculated_barista_output × machineMultiplier(espresso_health_pct)
+```
+
+This penalty is applied before supply cap and before Chef Satisfaction Score multiplier.
+
+---
+
+#### BE-6 — Update Chef Satisfaction Score formula
+
+**File:** `backend/functions/index.js`
+
+Replace the existing formula with the updated version incorporating cleanliness:
+
+```js
+const overcrowding_penalty = Math.max(0, sous_chef_total - 4) * 16;
+const cleanliness_bonus = cleanliness_pct * 0.10;   // max +10 at 100% clean
+const chef_satisfaction_score = Math.min(100, Math.max(35, 100 - overcrowding_penalty + cleanliness_bonus));
+```
+
+`sous_chef_total` = `bakerySousChefs + deliSousChefs + baristaSousChefs` (not including Maintenance Guys).
+
+---
+
+#### BE-7 — Implement per-specialty-chef satisfaction decay and voluntary departure
+
+**File:** `backend/functions/index.js`
+
+At the end of each round, for each specialty chef on the player's roster:
+
+**Station mapping per chef nationality (used for machine health bonuses/penalties):**
+```js
+const CHEF_STATIONS = {
+  french:   ['bakery', 'barista'],   // Croissant (Oven), Coffee (Espresso Machine)
+  japanese: ['barista', 'bakery'],   // Matcha (Espresso Machine), Croissant (Oven)
+  italian:  ['deli', 'barista'],     // Sandwich (Meat Slicer), Coffee (Espresso Machine)
+  american: ['deli', 'bakery'],      // Bagel (Meat Slicer), Cookie (Oven)
+};
+const STATION_HEALTH = {
+  bakery:  oven_health_pct,
+  deli:    slicer_health_pct,
+  barista: espresso_health_pct,
+};
+// Primary station = worst-health station among the chef's stations
+const chef_stations = CHEF_STATIONS[chef.nationality];
+const primary_station_health = Math.min(...chef_stations.map(s => STATION_HEALTH[s]));
+const any_machine_below_40 = Object.values(STATION_HEALTH).some(h => h < 40);
+```
+
+**1. Apply decay:**
+```js
+const decay_rates = { novel: 8, intermediate: 14, advanced: 20 };
+const base_decay = decay_rates[chef.skill_level];
+
+const dirty_penalty         = cleanliness_pct < 30        ? 5 : 0;
+const chaos_penalty         = sous_chef_total >= 7         ? 5 : 0;
+const broken_machine_penalty= any_machine_below_40         ? 5 : 0;
+const primary_broken_penalty= primary_station_health < 20  ? 8 : 0;
+
+new_satisfaction = current_satisfaction
+  - base_decay
+  - dirty_penalty
+  - chaos_penalty
+  - broken_machine_penalty
+  - primary_broken_penalty;
+```
+
+**2. Apply recovery bonuses:**
+```js
+const cleanliness_recovery = cleanliness_pct > 90 ? 10
+                           : cleanliness_pct > 70 ? 5 : 0;
+const orderly_bonus        = sous_chef_total <= 4  ? 3 : 0;
+const machines_ok_bonus    = Object.values(STATION_HEALTH).every(h => h > 70) ? 3 : 0;
+const primary_excellent    = primary_station_health > 90 ? 5 : 0;
+
+new_satisfaction = new_satisfaction
+  + cleanliness_recovery
+  + orderly_bonus
+  + machines_ok_bonus
+  + primary_excellent;
+
+new_satisfaction = Math.max(0, Math.min(100, new_satisfaction));
+```
+
+**3. Check departure threshold:**
+```js
+if (new_satisfaction <= 30) {
+  // Remove chef from player's specialty slots
+  // Add chef back to the game's auction pool for next round
+  // Log departure event to player's lastRoundResult for frontend display
+}
+```
+
+Write updated `chefSatisfactionScores` to the player's Firestore document. Write any departure events to `lastRoundResult.chefDepartures[]`.
+
+---
+
+#### BE-8 — Update sous chef output calculation to use station assignments
+
+**File:** `backend/functions/index.js`
+
+Replace the existing flat `sous_chef_count` with station-specific counts:
+
+```js
+const bakery_sous_chefs = pendingDecision.staffCounts.bakerySousChefs;
+const deli_sous_chefs = pendingDecision.staffCounts.deliSousChefs;
+const barista_sous_chefs = pendingDecision.staffCounts.baristaSousChefs;
+
+// Output contribution per sous chef = 0.5 × head chef's output on that station's products
+bakery_sous_chef_output = bakery_sous_chefs × 0.5 × head_chef_bakery_output;
+deli_sous_chef_output = deli_sous_chefs × 0.5 × head_chef_deli_output;
+barista_sous_chef_output = barista_sous_chefs × 0.5 × head_chef_barista_output;
+```
+
+"Head chef" for each station = the highest-skill specialty chef with a specialty in any product at that station. If no specialty chef covers that station, use the base chef's output.
+
+---
+
+#### BE-9 — Update CSV export with new columns
+
+**File:** `backend/functions/index.js` (CSV generation function, when built)
+
+Add to the per-round CSV row:
+
+| Column | Source |
+|---|---|
+| `avg_cleanliness_pct` | `cleanliness_pct` at end of round |
+| `avg_machine_health_pct` | Average of `oven_health_pct`, `slicer_health_pct`, `espresso_health_pct` at end of round |
+| `maintenance_guy_count` | `staffCounts.maintenanceGuys` from `pendingDecision` |
+
+Also split `sous_chef_count` in the CSV into three columns:
+- `bakery_sous_chef_count`
+- `deli_sous_chef_count`
+- `barista_sous_chef_count`
+
+---
+
+#### BE-10 — Update game config / seed data
+
+**File:** `backend/seed/local-game.json`
+
+Add new config parameters under `config/params`:
+
+```json
+{
+  "operationalHoursPerRound": 8,
+  "maintenanceRestoreRatePerHour": 15,
+  "dirtinessDropPerCustomer": 3,
+  "machineHealthDropPerOrder": 2,
+  "chefDepartureThreshold": 30,
+  "chefSatisfactionDecayRates": {
+    "novel": 8,
+    "intermediate": 14,
+    "advanced": 20
+  },
+  "machineHealthMultipliers": {
+    "optimal": 1.0,
+    "worn": 0.85,
+    "degraded": 0.65,
+    "broken": 0.50
+  }
+}
+```
+
+Update `seed/local-game.json` with initial player state showing all four maintenance bars at 100%.
