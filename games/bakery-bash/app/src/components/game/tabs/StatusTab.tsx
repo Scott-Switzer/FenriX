@@ -3,16 +3,17 @@ import { useGame } from "../../../contexts/GameContext";
 /**
  * Map a 0–100 health/cleanliness value to a palette color.
  *
- * Tiers are tuned so the transition starts early: full green only above 85%,
- * yellow-green from 60–84%, honey yellow from 40–59%, golden orange from
- * 20–39%, berry red below 20%. Tune in one place, applied to both the fill
- * and the numeric percentage so they stay in sync.
+ * Break-points chosen to match the game-design-proposal spec, which mandates
+ * that any bar ≤30% render in berry red. That pins the bottom tier; the
+ * upper band is split into three steps so the user sees an early shift from
+ * green → yellow-green → yellow as the bar drains, rather than a cliff at
+ * 30%. Tune in one place; both the fill and the numeric percentage read
+ * from this helper so they stay in sync.
  */
 function healthColor(pct: number): string {
   if (pct >= 85) return "var(--sage)";
   if (pct >= 60) return "var(--lime)";
-  if (pct >= 40) return "var(--honey)";
-  if (pct >= 20) return "var(--golden)";
+  if (pct > 30) return "var(--honey)";
   return "var(--berry)";
 }
 
@@ -23,11 +24,14 @@ function healthColor(pct: number): string {
 function healthTier(pct: number): string {
   if (pct >= 85) return "Pristine";
   if (pct >= 60) return "Good";
-  if (pct >= 40) return "Worn";
-  if (pct >= 20) return "Damaged";
-  return "Broken";
+  if (pct > 30) return "Worn";
+  return "Critical";
 }
 
+/**
+ * Warning-icon threshold. Matches `healthColor`'s red band exactly so the
+ * ⚠ icon and the berry fill always appear together (per proposal spec).
+ */
 const WARN_THRESHOLD = 30;
 
 interface BarProps {
