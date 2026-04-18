@@ -18,7 +18,34 @@
  * All functions are pure.
  */
 
+const { PRODUCT_CATALOG } = require('./config');
 const config = require('./config');
+
+// --- Named constants for revenue formula magic numbers ----------------------
+
+/** Base revenue added every round regardless of decisions. */
+const REVENUE_BASE = 500;
+
+/** Revenue gained per sous chef hired. */
+const SOUS_CHEF_COEFFICIENT = 12;
+
+/** Revenue multiplier applied to aggregate satisfaction percentage. */
+const SATISFACTION_COEFFICIENT = 8;
+
+/** Revenue multiplier applied to ad spend (dollars). */
+const AD_SPEND_COEFFICIENT = 0.8;
+
+/** Revenue bonus per distinct product offered. */
+const PRODUCT_BONUS = 50;
+
+// --- Safe numeric helper ----------------------------------------------------
+
+/**
+ * Extract a finite number from v. Returns 0 for NaN, Infinity, null, undefined.
+ * @param {*} v
+ * @returns {number}
+ */
+const _num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 
 // --- Deterministic seeded PRNG (Mulberry32) ---------------------------------
 // Used so that when a noiseSeed is supplied the same round produces the same
@@ -70,19 +97,19 @@ function gaussianNoise(min, max, seed) {
 }
 
 /**
- * Calculate revenue from product sales using fixed prices.
+ * Calculate revenue from product sales using fixed prices from PRODUCT_CATALOG.
  *
  * @param {Object<string, number>} perProductQtySold - product → units sold.
- * @param {Object} cfg - expects cfg.products[P].price.
+ * @param {Object} cfg - optionally overrides PRODUCT_CATALOG via cfg.PRODUCT_CATALOG.
  * @returns {{ totalProductRevenue: number, breakdown: Object }}
  */
 function calculateProductRevenue(perProductQtySold, cfg = config) {
-  const products = cfg.products || {};
+  const catalog = (cfg && cfg.PRODUCT_CATALOG) || PRODUCT_CATALOG;
   const breakdown = {};
   let total = 0;
   for (const product of Object.keys(perProductQtySold || {})) {
-    const qty = perProductQtySold[product] || 0;
-    const price = (products[product] && products[product].price) || 0;
+    const qty = _num(perProductQtySold[product]);
+    const price = (catalog[product] && catalog[product].fixedPrice) || 0;
     const revenue = qty * price;
     breakdown[product] = { qtySold: qty, price, revenue };
     total += revenue;
@@ -92,6 +119,14 @@ function calculateProductRevenue(perProductQtySold, cfg = config) {
 
 /**
  * Compute gross revenue for a player in a given round.
+ *
+ * Revenue = base
+ *         + SOUS_CHEF_COEFFICIENT × sousChefCount
+ *         + SATISFACTION_COEFFICIENT × aggregateSatisfactionPct
+ *         + AD_SPEND_COEFFICIENT × adSpend
+ *         + PRODUCT_BONUS × numProducts
+ *         + totalProductRevenue
+ *         + noise
  *
  * @param {{
  *   sousChefCount: number,
@@ -106,12 +141,13 @@ function calculateProductRevenue(perProductQtySold, cfg = config) {
  * @returns {number} gross revenue (before loan shark deduction).
  */
 function computeGrossRevenue(inputs, cfg = config) {
+  inputs = inputs || {};
   const c = (cfg && cfg.revenueCoefficients) || {};
-  const base = c.base != null ? c.base : 500;
-  const sousChefCoeff = c.sousChefCoeff != null ? c.sousChefCoeff : 12;
-  const satCoeff = c.satisfactionCoeff != null ? c.satisfactionCoeff : 8.0;
-  const adCoeff = c.adSpendCoeff != null ? c.adSpendCoeff : 0.8;
-  const npCoeff = c.numProductsCoeff != null ? c.numProductsCoeff : 50;
+  const base = c.base != null ? c.base : REVENUE_BASE;
+  const sousChefCoeff = c.sousChefCoeff != null ? c.sousChefCoeff : SOUS_CHEF_COEFFICIENT;
+  const satCoeff = c.satisfactionCoeff != null ? c.satisfactionCoeff : SATISFACTION_COEFFICIENT;
+  const adCoeff = c.adSpendCoeff != null ? c.adSpendCoeff : AD_SPEND_COEFFICIENT;
+  const npCoeff = c.numProductsCoeff != null ? c.numProductsCoeff : PRODUCT_BONUS;
   const noiseMin = c.noiseMin != null ? c.noiseMin : -100;
   const noiseMax = c.noiseMax != null ? c.noiseMax : 100;
 
@@ -119,11 +155,11 @@ function computeGrossRevenue(inputs, cfg = config) {
 
   const revenue =
     base +
-    sousChefCoeff * (inputs.sousChefCount || 0) +
-    satCoeff * (inputs.aggregateSatisfactionPct || 0) +
-    adCoeff * (inputs.adSpend || 0) +
-    npCoeff * (inputs.numProducts || 0) +
-    (inputs.totalProductRevenue || 0) +
+    sousChefCoeff * _num(inputs.sousChefCount) +
+    satCoeff * _num(inputs.aggregateSatisfactionPct) +
+    adCoeff * _num(inputs.adSpend) +
+    npCoeff * _num(inputs.numProducts) +
+    _num(inputs.totalProductRevenue) +
     noise;
 
   return revenue;
@@ -186,8 +222,8 @@ function calculateRoundCosts(decision, auctionResults, cfg = config) {
   const isFlat = typeof rawUnitCost === 'number';
   let stockCost = 0;
   for (const product of Object.keys(stocked)) {
-    const qty = stocked[product] || 0;
-    const cost = isFlat ? rawUnitCost : ((rawUnitCost && rawUnitCost[product]) || 0);
+    const qty = _num(stocked[product]);
+    const cost = isFlat ? rawUnitCost : _num((rawUnitCost && rawUnitCost[product]));
     stockCost += qty * cost;
   }
 

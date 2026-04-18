@@ -200,6 +200,7 @@ function _fallbackBody(a, b) {
 
 module.exports = {
   generateGamePreferences,
+  generateRoundPreferences: generateGamePreferences,
   getDemandModifiers,
   generateMarketInsightEmail,
   // exported for tests

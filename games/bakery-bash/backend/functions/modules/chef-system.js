@@ -86,7 +86,10 @@ function skillRank(tier) {
  * @returns {Array<object>} chef pool
  */
 function generateChefPool(round, config) {
-  const { min, max } = config.chefPoolSize;
+  const cfg = config || {};
+  const poolSize$ = (cfg.chefPoolSize && cfg.chefPoolSize.min != null)
+    ? cfg.chefPoolSize : { min: 3, max: 6 };
+  const { min, max } = poolSize$;
   const poolSize = Math.floor(Math.random() * (max - min + 1)) + min;
 
   // Clamp round into the spawn-rate table range.
@@ -102,7 +105,9 @@ function generateChefPool(round, config) {
     const name = pick(CHEF_NATIONALITIES[nationality].names[gender]);
     const skillTier = sampleSkillTier(rates);
     const specialties = CHEF_NATIONALITIES[nationality].specialties.slice();
-    const minBidFloor = MIN_BID_FLOOR_MULTIPLIERS[skillTier] * config.sousChefBaseCost;
+    const baseCost = (cfg.sousChefBaseCost != null && Number.isFinite(cfg.sousChefBaseCost))
+      ? cfg.sousChefBaseCost : 12500;
+    const minBidFloor = MIN_BID_FLOOR_MULTIPLIERS[skillTier] * baseCost;
 
     pool.push({
       id: makeId(),
@@ -227,9 +232,14 @@ function calculateTotalProductOutput(product, specialtyChefs, sousChefAssignment
  * @returns {number} satisfaction score in [floor, 100]
  */
 function calculateChefSatisfactionScore(sousChefCount, config) {
-  const over = Math.max(0, sousChefCount - config.chefSatisfactionThreshold);
-  const raw = 100 - over * config.chefSatisfactionDecay;
-  return Math.max(config.chefSatisfactionFloor, raw);
+  const cfg = config || {};
+  const n = Number.isFinite(sousChefCount) ? Math.max(0, sousChefCount) : 0;
+  const threshold = Number.isFinite(cfg.chefSatisfactionThreshold) ? cfg.chefSatisfactionThreshold : 4;
+  const decay = Number.isFinite(cfg.chefSatisfactionDecay) ? cfg.chefSatisfactionDecay : 16;
+  const floor = Number.isFinite(cfg.chefSatisfactionFloor) ? cfg.chefSatisfactionFloor : 35;
+  const over = Math.max(0, n - threshold);
+  const raw = 100 - over * decay;
+  return Math.max(floor, raw);
 }
 
 // ---------------------------------------------------------------------------
@@ -270,14 +280,17 @@ function calculateEffectiveOutput(totalOutput, chefSatisfactionScore) {
  * @returns {number} dollar cost of the next hire
  */
 function getSousChefCost(currentCount, config) {
+  const n = Number.isFinite(currentCount) ? Math.max(0, Math.floor(currentCount)) : 0;
   const table = [1.0, 1.5, 2.25, 3.0];
   let multiplier;
-  if (currentCount < table.length) {
-    multiplier = table[currentCount];
+  if (n < table.length) {
+    multiplier = table[n];
   } else {
-    multiplier = 3.0 + 0.75 * (currentCount - 3);
+    multiplier = 3.0 + 0.75 * (n - 3);
   }
-  return multiplier * config.sousChefBaseCost;
+  const baseCost = (config && Number.isFinite(config.sousChefBaseCost))
+    ? config.sousChefBaseCost : 12500;
+  return multiplier * baseCost;
 }
 
 // ---------------------------------------------------------------------------
@@ -329,17 +342,19 @@ function getTotalSousChefHireCost(count, config) {
  * @returns {{ winners: Map<string, object[]>, payments: Map<string, number> }}
  */
 function resolveChefAuction(chefPool, playerBids) {
+  const pool = Array.isArray(chefPool) ? chefPool : [];
+  const bids = Array.isArray(playerBids) ? playerBids : [];
   const winners = new Map();
   const payments = new Map();
 
   // Group bids by chefId for O(chefs + bids) lookup.
   const bidsByChef = new Map();
-  for (const bid of playerBids) {
+  for (const bid of bids) {
     if (!bidsByChef.has(bid.chefId)) bidsByChef.set(bid.chefId, []);
     bidsByChef.get(bid.chefId).push(bid);
   }
 
-  for (const chef of chefPool) {
+  for (const chef of pool) {
     const bids = bidsByChef.get(chef.id);
     if (!bids || bids.length === 0) continue;
 

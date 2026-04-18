@@ -8,9 +8,9 @@ const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
 
 // ---------- config ----------
 const cfg = config.mergeConfig({});
-assert(cfg.startingBudget === 2000, 'startingBudget default');
-assert(cfg.sousChefBaseCost === 50, 'sousChefBaseCost default');
-assert(cfg.adBonuses.TV === 200, 'adBonuses.TV default');
+assert(cfg.startingBudget === 500000, 'startingBudget default');
+assert(cfg.sousChefBaseCost === 12500, 'sousChefBaseCost default');
+assert(cfg.adBonuses.TV === 50000, 'adBonuses.TV default');
 assert(cfg.returningCustomerBonuses.excellent === 0.15, 'returning excellent');
 
 // User overrides (and a bad value)
@@ -20,9 +20,9 @@ const cfg2 = config.mergeConfig({
   adBonuses: { TV: 999 },
 });
 assert(cfg2.startingBudget === 3000, 'override startingBudget');
-assert(cfg2.sousChefBaseCost === 50, 'bad value → default');
+assert(cfg2.sousChefBaseCost === 12500, 'bad value → default');
 assert(cfg2.adBonuses.TV === 999, 'override TV');
-assert(cfg2.adBonuses.Radio === 100, 'untouched Radio');
+assert(cfg2.adBonuses.Radio === 25000, 'untouched Radio');
 
 assert(config.numberOrDefault('7', 0) === 7, 'numberOrDefault string');
 assert(config.numberOrDefault(undefined, 5) === 5, 'numberOrDefault undefined');
@@ -66,13 +66,13 @@ assert(chefSys.calculateChefSatisfactionScore(100, cfg) === 35, 'cohesion huge f
 assert(chefSys.calculateEffectiveOutput(200, 50) === 100, 'effective output');
 
 // Sous chef hire cost
-assert(chefSys.getSousChefCost(0, cfg) === 50, 'sous 1 cost');
-assert(chefSys.getSousChefCost(1, cfg) === 75, 'sous 2 cost');
-assert(chefSys.getSousChefCost(2, cfg) === 112.5, 'sous 3 cost');
-assert(chefSys.getSousChefCost(3, cfg) === 150, 'sous 4 cost');
-assert(chefSys.getSousChefCost(4, cfg) === (3.0 + 0.75) * 50, 'sous 5 cost');
-assert(chefSys.getSousChefCost(5, cfg) === (3.0 + 1.5) * 50, 'sous 6 cost');
-assert(near(chefSys.getTotalSousChefHireCost(4, cfg), 50 + 75 + 112.5 + 150), 'total hire 4');
+assert(chefSys.getSousChefCost(0, cfg) === 12500, 'sous 1 cost');         // 1.0 × 12500
+assert(chefSys.getSousChefCost(1, cfg) === 18750, 'sous 2 cost');         // 1.5 × 12500
+assert(chefSys.getSousChefCost(2, cfg) === 28125, 'sous 3 cost');         // 2.25 × 12500
+assert(chefSys.getSousChefCost(3, cfg) === 37500, 'sous 4 cost');         // 3.0 × 12500
+assert(chefSys.getSousChefCost(4, cfg) === (3.0 + 0.75) * 12500, 'sous 5 cost');
+assert(chefSys.getSousChefCost(5, cfg) === (3.0 + 1.5) * 12500, 'sous 6 cost');
+assert(near(chefSys.getTotalSousChefHireCost(4, cfg), 12500 + 18750 + 28125 + 37500), 'total hire 4');
 
 // Auction
 const chefPool = [
