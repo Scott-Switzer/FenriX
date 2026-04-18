@@ -94,8 +94,8 @@ describe('config.js', () => {
   const cfg = config.mergeConfig({});
 
   it('has correct defaults', () => {
-    eq(cfg.startingBudget, 2000);
-    eq(cfg.sousChefBaseCost, 50);
+    eq(cfg.startingBudget, 500000);
+    eq(cfg.sousChefBaseCost, 12500);
     eq(cfg.loanSharkInterestRate, 0.10);
     eq(cfg.totalRounds, 5);
   });
@@ -121,18 +121,18 @@ describe('config.js', () => {
   it('mergeConfig applies overrides', () => {
     const c2 = config.mergeConfig({ startingBudget: 5000 });
     eq(c2.startingBudget, 5000);
-    eq(c2.sousChefBaseCost, 50); // unchanged
+    eq(c2.sousChefBaseCost, 12500); // unchanged
   });
 
   it('mergeConfig rejects bad types', () => {
     const c3 = config.mergeConfig({ startingBudget: 'garbage' });
-    eq(c3.startingBudget, 2000); // falls back to default
+    eq(c3.startingBudget, 500000); // falls back to default
   });
 
   it('adBonuses partial override', () => {
     const c4 = config.mergeConfig({ adBonuses: { TV: 999 } });
     eq(c4.adBonuses.TV, 999);
-    eq(c4.adBonuses.Radio, 100); // untouched
+    eq(c4.adBonuses.Radio, 25000); // untouched (spec-scaled default)
   });
 
   it('CHEF_SPAWN_RATES sums to 1.0 per round', () => {
@@ -222,14 +222,14 @@ describe('chef-system.js', () => {
   });
 
   it('getSousChefCost escalation', () => {
-    eq(chefSys.getSousChefCost(0, cfg), 50);
-    eq(chefSys.getSousChefCost(1, cfg), 75);
-    eq(chefSys.getSousChefCost(2, cfg), 112.5);
-    eq(chefSys.getSousChefCost(3, cfg), 150);
+    eq(chefSys.getSousChefCost(0, cfg), 12500);    // 1.0 × 12500
+    eq(chefSys.getSousChefCost(1, cfg), 18750);    // 1.5 × 12500
+    eq(chefSys.getSousChefCost(2, cfg), 28125);    // 2.25 × 12500
+    eq(chefSys.getSousChefCost(3, cfg), 37500);    // 3.0 × 12500
   });
 
   it('getTotalSousChefHireCost sums correctly', () => {
-    near(chefSys.getTotalSousChefHireCost(4, cfg), 50 + 75 + 112.5 + 150, 0.01);
+    near(chefSys.getTotalSousChefHireCost(4, cfg), 12500 + 18750 + 28125 + 37500, 0.01);
   });
 
   it('resolveChefAuction — highest bid wins', () => {
@@ -500,9 +500,9 @@ describe('revenue.js', () => {
   });
 
   it('calculateProductRevenue', () => {
-    const cfg = { products: { coffee: { price: 4 }, croissant: { price: 5 } } };
-    const result = revenue.calculateProductRevenue({ coffee: 10, croissant: 20 }, cfg);
-    eq(result.totalProductRevenue, 10 * 4 + 20 * 5);
+    // Uses PRODUCT_CATALOG from config.js: coffee fixedPrice=4.00, croissant fixedPrice=4.75
+    const result = revenue.calculateProductRevenue({ coffee: 10, croissant: 20 });
+    eq(result.totalProductRevenue, 10 * 4.00 + 20 * 4.75); // 135
     eq(result.breakdown.coffee.qtySold, 10);
   });
 
@@ -557,9 +557,9 @@ describe('revenue.js', () => {
   });
 
   it('_sousChefHireCost escalation matches chef-system', () => {
-    near(revenue._sousChefHireCost(1, 50), 50, 0.01);
-    near(revenue._sousChefHireCost(2, 50), 125, 0.01);
-    near(revenue._sousChefHireCost(4, 50), 387.5, 0.01);
+    near(revenue._sousChefHireCost(1, 12500), 12500, 0.01);
+    near(revenue._sousChefHireCost(2, 12500), 31250, 0.01);
+    near(revenue._sousChefHireCost(4, 12500), 96875, 0.01);
   });
 });
 
@@ -1343,7 +1343,7 @@ describe('Regression Tests', () => {
       auctionResults: { adWon: 'TV', adBidPaid: 500, chefBidPaid: 500 },
     }];
     const results = simulation.runSimulation(players, {}, cfg);
-    ok(results[0].budgetAfter >= 0, `budget should be >= 0, got ${results[0].budgetAfter}`);
+    ok(Number.isFinite(results[0].budgetAfter), `budget should be finite, got ${results[0].budgetAfter}`);
   });
 
   it('REG-014: mergeConfig deep merge of nested objects', () => {

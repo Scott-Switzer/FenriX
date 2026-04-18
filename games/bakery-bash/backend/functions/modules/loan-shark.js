@@ -15,6 +15,9 @@ const config = require('./config');
  * Calculate how much a player had to borrow this round and the resulting
  * interest charge.
  *
+ * Non-finite values for totalSpent or currentBudget are treated as 0 to
+ * prevent Infinity from propagating into the borrowed/interest totals.
+ *
  * @param {number} totalSpent - total round expenditure (stock + hires + bids).
  * @param {number} budgetCurrent - player's budget at the START of the round.
  * @param {Object} cfg - expects cfg.loanSharkInterestRate (default 0.10).
@@ -26,10 +29,12 @@ const config = require('./config');
  * }}
  */
 function calculateLoanShark(totalSpent, budgetCurrent, cfg = config) {
+  const spent = Number.isFinite(totalSpent) ? totalSpent : 0;
+  const budget = Number.isFinite(budgetCurrent) ? budgetCurrent : 0;
   const rate = (cfg && cfg.loanSharkInterestRate != null)
     ? cfg.loanSharkInterestRate
     : 0.10;
-  const borrowed = Math.max(0, (totalSpent || 0) - (budgetCurrent || 0));
+  const borrowed = Math.max(0, spent - budget);
   const interest = borrowed * rate;
   const loanSharkDeduction = borrowed + interest;
   return {
@@ -43,8 +48,8 @@ function calculateLoanShark(totalSpent, budgetCurrent, cfg = config) {
 /**
  * Subtract the loan-shark deduction (principal + interest) from gross revenue.
  *
- * @param {number} grossRevenue
- * @param {number} loanSharkDeduction
+ * @param {number} grossRevenue - gross revenue before loan deductions.
+ * @param {number} loanSharkDeduction - borrowed principal + interest.
  * @returns {number} net revenue (can be negative in pathological cases).
  */
 function calculateNetRevenue(grossRevenue, loanSharkDeduction) {
@@ -64,9 +69,9 @@ function calculateNetRevenue(grossRevenue, loanSharkDeduction) {
  * The result may be negative — callers decide how to present that (e.g.
  * "in the red") but no clamping is applied here.
  *
- * @param {number} budgetCurrent
- * @param {number} revenueNet
- * @param {number} totalSpent
+ * @param {number} budgetCurrent - player's budget before this round.
+ * @param {number} revenueNet - net revenue after loan-shark deductions.
+ * @param {number} totalSpent - total round expenditure.
  * @returns {number} updated budget.
  */
 function updateBudget(budgetCurrent, revenueNet, totalSpent) {

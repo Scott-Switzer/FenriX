@@ -233,7 +233,8 @@ function buildCsvRow(roundResult) {
   }
 
   // Outputs
-  row.revenue                     = firstDefined(r.revenueGross, r.revenue);
+  // Spec: revenue CSV column is NET (post loan-shark deduction).
+  row.revenue                     = firstDefined(r.revenueNet, r.revenue, r.revenueGross);
   row.amount_borrowed             = firstDefined(r.amountBorrowed, 0);
   row.interest_charged            = firstDefined(r.interestCharged, 0);
   row.customer_count              = firstDefined(r.customerCount, 0);
