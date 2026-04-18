@@ -593,6 +593,35 @@ h3 { font-size: 0.7rem; }
   border-color: var(--caramel);
 }
 
+.menu-tab__qty-group {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.menu-tab__remove-btn {
+  font-family: var(--font-pixel);
+  font-size: 0.55rem;
+  width: 28px;
+  border: var(--border);
+  background: var(--cream);
+  color: var(--berry);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menu-tab__remove-btn:hover {
+  background: var(--berry);
+  color: var(--flour);
+}
+
+.menu-tab__remove-btn:focus-visible {
+  outline: none;
+  border-color: var(--berry);
+}
+
 .menu-tab__locked-badge {
   font-family: var(--font-pixel);
   font-size: 0.45rem;

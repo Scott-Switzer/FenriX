@@ -1,8 +1,19 @@
 import { Link } from "react-router-dom";
 import { useGame, useGameDispatch } from "../../contexts/GameContext";
-import type { GamePhase } from "../../types/game";
+import { parseGamePhase, type GamePhaseString } from "../../types/game";
 
-const PHASES: GamePhase[] = ["decide", "simulate", "results"];
+/**
+ * Dev-only shortcuts for jumping between phases. Phase strings use the
+ * backend's `round_N_<phase>` convention for in-round phases.
+ */
+const PHASE_JUMPS: { label: string; value: GamePhaseString }[] = [
+  { label: "decide",        value: "round_1_decide"  },
+  { label: "bid_ad",        value: "round_1_bid_ad"  },
+  { label: "bid_chef",      value: "round_1_bid_chef" },
+  { label: "roster",        value: "round_1_roster"  },
+  { label: "simulating",    value: "simulating"      },
+  { label: "results_ready", value: "results_ready"   },
+];
 
 export function DevNav() {
   const { phase, auctionTab } = useGame();
@@ -10,37 +21,34 @@ export function DevNav() {
 
   if (import.meta.env.PROD) return null;
 
-  const setPhase = (p: GamePhase) => {
-    if (p === "decide") {
-      dispatch({ type: "ADVANCE_ROUND" });
-    } else {
-      dispatch({ type: "SET_PHASE", payload: p });
+  const setPhase = (p: GamePhaseString) => {
+    dispatch({ type: "SET_PHASE", payload: p });
+    const parsed = parseGamePhase(p);
+    if (parsed.round && parsed.round > 0) {
+      dispatch({ type: "SET_ROUND", payload: parsed.round });
     }
   };
 
-  const auctionTabLabel =
-    phase === "auction" ? "auction (active)" : "auction";
+  const base = parseGamePhase(phase).base;
+  const isAuctionPhase = base === "bid_ad" || base === "bid_chef";
 
   return (
     <nav className="dev-nav">
       <span className="dev-nav__label">DEV</span>
       <Link to="/">Landing</Link>
       <Link to="/lobby">Lobby</Link>
-      {PHASES.map((p) => (
-        <Link key={p} to="/game" onClick={() => setPhase(p)}>
-          {p}
+      {PHASE_JUMPS.map((p) => (
+        <Link
+          key={p.value}
+          to={p.value.includes("bid_") ? "/auction" : "/game"}
+          onClick={() => setPhase(p.value)}
+        >
+          {p.label}
         </Link>
       ))}
-      <Link
-        to="/auction"
-        className={phase === "auction" ? "dev-nav__link--active" : ""}
-        onClick={() => dispatch({ type: "SET_PHASE", payload: "auction" })}
-      >
-        {auctionTabLabel}
-      </Link>
       <Link to="/leaderboard">Board</Link>
       <Link to="/professor">Prof</Link>
-      {phase === "auction" && (
+      {isAuctionPhase && (
         <span className="dev-nav__phase-indicator">
           auction tab: {auctionTab === "chefs" ? "Chef Hiring" : "Advertisements"}
         </span>
