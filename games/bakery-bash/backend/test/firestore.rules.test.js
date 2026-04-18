@@ -23,71 +23,46 @@ let testEnv;
 const pendingDecision = {
   submitted: false,
   submittedAt: null,
-  staffCount: 3,
-  adSpend: 0,
   menu: {
     croissant: true,
     cookie: true,
     bagel: true,
     sandwich: false,
-    latte: false,
-    matchaLatte: false,
-  },
-  productPrices: {
-    croissant: 0,
-    cookie: 0,
-    bagel: 0,
-    sandwich: 0,
-    latte: 0,
-    matchaLatte: 0,
+    coffee: false,
+    matcha: false,
   },
   quantities: {
     croissant: 0,
     cookie: 0,
     bagel: 0,
     sandwich: 0,
-    latte: 0,
-    matchaLatte: 0,
+    coffee: 0,
+    matcha: 0,
   },
+  sousChefCount: 0,
+  sousChefAssignments: {},
 };
 
 const pendingBids = {
-  adBid: {
-    adType: null,
-    amount: 0,
-  },
-  chefBid: {
-    skillLevel: 0,
-    amount: 0,
-  },
+  ad: null,
+  chef: null,
 };
 
 function playerDocument(uid, displayName) {
   return {
     uid,
     displayName,
+    bakeryName: displayName,
     joinedAt: null,
-    budgetCurrent: 2000,
-    creditBalance: 0,
+    budgetCurrent: 500000,
     cumulativeRevenue: 0,
+    specialtyChefs: [],
+    sousChefCount: 0,
+    pendingRosterAction: false,
+    returningCustomersPending: 0,
     pendingDecision,
     pendingBids,
-    lastRoundResult: {
-      round: 0,
-      revenue: 0,
-      customerCount: 0,
-      customerSatisfaction: 0,
-      headchefSkill: 0,
-      adTypeWon: null,
-      productsSold: {
-        croissant: 0,
-        cookie: 0,
-        bagel: 0,
-        sandwich: 0,
-        latte: 0,
-        matchaLatte: 0,
-      },
-    },
+    lastRoundResult: null,
   };
 }
 
@@ -296,8 +271,8 @@ describe("Bakery Bash Firestore security rules", () => {
       staffCount: 4,
     } }));
     await assertFails(updateDoc(playerRef, { budgetCurrent: 999999 }));
-    await assertFails(updateDoc(playerRef, { creditBalance: 999999 }));
     await assertFails(updateDoc(playerRef, { cumulativeRevenue: 999999 }));
+    await assertFails(updateDoc(playerRef, { specialtyChefs: [{ id: "fake" }] }));
   });
 
   it("does not let players write shared backend-owned data", async () => {

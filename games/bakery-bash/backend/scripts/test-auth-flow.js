@@ -116,8 +116,7 @@ async function main() {
   }
 
   if (
-    player.budgetCurrent !== 2000 ||
-    player.creditBalance !== 0 ||
+    player.budgetCurrent !== 500000 ||
     player.cumulativeRevenue !== 0
   ) {
     throw new Error("Player document was not initialized with expected state.");

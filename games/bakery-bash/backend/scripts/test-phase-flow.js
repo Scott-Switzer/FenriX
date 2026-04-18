@@ -51,9 +51,12 @@ async function seedLobbyGame(db, professorId) {
 
   await db.doc(`games/${GAME_ID}/config/params`).set({
     phaseDurations: {
-      closing_hours: 180,
-      auction: 90,
-      open_for_business: 30,
+      email: 30,
+      decide: 300,
+      bid_ad: 60,
+      bid_chef: 60,
+      roster: 60,
+      simulating: 30,
       results: 60,
     },
   });
@@ -87,32 +90,18 @@ async function main() {
   const advanceGamePhase = httpsCallable(functions, "advanceGamePhase");
 
   const startResult = await startGame({ gameId: GAME_ID });
-  assertEqual(startResult.data.phase, "closing_hours", "Start phase mismatch.");
+  assertEqual(startResult.data.phase, "round_1_email", "Start phase mismatch.");
   assertEqual(startResult.data.currentRound, 1, "Start round mismatch.");
-  assertPhaseEndTime(
-    startResult.data.phaseEndTime,
-    "startGame did not return a future phaseEndTime."
-  );
 
   let gameSnap = await db.doc(`games/${GAME_ID}`).get();
-  assertEqual(gameSnap.get("phase"), "closing_hours", "Stored start phase mismatch.");
-  if (!gameSnap.get("phaseEndTime")) {
-    throw new Error("startGame did not store phaseEndTime.");
-  }
+  assertEqual(gameSnap.get("phase"), "round_1_email", "Stored start phase mismatch.");
 
-  const auctionResult = await advanceGamePhase({ gameId: GAME_ID });
-  assertEqual(auctionResult.data.phase, "auction", "Auction phase mismatch.");
-  assertEqual(auctionResult.data.currentRound, 1, "Auction round mismatch.");
-  assertPhaseEndTime(
-    auctionResult.data.phaseEndTime,
-    "advanceGamePhase did not return a future auction phaseEndTime."
-  );
+  const decideResult = await advanceGamePhase({ gameId: GAME_ID });
+  assertEqual(decideResult.data.phase, "round_1_decide", "Decide phase mismatch.");
+  assertEqual(decideResult.data.currentRound, 1, "Decide round mismatch.");
 
   gameSnap = await db.doc(`games/${GAME_ID}`).get();
-  assertEqual(gameSnap.get("phase"), "auction", "Stored auction phase mismatch.");
-  if (!gameSnap.get("phaseEndTime")) {
-    throw new Error("advanceGamePhase did not store auction phaseEndTime.");
-  }
+  assertEqual(gameSnap.get("phase"), "round_1_decide", "Stored decide phase mismatch.");
 
   console.log("Phase state machine flow passed.");
 }

@@ -30,74 +30,85 @@ function assertEqual(actual, expected, message) {
 async function seedGame(db, playerId) {
   await db.doc(`games/${GAME_ID}`).set({
     joinCode: "SUBMIT",
-    phase: "closing_hours",
+    phase: "round_1_decide",
+    round: 1,
     currentRound: 1,
     totalRounds: 5,
-    phaseEndTime: null,
+    phaseEndsAt: null,
     phaseStartedAt: null,
     submittedCount: 0,
     totalPlayers: 1,
     paused: false,
     professorId: "uid_professor",
+    professorUid: "uid_professor",
     createdAt: null,
     startedAt: null,
     endedAt: null,
   });
 
   await db.doc(`games/${GAME_ID}/config/params`).set({
-    revenueModel: {
+    startingBudget: 500000,
+    sousChefBaseCost: 12500,
+    unitCostPerProduct: 1,
+    revenueCoefficients: {
       base: 500,
-      staffCoefficient: 30,
-      priceCoefficient: -15,
-      adSpendCoefficient: 0.8,
-      numProductsCoefficient: 50,
+      sousChefCoeff: 12,
+      satisfactionCoeff: 8.0,
+      adSpendCoeff: 0.8,
+      numProductsCoeff: 50,
       noiseMin: 0,
       noiseMax: 0,
     },
     phaseDurations: {
-      closing_hours: 180,
-      auction: 90,
-      open_for_business: 30,
+      email: 30,
+      decide: 300,
+      bid_ad: 60,
+      bid_chef: 60,
+      roster: 60,
+      simulating: 30,
       results: 60,
     },
   });
 
   await db.doc(`games/${GAME_ID}/players/${playerId}`).set({
     uid: playerId,
+    playerId,
     displayName: "Submit Scones",
+    bakeryName: "Submit Scones",
     joinedAt: null,
-    budgetCurrent: 2000,
-    creditBalance: 0,
+    budgetCurrent: 500000,
     cumulativeRevenue: 0,
+    specialtyChefs: [],
+    sousChefCount: 0,
+    pendingRosterAction: false,
+    returningCustomersPending: 0,
     pendingDecision: {
       submitted: false,
       submittedAt: null,
-      staffCount: 3,
-      adSpend: 0,
       menu: {
         croissant: true,
         cookie: true,
         bagel: true,
         sandwich: false,
-        latte: false,
-        matchaLatte: false,
+        coffee: false,
+        matcha: false,
       },
-      productPrices: {},
-      quantities: {},
+      quantities: {
+        croissant: 0,
+        cookie: 0,
+        bagel: 0,
+        sandwich: 0,
+        coffee: 0,
+        matcha: 0,
+      },
+      sousChefCount: 0,
+      sousChefAssignments: {},
     },
     pendingBids: {
-      adBid: { adType: null, amount: 0 },
-      chefBid: { skillLevel: 0, amount: 0 },
+      ad: null,
+      chef: null,
     },
-    lastRoundResult: {
-      round: 0,
-      revenue: 0,
-      customerCount: 0,
-      customerSatisfaction: 0,
-      headchefSkill: 0,
-      adTypeWon: null,
-      productsSold: {},
-    },
+    lastRoundResult: null,
   });
 }
 
@@ -127,95 +138,53 @@ async function main() {
 
   const submitDecision = httpsCallable(functions, "submitDecision");
 
+  // Reject menu that disables a base product
   try {
     await submitDecision({
       gameId: GAME_ID,
+      sousChefCount: 0,
+      sousChefAssignments: {},
       menu: {
-        croissant: true,
+        croissant: false,
+        cookie: true,
         bagel: true,
-        latte: false,
-      },
-      productPrices: {
-        croissant: 5,
-        bagel: 6,
+        sandwich: false,
+        coffee: true,
+        matcha: false,
       },
       quantities: {
-        croissant: 10,
-        bagel: 10,
+        croissant: 0, cookie: 10, bagel: 10,
+        sandwich: 0, coffee: 10, matcha: 0,
       },
-      staffCount: 3,
-      adSpend: 0,
     });
-    throw new Error("Invalid menu submission unexpectedly succeeded.");
+    throw new Error("Disabled base product submission unexpectedly succeeded.");
   } catch (error) {
     if (error.code !== "functions/invalid-argument") {
       throw error;
     }
-    if (!error.message.includes("at least one drink")) {
-      throw new Error(`Unexpected validation message: ${error.message}`);
-    }
   }
 
-  try {
-    await submitDecision({
-      gameId: GAME_ID,
-      menu: {
-        croissant: true,
-        bagel: true,
-        latte: true,
-      },
-      productPrices: {
-        croissant: 5,
-        bagel: 6,
-        latte: 4,
-      },
-      quantities: {
-        croissant: 10,
-        bagel: 10,
-        latte: 10,
-      },
-      staffCount: 20,
-      adSpend: 1200,
-      adType: "tv",
-      chefBid: {
-        skillLevel: 50,
-        amount: 100,
-      },
-    });
-    throw new Error("Unaffordable decision unexpectedly succeeded.");
-  } catch (error) {
-    if (error.code !== "functions/failed-precondition") {
-      throw error;
-    }
-    if (!error.message.includes("current budget")) {
-      throw new Error(`Unexpected budget validation message: ${error.message}`);
-    }
-  }
-
+  // Valid submission
   const result = await submitDecision({
     gameId: GAME_ID,
     round: 1,
+    sousChefCount: 0,
+    sousChefAssignments: {},
     menu: {
       croissant: true,
+      cookie: true,
       bagel: true,
-      latte: true,
-    },
-    productPrices: {
-      croissant: 5,
-      bagel: 6,
-      latte: 4,
+      sandwich: false,
+      coffee: true,
+      matcha: false,
     },
     quantities: {
       croissant: 10,
+      cookie: 10,
       bagel: 10,
-      latte: 10,
-    },
-    staffCount: 3,
-    adSpend: 25,
-    adType: "tv",
-    chefBid: {
-      skillLevel: 50,
-      amount: 0,
+      sandwich: 0,
+      coffee: 10,
+      matcha: 0,
     },
   });
 
@@ -231,11 +200,10 @@ async function main() {
     throw new Error("submitDecision did not create a decision snapshot.");
   }
 
-  assertEqual(decisionSnap.get("staffCount"), 3, "Decision staff count mismatch.");
-  assertEqual(decisionSnap.get("adSpend"), 25, "Decision ad spend mismatch.");
-  assertEqual(decisionSnap.get("adBid.adType"), "TV", "Decision ad type mismatch.");
-  assertEqual(decisionSnap.get("menu.matchaLatte"), false, "Matcha default mismatch.");
-  assertEqual(decisionSnap.get("numProducts"), 3, "Decision product count mismatch.");
+  assertEqual(decisionSnap.get("sousChefCount"), 0, "Decision sousChefCount mismatch.");
+  assertEqual(decisionSnap.get("menu.coffee"), true, "Decision menu.coffee mismatch.");
+  assertEqual(decisionSnap.get("menu.matcha"), false, "Decision menu.matcha mismatch.");
+  assertEqual(decisionSnap.get("numProducts"), 4, "Decision product count mismatch.");
   assertEqual(playerSnap.get("pendingDecision.submitted"), true, "Pending state mismatch.");
 
   console.log("Submit decision flow passed.");

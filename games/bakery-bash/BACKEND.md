@@ -144,7 +144,7 @@ Laid-off chefs return to a `auctionReturnPool` and may re-enter future chef pool
 
 #### Sous Chefs
 
-Hired directly (no auction). Unlimited count. **Each must be assigned to a specific product per round.**
+Hired directly (no auction). Unlimited count. **Each must be assigned to a specific product per round.** **Sous chefs are hired exclusively during the decide phase (DEC-02); the roster phase displays them read-only.**
 
 **Output per sous chef:**
 ```
@@ -372,6 +372,7 @@ The professor export adds `playerId, bakeryName, displayName` prepended to every
 ```
 games/{gameId}
   joinCode, phase, round, phaseEndsAt, status, totalPlayers, professorUid, conclusion?
+  // Players supply a single name at join time; it is stored as both displayName and bakeryName (DEC-06).
   config/params  → productPrices, productBaseDemand, productWeights, revenueCoefficients,
                    adBonus, sousChefBaseCost, phaseDurations, startingBudget, playerCap, unitCosts
   preferences/rounds  → 5×6 demand modifier matrix (Cloud Functions only — clients see hint string only)

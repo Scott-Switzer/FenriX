@@ -6,13 +6,15 @@
       "data": {
         "joinCode": "ABC123",
         "phase": "lobby",
-        "currentRound": 1,
+        "round": 0,
+        "currentRound": 0,
         "totalRounds": 5,
-        "phaseEndTime": null,
         "phaseStartedAt": null,
+        "phaseEndsAt": null,
         "submittedCount": 0,
         "totalPlayers": 2,
         "paused": false,
+        "professorUid": "uid_professor",
         "professorId": "uid_professor",
         "createdAt": null,
         "startedAt": null,
@@ -22,34 +24,48 @@
     {
       "path": "games/demo-lobby/config/params",
       "data": {
-        "startingBudget": 2000,
-        "costPerStaffPerRound": 50,
+        "startingBudget": 500000,
+        "sousChefBaseCost": 12500,
         "unitCostPerProduct": 1,
-        "credit": {
-          "overdraftEnabled": false,
-          "creditCostRate": null,
-          "chargeTiming": null
-        },
-        "staffingCost": {
-          "baseCostPerStaff": 50,
-          "escalationCurve": null
-        },
-        "revenueModel": {
+        "revenueCoefficients": {
           "base": 500,
-          "staffCoefficient": 30,
-          "priceCoefficient": -15,
-          "adSpendCoefficient": 0.8,
-          "numProductsCoefficient": 50,
+          "sousChefCoeff": 12,
+          "satisfactionCoeff": 8.0,
+          "adSpendCoeff": 0.8,
+          "numProductsCoeff": 50,
           "noiseMin": -100,
           "noiseMax": 100
         },
-        "chefBonusPerPoint": 5,
-        "customerPoolMultiplier": 100,
+        "adBonuses": {
+          "TV": 50000,
+          "Billboard": 37500,
+          "Radio": 25000,
+          "Newspaper": 18750
+        },
+        "chefBidFloors": {
+          "novel": 25000,
+          "intermediate": 43750,
+          "advanced": 68750
+        },
+        "loanSharkInterestRate": 0.10,
         "phaseDurations": {
-          "closing_hours": 180,
-          "auction": 90,
-          "open_for_business": 30,
+          "email": 30,
+          "decide": 300,
+          "bid_ad": 60,
+          "bid_chef": 60,
+          "roster": 60,
+          "simulating": 30,
           "results": 60
+        },
+        "totalRounds": 5,
+        "specialtyChefCap": 3,
+        "chefPoolSize": { "min": 6, "max": 8 },
+        "chefSatisfactionThreshold": 4,
+        "chefSatisfactionDecay": 16,
+        "chefSatisfactionFloor": 35,
+        "returningCustomerBonuses": {
+          "excellent": 0.15,
+          "good": 0.08
         }
       }
     },
@@ -57,155 +73,111 @@
       "path": "games/demo-lobby/players/uid_player_a",
       "data": {
         "uid": "uid_player_a",
+        "playerId": "uid_player_a",
         "displayName": "The Rolling Scone",
+        "bakeryName": "The Rolling Scone",
         "joinedAt": null,
-        "budgetCurrent": 2000,
-        "creditBalance": 0,
+        "budgetCurrent": 500000,
         "cumulativeRevenue": 0,
+        "specialtyChefs": [],
+        "sousChefCount": 0,
+        "pendingRosterAction": false,
+        "returningCustomersPending": 0,
         "pendingDecision": {
           "submitted": false,
           "submittedAt": null,
-          "staffCount": 3,
-          "adSpend": 0,
           "menu": {
             "croissant": true,
             "cookie": true,
             "bagel": true,
             "sandwich": false,
-            "latte": false,
-            "matchaLatte": false
-          },
-          "productPrices": {
-            "croissant": 0,
-            "cookie": 0,
-            "bagel": 0,
-            "sandwich": 0,
-            "latte": 0,
-            "matchaLatte": 0
+            "coffee": false,
+            "matcha": false
           },
           "quantities": {
             "croissant": 0,
             "cookie": 0,
             "bagel": 0,
             "sandwich": 0,
-            "latte": 0,
-            "matchaLatte": 0
-          }
+            "coffee": 0,
+            "matcha": 0
+          },
+          "sousChefCount": 0,
+          "sousChefAssignments": {}
         },
         "pendingBids": {
-          "adBid": {
-            "adType": null,
-            "amount": 0
-          },
-          "chefBid": {
-            "skillLevel": 0,
-            "amount": 0
-          }
+          "ad": null,
+          "chef": null
         },
-        "lastRoundResult": {
-          "round": 0,
-          "revenue": 0,
-          "customerCount": 0,
-          "customerSatisfaction": 0,
-          "headchefSkill": 0,
-          "adTypeWon": null,
-          "productsSold": {
-            "croissant": 0,
-            "cookie": 0,
-            "bagel": 0,
-            "sandwich": 0,
-            "latte": 0,
-            "matchaLatte": 0
-          }
-        }
+        "lastRoundResult": null
       }
     },
     {
       "path": "games/demo-lobby/players/uid_player_b",
       "data": {
         "uid": "uid_player_b",
+        "playerId": "uid_player_b",
         "displayName": "Bagel Bros",
+        "bakeryName": "Bagel Bros",
         "joinedAt": null,
-        "budgetCurrent": 2000,
-        "creditBalance": 0,
+        "budgetCurrent": 500000,
         "cumulativeRevenue": 0,
+        "specialtyChefs": [],
+        "sousChefCount": 0,
+        "pendingRosterAction": false,
+        "returningCustomersPending": 0,
         "pendingDecision": {
           "submitted": false,
           "submittedAt": null,
-          "staffCount": 3,
-          "adSpend": 0,
           "menu": {
             "croissant": true,
             "cookie": true,
             "bagel": true,
             "sandwich": false,
-            "latte": false,
-            "matchaLatte": false
-          },
-          "productPrices": {
-            "croissant": 0,
-            "cookie": 0,
-            "bagel": 0,
-            "sandwich": 0,
-            "latte": 0,
-            "matchaLatte": 0
+            "coffee": false,
+            "matcha": false
           },
           "quantities": {
             "croissant": 0,
             "cookie": 0,
             "bagel": 0,
             "sandwich": 0,
-            "latte": 0,
-            "matchaLatte": 0
-          }
+            "coffee": 0,
+            "matcha": 0
+          },
+          "sousChefCount": 0,
+          "sousChefAssignments": {}
         },
         "pendingBids": {
-          "adBid": {
-            "adType": null,
-            "amount": 0
-          },
-          "chefBid": {
-            "skillLevel": 0,
-            "amount": 0
-          }
+          "ad": null,
+          "chef": null
         },
-        "lastRoundResult": {
-          "round": 0,
-          "revenue": 0,
-          "customerCount": 0,
-          "customerSatisfaction": 0,
-          "headchefSkill": 0,
-          "adTypeWon": null,
-          "productsSold": {
-            "croissant": 0,
-            "cookie": 0,
-            "bagel": 0,
-            "sandwich": 0,
-            "latte": 0,
-            "matchaLatte": 0
-          }
-        }
+        "lastRoundResult": null
       }
     },
     {
-      "path": "games/demo-lobby/leaderboard/current",
+      "path": "games/demo-lobby/leaderboard/latest",
       "data": {
         "rankings": [
           {
             "rank": 1,
             "playerId": "uid_player_a",
             "displayName": "The Rolling Scone",
-            "cumulativeRevenue": 0,
-            "lastRoundRevenue": 0,
-            "rankChange": 0
+            "bakeryName": "The Rolling Scone",
+            "revenueNet": 0,
+            "revenueGross": 0,
+            "customerCount": 0,
+            "budgetAfter": 500000
           },
           {
             "rank": 2,
             "playerId": "uid_player_b",
             "displayName": "Bagel Bros",
-            "cumulativeRevenue": 0,
-            "lastRoundRevenue": 0,
-            "rankChange": 0
+            "bakeryName": "Bagel Bros",
+            "revenueNet": 0,
+            "revenueGross": 0,
+            "customerCount": 0,
+            "budgetAfter": 500000
           }
         ],
         "updatedAt": null,

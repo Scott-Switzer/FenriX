@@ -93,7 +93,7 @@ try {
   roundPreferencesModule = require('./modules/round-preferences');
 } catch (_) {
   roundPreferencesModule = {
-    generateRoundPreferences: (totalRounds) =>
+    generateGamePreferences: (totalRounds) =>
       Array.from({ length: totalRounds }, () => ({ modifiers: {} })),
   };
 }
@@ -272,7 +272,7 @@ exports.createGame = onCall(async (request) => {
 
   // Generate preference profiles for every round up front so the game is
   // fully configured before lobby opens.
-  const roundPreferences = roundPreferencesModule.generateRoundPreferences(totalRounds, config);
+  const roundPreferences = roundPreferencesModule.generateGamePreferences(totalRounds, config);
 
   const gameRef = db.collection('games').doc();
 
