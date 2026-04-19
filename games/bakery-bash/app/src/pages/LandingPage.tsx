@@ -17,9 +17,14 @@ interface JoinGameResponse {
   playerId: string;
 }
 
-/** Accepted join code format: 6 chars, A–Z / 0–9 (backend requires `2–9` subset
- * but we stay permissive client-side and let the server be the arbiter). */
-const JOIN_CODE_REGEX = /^[A-Z0-9]{6}$/;
+/**
+ * Accepted join code format: 6 characters from the backend's unambiguous
+ * alphabet — letters A-Z excluding I and O, digits 2-9 (excludes 0 and 1).
+ * Must match `joinGame`'s server-side regex exactly so we surface a
+ * friendly inline error instead of letting the request fire and bounce
+ * back as a generic Firebase "internal"/"invalid-argument" toast.
+ */
+const JOIN_CODE_REGEX = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/;
 
 const JOIN_FAILURE_MESSAGES: Record<string, string> = {
   unauthenticated: "Couldn't sign you in. Please reload and try again.",
@@ -65,7 +70,9 @@ export function LandingPage() {
       return;
     }
     if (!JOIN_CODE_REGEX.test(normalizedCode)) {
-      setError("Join code must be 6 letters or digits (e.g. ABC123).");
+      setError(
+        "Join code must be 6 characters using letters A-Z (excluding I/O) and digits 2-9.",
+      );
       return;
     }
     if (authLoading || !user) {
