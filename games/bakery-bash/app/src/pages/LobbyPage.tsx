@@ -26,6 +26,11 @@ export function LobbyPage() {
   const { player, playerId, gameId, gameCode } = useGame();
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [rosterError, setRosterError] = useState<string | null>(null);
+  // Distinct from `roster.length === 0`: tells us whether the snapshot
+  // listener has produced *any* result yet (success or failure). Without
+  // this, the fallback row paints over a successful-but-empty roster the
+  // same way it paints over a still-loading one.
+  const [rosterReady, setRosterReady] = useState(false);
 
   // ── Subscribe to /games/{gameId}/roster ──
   // Why /roster (not /players): the players collection has owner-only read
@@ -59,20 +64,25 @@ export function LobbyPage() {
         });
         setRoster(entries);
         setRosterError(null);
+        setRosterReady(true);
       },
       (err) => {
         console.error("games/{gameId}/roster listener error:", err);
         setRosterError(
           "Could not load the player list. Refresh if this persists.",
         );
+        setRosterReady(true);
       },
     );
     return unsubscribe;
   }, [gameId]);
 
-  // Fallback to the local context-only player while the listener is warming
-  // up — better than briefly showing "0 players" right after join.
-  const showFallback = roster.length === 0 && player !== null;
+  // Fallback to the local context-only "you" row only while the listener is
+  // genuinely still warming up. Once we've heard from Firestore (success or
+  // error) we trust its answer — even if that answer is an empty roster or
+  // an error banner — so we don't double-render alongside the real list.
+  const showFallback =
+    !rosterReady && !rosterError && player !== null;
 
   return (
     <PageShell className="lobby-page">
@@ -92,7 +102,9 @@ export function LobbyPage() {
         )}
 
         <div className="lobby-page__players">
-          <h2>Players ({showFallback ? 1 : roster.length})</h2>
+          <h2>
+            Players ({rosterReady ? roster.length : "—"})
+          </h2>
 
           {rosterError && (
             <p className="lobby-page__error" role="alert">

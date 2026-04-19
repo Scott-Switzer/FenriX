@@ -40,7 +40,7 @@ export function BudgetSummary() {
       <div className="budget-summary__row budget-summary__row--primary">
         <span className="budget-summary__label">Budget</span>
         <span className="budget-summary__value">
-          {budgetReady ? formatMoney(budgetCurrent as number) : "—"}
+          {budgetReady ? formatMoney(budgetCurrent) : "—"}
         </span>
       </div>
 

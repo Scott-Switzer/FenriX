@@ -189,8 +189,12 @@ export function ProfessorPage() {
         <button
           className="btn btn--danger"
           onClick={onEnd}
-          disabled={!gameId || busy || inGameOver}
-          title="Terminate the game immediately."
+          disabled={!gameId || busy || inGameOver || phase === null}
+          title={
+            phase === null
+              ? "Loading game state…"
+              : "Terminate the game immediately."
+          }
         >
           {pendingAction === "end" ? "Ending…" : "End Game"}
         </button>

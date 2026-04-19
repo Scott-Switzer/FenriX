@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { doc, onSnapshot, type DocumentData } from "firebase/firestore";
 import { useGame } from "../contexts/GameContext";
 import { db } from "../lib/firebase";
+import { formatMoney } from "../lib/cost";
 import { PageShell } from "../components/ui/PageShell";
 
 /**
@@ -42,11 +43,6 @@ function readNumber(...candidates: unknown[]): number | undefined {
     if (typeof c === "number" && Number.isFinite(c)) return c;
   }
   return undefined;
-}
-
-function formatMoney(n: number | undefined): string {
-  if (typeof n !== "number") return "—";
-  return `$${Math.round(n).toLocaleString()}`;
 }
 
 export function LeaderboardPage() {
@@ -92,7 +88,11 @@ export function LeaderboardPage() {
   }, [gameId]);
 
   const rankings = board?.rankings ?? [];
-  const waitingForFirstRound = boardReady && rankings.length === 0;
+  // Suppress the "waiting for first round" empty-state when the listener
+  // errored — the error banner already explains why the table is empty, and
+  // showing both at once is contradictory.
+  const waitingForFirstRound =
+    boardReady && !boardError && rankings.length === 0;
 
   return (
     <PageShell className="leaderboard-page">

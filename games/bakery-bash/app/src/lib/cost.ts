@@ -143,8 +143,14 @@ export function computeRoundCost(
   return { staff, product, ad, total: staff + product + ad };
 }
 
-/** Format a dollar value as `$1,234` (no cents) for compact UI. */
-export function formatMoney(n: number): string {
+/**
+ * Format a dollar value as `$1,234` (no cents) for compact UI. Accepts
+ * `undefined` / non-finite inputs (e.g. a leaderboard row that hasn't been
+ * populated yet) and renders an em-dash placeholder so callers don't have
+ * to repeat the same null-check at every call site.
+ */
+export function formatMoney(n: number | undefined | null): string {
+  if (typeof n !== "number" || !Number.isFinite(n)) return "—";
   const rounded = Math.round(n);
   return `$${rounded.toLocaleString()}`;
 }

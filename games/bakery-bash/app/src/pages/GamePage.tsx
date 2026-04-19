@@ -200,6 +200,11 @@ export function GamePage() {
         }
         if (typeof data.budgetCurrent === "number") {
           dispatch({ type: "SET_BUDGET", payload: data.budgetCurrent });
+        } else {
+          // Field absent (legacy doc, mid-write, or backend dropped it):
+          // clear so the BudgetSummary doesn't display a stale value from a
+          // previous round / previous game session.
+          dispatch({ type: "SET_BUDGET", payload: null });
         }
       },
       (err) => {

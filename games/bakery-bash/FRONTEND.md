@@ -31,7 +31,9 @@
 
 These rules apply globally to every screen. Violating them breaks the game's core design.
 
-1. **Budget is hidden during play.** No screen — except `/game/conclusion` and the professor view — may display the player's remaining budget. Do not show "Budget Remaining", "Cash Left", "$X available", or any equivalent. Players track their own finances externally.
+1. **Budget is hidden during play.** No screen — except `/game/conclusion`, the professor view, and the in-decide `<BudgetSummary>` panel (P1 override, see below) — may display the player's remaining budget. Do not show "Budget Remaining", "Cash Left", "$X available", or any equivalent on any other surface. Players otherwise track their own finances externally.
+
+   > **P1 spec override (2026-04):** P1 Task 9 explicitly required a live budget panel in the decide phase so players can see staffing/production/ad spend deducted from `budgetCurrent` in real time. The `<BudgetSummary>` component in `app/src/components/game/BudgetSummary.tsx` is the *only* sanctioned exception to this rule on the player side; it lives inside `<GameSidebar>` above the Hire/Status tabs. Budget remains hidden everywhere else (Lobby, Email, Bid, Simulating, Results, Roster, Leaderboard table). If the design doc is later reverted to a strictly-hidden budget, delete this component and remove the `budgetCurrent` plumbing from `GamePage.tsx` + `GameContext.tsx`.
 2. **Pricing is fixed for MVP.** No price input fields anywhere. Prices are read-only labels next to product inputs (Coffee $4.00, Croissant $4.75, Bagel $3.00, Cookie $2.50, Sandwich $8.75, Matcha $6.25).
 3. **Chef specialty is hidden.** ChefCard components must never render specialty products or multiplier values, regardless of whether the data is in props. Only nationality, skill tier (Novel/Intermediate/Advanced), name, and portrait are visible.
 4. **Opponents' decisions are hidden.** Players see the leaderboard but never another player's stocked quantities, sous chef count, or bids.
@@ -280,6 +282,10 @@ Add a CI check (lint rule or grep test) that fails if `budgetCurrent`, `budgetRe
 - `pages/ConclusionPage.tsx`
 - `pages/ProfessorPage.tsx`
 - `pages/ProfessorLeaderboardPage.tsx`
+- `components/game/BudgetSummary.tsx` (P1 override — see Hard UI Rule #1)
+- `pages/GamePage.tsx` (only for the player-doc listener that dispatches `SET_BUDGET` into context for `BudgetSummary`)
+- `contexts/GameContext.tsx` (only for the `budgetCurrent` field on `GameState` and the `SET_BUDGET` action consumed by `BudgetSummary`)
+- `lib/cost.ts` (cost-only helpers; never reads or renders `budgetCurrent` itself)
 
 This catches accidental budget leaks in PRs.
 
@@ -288,7 +294,7 @@ This catches accidental budget leaks in PRs.
 ## Open Questions
 
 1. ~~**Auction UX:** Can a player bid on multiple ad types or just one?~~ → ✅ **Multiple bids allowed; wins at most one ad and gets routed to next-highest if would-double-win.**
-2. ~~**Budget display:** Real-time deductions as inputs change, or only shown on submit?~~ → ✅ **Hidden entirely during play. Revealed once on Conclusion Screen as the tiebreaker.**
+2. ~~**Budget display:** Real-time deductions as inputs change, or only shown on submit?~~ → ✅ **Hidden entirely during play. Revealed once on Conclusion Screen as the tiebreaker.** **(P1 override, 2026-04: live `<BudgetSummary>` panel added to the decide-phase sidebar per P1 Task 9 — see Hard UI Rule #1 for the explicit allow-list.)**
 3. ~~**Minigame spec:**~~ → ✅ **Skipped for MVP** (DEC-09). Simulate phase shows a cute loading animation only. Interactive minigame is post-MVP (POST-13).
 4. ~~**Mobile support:**~~ → ✅ **Desktop-only for MVP** (DEC-11). Responsive polish is post-MVP.
 5. ~~**Email phase as full route vs modal overlay:**~~ → ✅ **Full-screen route `/game/email`** (DEC-08).
