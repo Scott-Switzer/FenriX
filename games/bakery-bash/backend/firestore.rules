@@ -118,6 +118,18 @@ service cloud.firestore {
         allow read: if isOwner(playerId);
         allow write: if false;
       }
+
+      // ─────────────────────────────────────────────────────
+      // /games/{gameId}/teams/{teamId}
+      // Team metadata and roleAssignments map. Readable by any
+      // signed-in player so the lobby/game UI can display team
+      // info. Written exclusively by Cloud Functions
+      // (updateTeamName, setTeamRole).
+      // ─────────────────────────────────────────────────────
+      match /teams/{teamId} {
+        allow read: if signedIn();
+        allow write: if false;
+      }
     }
   }
 }

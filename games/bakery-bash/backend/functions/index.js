@@ -1604,3 +1604,99 @@ exports.onDecisionSubmitted = onDocumentCreated(
     }
   }
 );
+
+// ---------------------------------------------------------------------------
+// updateTeamName — any team member may rename their team.
+// ---------------------------------------------------------------------------
+exports.updateTeamName = onCall(async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError('unauthenticated', 'Must be signed in.');
+
+  const gameId   = cleanString(request.data && request.data.gameId);
+  const teamId   = cleanString(request.data && request.data.teamId);
+  const name     = cleanString(request.data && request.data.name);
+
+  if (!gameId) throw new HttpsError('invalid-argument', 'gameId is required.');
+  if (!teamId) throw new HttpsError('invalid-argument', 'teamId is required.');
+  if (!name)   throw new HttpsError('invalid-argument', 'name is required.');
+  if (name.length > 64) throw new HttpsError('invalid-argument', 'name must be 64 characters or fewer.');
+
+  const teamRef   = db.collection('games').doc(gameId).collection('teams').doc(teamId);
+  const playerRef = db.collection('games').doc(gameId).collection('players').doc(auth.uid);
+
+  await db.runTransaction(async (tx) => {
+    const [teamSnap, playerSnap] = await Promise.all([
+      tx.get(teamRef),
+      tx.get(playerRef),
+    ]);
+
+    if (!teamSnap.exists)   throw new HttpsError('not-found', 'Team not found.');
+    if (!playerSnap.exists) throw new HttpsError('not-found', 'You are not in this game.');
+
+    const roleAssignments = (teamSnap.data() || {}).roleAssignments || {};
+    if (!(auth.uid in roleAssignments)) {
+      throw new HttpsError('permission-denied', 'You are not a member of this team.');
+    }
+
+    tx.update(teamRef, { name, updatedAt: FieldValue.serverTimestamp() });
+  });
+
+  return { success: true };
+});
+
+// ---------------------------------------------------------------------------
+// setTeamRole — assign a role to the calling player within their team.
+//
+// Rules:
+//   • Rejects if another teammate already holds the requested role.
+//   • Overwrites the caller's previous role (clearing it for others).
+//   • Writes roleAssignments[uid] = role on the team doc.
+//   • Mirrors the same value onto players/{uid}.role so role-gated submits
+//     keep working without reading the teams collection.
+// ---------------------------------------------------------------------------
+exports.setTeamRole = onCall(async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError('unauthenticated', 'Must be signed in.');
+
+  const gameId = cleanString(request.data && request.data.gameId);
+  const teamId = cleanString(request.data && request.data.teamId);
+  const role   = cleanString(request.data && request.data.role);
+
+  if (!gameId) throw new HttpsError('invalid-argument', 'gameId is required.');
+  if (!teamId) throw new HttpsError('invalid-argument', 'teamId is required.');
+  if (!role)   throw new HttpsError('invalid-argument', 'role is required.');
+
+  const teamRef   = db.collection('games').doc(gameId).collection('teams').doc(teamId);
+  const playerRef = db.collection('games').doc(gameId).collection('players').doc(auth.uid);
+
+  await db.runTransaction(async (tx) => {
+    const [teamSnap, playerSnap] = await Promise.all([
+      tx.get(teamRef),
+      tx.get(playerRef),
+    ]);
+
+    if (!teamSnap.exists)   throw new HttpsError('not-found', 'Team not found.');
+    if (!playerSnap.exists) throw new HttpsError('not-found', 'You are not in this game.');
+
+    const roleAssignments = (teamSnap.data() || {}).roleAssignments || {};
+
+    if (!(auth.uid in roleAssignments)) {
+      throw new HttpsError('permission-denied', 'You are not a member of this team.');
+    }
+
+    // Reject if another teammate already holds this role.
+    for (const [uid, existingRole] of Object.entries(roleAssignments)) {
+      if (uid !== auth.uid && existingRole === role) {
+        throw new HttpsError('already-exists', `Role "${role}" is already held by another teammate.`);
+      }
+    }
+
+    tx.update(teamRef, {
+      [`roleAssignments.${auth.uid}`]: role,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    tx.update(playerRef, { role });
+  });
+
+  return { success: true };
+});
