@@ -112,11 +112,11 @@ Live review with the professor confirmed most of the April 17 architecture (thre
 
 ---
 
-## Status Audit — April 19, 2026
+## Status Audit — April 19, 2026 (end-of-day refresh)
 
-Snapshot of what actually shipped between April 17 and April 19.
+Snapshot of what actually shipped between April 17 and April 19 EOD.
 
-**Landed on `main`:**
+**Landed on `main` (pre-April-19):**
 - [#19](https://github.com/fenrix-ai/FenriX/pull/19) — modular backend rewrite + 43 QA fixes. Adds `createGame`, `submitBids`, `layoffChef`, `continueFromRoster`, `pauseGame`/`resumeGame`/`endGame`, `getConclusion`, `exportPlayerCsv`, `exportProfessorCsv`, simulation/chef-system/phases/csv-export/revenue/satisfaction/round-preferences/loan-shark/customer-allocation modules, 10 test suites green.
 - [#18](https://github.com/fenrix-ai/FenriX/pull/18) — frontend wired to Firebase for P0 blockers.
 - [#22](https://github.com/fenrix-ai/FenriX/pull/22) — maintenance system + 3-station decide-phase layout.
@@ -124,22 +124,31 @@ Snapshot of what actually shipped between April 17 and April 19.
 - [#24](https://github.com/fenrix-ai/FenriX/pull/24) — design proposal: maintenance + station architecture + chef satisfaction.
 - [#25](https://github.com/fenrix-ai/FenriX/pull/25) — lobby roster read rule + canonical `leaderboard/latest` path + `joinedAt` backfill on rejoin.
 
-**Open PRs (this week's critical path):**
-- [#20](https://github.com/fenrix-ai/FenriX/pull/20) — **Phase 0 migration + BE-18 professor custom claim (P0 unblock for professor login) + BE-19 disconnection handling + MIG-06 AuctionPage/tab deletion.** Needs review.
-- [#27](https://github.com/fenrix-ai/FenriX/pull/27) — **P1 tasks 6/7/8/9:** real-time lobby player list, real-time leaderboard (FE-14), professor start/advance/pause/end controls (FE-15 partial), budget display + shared cost helper. Under review.
-- [#26](https://github.com/fenrix-ai/FenriX/pull/26) — small frontend state + a11y fixes. Quick review.
+**Landed on `main` — April 19:**
+- [#26](https://github.com/fenrix-ai/FenriX/pull/26) — frontend state + sidebar a11y fixes.
+- [#27](https://github.com/fenrix-ai/FenriX/pull/27) / [#28](https://github.com/fenrix-ai/FenriX/pull/28) — P1 tasks 6/7/8/9 roll-up: real-time lobby player list, real-time leaderboard (FE-14), professor start/advance/pause/end controls (FE-15 partial), budget display + shared `formatMoney`, 7 review follow-ups (ProfessorPage phase guard, Leaderboard error/waiting dedup, `rosterReady`, em-dash player count, `SET_BUDGET` null dispatch), landing-page join-code regex tightened.
+- [#29](https://github.com/fenrix-ai/FenriX/pull/29) — **DEC-03 ad-winner bonus fix** in `simulation.js` (was defined in config but never read; +8 tests), April 19 meeting decisions captured in all four specs, dead `BidPhase.tsx` scaffold deleted (AuctionPage is canonical), student Leaderboard budget column removed per FE-14 Hard UI Rule #1, unused `PRODUCT_STATION` import removed (build unblock), soft overcrowding copy in StaffTab.
+- [#31](https://github.com/fenrix-ai/FenriX/pull/31) — tech-debt sweep: `humanizeFunctionError` / `readNumber` deduped into `lib/`, magic skill-roll cutoffs in AuctionPage named, **AuctionPage wired to real `rounds/{round}.chefPool`** (backend skillTier→client-label mapping with placeholder fallback), listener error logs now include `{gameId, playerId, round}`.
+- [#32](https://github.com/fenrix-ai/FenriX/pull/32) — **MIG-02 schema doc resync** + `marketInsights/{doc}` Firestore rule (was blocking client reads during email phase). Closed stale PRs #20 and #30.
+- [#33](https://github.com/fenrix-ai/FenriX/pull/33) — **April 19 spec delivery (frontend):** `PlayerRole` type + `roleOwns*` helpers, role picker + team-name input on Landing (persisted in `localStorage`), role-gated Decide/Ad/Chef submits with tooltips, optional team name threaded to `joinGame` + Lobby + RoundHeader, decide-phase countdown driven by `phaseEndsAt` (500ms tick), auction top-bid readout enlarged (`.auction-*__top-bid` 1.6rem Press Start 2P), softened overcrowding copy, ProfessorPage roster table with per-player connection status.
+- [#35](https://github.com/fenrix-ai/FenriX/pull/35) — `/auction` route restored in App.tsx (was blank on bid phase), **Cloud Functions runtime Node 20 → Node 22** (beats April 30 deprecation), restored `libc: ["musl"]` markers in `package-lock.json`, **new BE-23 callables** `updateTeamName` + `setTeamRole` with `/games/{gameId}/teams/{teamId}` rule + `test:team-roles` emulator script (12 assertions).
 
-**Known issue flagged mid-review ([#27](https://github.com/fenrix-ai/FenriX/pull/27) footnote 2):** `joinGame` surfaces Firebase's generic `internal` error instead of a controlled `invalid-argument` `HttpsError` on bad input. Backend fix needed before demo. File as a new task after #20 lands.
+**Closed without merge (superseded):** [#20](https://github.com/fenrix-ai/FenriX/pull/20), [#21](https://github.com/fenrix-ai/FenriX/pull/21), [#30](https://github.com/fenrix-ai/FenriX/pull/30), [#34](https://github.com/fenrix-ai/FenriX/pull/34).
+
+**Known open issues (need follow-up tasks — see BE-24/25 below):**
+- `joinGame` surfaces Firebase's generic `internal` error instead of `invalid-argument` on bad input. Tracked as **BE-24**.
+- Auction top-bid **VALUE** still displays `—` — CSS is in but backend doesn't surface competing bids during bid phase. Tracked as **BE-25**.
+- Fast-refresh lint errors in `AuthContext.tsx:47` and `GameContext.tsx:315,319` — pre-existing, requires extracting non-component exports.
+- BE-18 (professor custom claim setter) and BE-19 (disconnection handling) were drafted in the now-closed PR #20 but never landed — reset to unstarted.
 
 **What's still genuinely unstarted:**
-- MIG-01 (product key rename `latte`→`coffee`, `matchaLatte`→`matcha` — 130 occurrences still in tree).
-- MIG-02 ( `firestore-schema.js` still documents old `productPrices`/`headchefSkill` shapes — functional code moved on, but the schema doc file is stale).
-- BE-04 (catalog seed script), BE-07 (market insight email generator).
+- MIG-01 (product key rename `latte`→`coffee`, `matchaLatte`→`matcha` — 118 occurrences across 17 files still in tree).
+- BE-04 (catalog seed script), BE-07 (market insight email generator), BE-18 (professor custom claim), BE-19 (disconnection handling), BE-21 (server-side role enforcement), BE-22 (professor submission-state mirror, new), BE-24 (joinGame error type), BE-25 (top-bid value surface).
 - FE-01 (hide-budget CI audit), FE-04 (`<ChefCard>`), FE-05 (`<SousChefPanel>`), FE-06 (Email phase), FE-07 (Decide phase rework), FE-09 (Roster page), FE-10 (Simulate minigame — deferred per DEC-09), FE-11 (`<AdWinnerBanner>`), FE-12 (`<LoanSharkCallout>` + Results rework), FE-13 (Conclusion page), FE-16 (Professor leaderboard + export UI), FE-17 (`<SubmissionLock>`).
 - All of Phase H (ART-01..ART-25) — zero chef portraits exist.
 - All of Phase G (INT-01..INT-06) — no end-to-end smoke, no load test, no hide-budget CI, no prod deploy dry run, no team playtest.
 
-> Calendar says Phase A + B should be done today (4/19). Backend Phase A–E is substantially in, thanks to #19. Frontend MVP rework and art pipeline are the long poles to launch (4/27 or 5/1).
+> Phase A + B are substantively in (backend via #19, state machine + timers + prof controls via #27/#33). The long poles are **frontend MVP phase pages (FE-04..FE-13, FE-16, FE-17)**, **server-side role enforcement (BE-21)**, and the **chef portrait art pipeline (Phase H)**. 9 MVP workdays to May 1.
 
 ---
 
@@ -153,7 +162,7 @@ The existing `firestore-schema.js`, `submitDecision`, and parts of the frontend 
   - **Acceptance:** Repo-wide grep for `latte` and `matchaLatte` returns zero results outside this migration task's commit message. Rule tests + auth-flow test still green.
   - **Depends on:** none.
 
-- [ ] **MIG-02** — Retire old `PlayerDocument` / `DecisionDocument` / `RoundResultDocument` shapes
+- [x] **MIG-02** — Retire old `PlayerDocument` / `DecisionDocument` / `RoundResultDocument` shapes ([#32](https://github.com/fenrix-ai/FenriX/pull/32) — schema doc resync'd field-by-field against `functions/index.js` + `simulation.js` writes; new `round_N_*` phase names, `startingBudget: 500000`, `revenueCoefficients` structure, DEC-03 ad bonuses, chef system / loan shark / returning customers sections; `round`/`currentRound` alias + `playerId` redundancy documented)
   - **Goal:** Remove `productPrices`, `headchefSkill`, `attractivenessWeights`, `creditBalance`, `creditCost`, `staffCount` (single integer), and the single-shot `adBid`/`chefBid` shapes from `firestore-schema.js`. Replace with the new shapes per `BACKEND.md`: `specialtyChefs[]`, `sousChefCount`, `sousChefAssignments`, multi-type `adBids`, per-chef `chefBids`, `amountBorrowed`, `interestCharged`, `revenueGross`, `revenueNet`, per-product satisfaction %, chef satisfaction score, sellout flags.
   - **Files:** `backend/firestore-schema.js`.
   - **Acceptance:** Schema file matches the Firestore Schema section of `BACKEND.md` 1:1. No `productPrices` or `headchefSkill` references remain anywhere.
@@ -177,11 +186,11 @@ The existing `firestore-schema.js`, `submitDecision`, and parts of the frontend 
   - **Acceptance:** Legacy combined payload fails; two-step decide-then-bid path works end-to-end in emulator.
   - **Depends on:** MIG-03.
 
-- [~] **MIG-06** — Remove/replace tab-based UI and standalone AuctionPage ([#20](https://github.com/fenrix-ai/FenriX/pull/20) open)
-  - **Goal:** Delete or refactor `components/game/tabs/{AuctionTab,StaffTab,MenuTab}.tsx` and `pages/AuctionPage.tsx` (333 lines) — none of these match the phase-based flow from the proposal. Update `App.tsx` routing to remove `/auction`. Sous chef hiring moves into `<SousChefPanel>`; menu choice moves into `DecidePhase`; auction logic moves into `BidPhase`.
-  - **Files:** `app/src/pages/AuctionPage.tsx` (delete), `app/src/components/game/tabs/*.tsx` (delete), `app/src/components/game/GameSidebar.tsx` (remove tab nav if obsolete), `app/src/App.tsx`.
-  - **Acceptance:** No route at `/auction`, no tab components imported anywhere. `GamePage` routes purely on game-doc `phase`.
-  - **Depends on:** FE-07, FE-08 (the replacement phases must land before the old UI is deleted, or delete and re-stub — either order is OK but tracking it explicitly).
+- [x] **MIG-06** — Direction **reversed** on April 19: **`AuctionPage` is canonical, `BidPhase` was deleted** ([#29](https://github.com/fenrix-ai/FenriX/pull/29) deleted the dead `BidPhase.tsx` scaffold; [#31](https://github.com/fenrix-ai/FenriX/pull/31) wired AuctionPage to real `rounds/{round}.chefPool`; [#35](https://github.com/fenrix-ai/FenriX/pull/35) restored the missing `/auction` route that was causing blank pages on bid-phase transition; [#33](https://github.com/fenrix-ai/FenriX/pull/33) applied the April 19 auction top-bid enlargement to AuctionPage.)
+  - **Original goal (abandoned):** Delete `pages/AuctionPage.tsx` and rebuild auction flow inside `BidPhase.tsx`.
+  - **Decision:** AuctionPage already handles the sealed-bid ad + chef flow, subscribes to the real chef pool, and maps backend skill tiers to client labels. Scott's PR #30 (which assumed BidPhase was canonical) was closed in favor of keeping AuctionPage. FE-08 is retired; auction-page hardening work now flows through new AuctionPage-targeted tasks. Tab components (`components/game/tabs/{AuctionTab,StaffTab,MenuTab}.tsx`) remain intact and drive the decide-phase sidebar per [#22](https://github.com/fenrix-ai/FenriX/pull/22) / [#23](https://github.com/fenrix-ai/FenriX/pull/23); they are NOT the obsolete pre-April-8 tabs referenced in the original MIG-06 goal.
+  - **Acceptance:** `/auction` route is live; bid-phase transition no longer blanks the page; AuctionPage renders real chef cards from Firestore with placeholder fallback.
+  - **Depends on:** superseded.
 
 - [x] **MIG-07** — Clarify sous chef phase authority (locked as **DEC-02**: decide phase only)
   - **Goal:** Decide — is `sousChefCount` submitted in `decide` phase only, `roster` phase only, or both? Both FRONTEND.md and the proposal show `<SousChefPanel>` on both screens. Resolve with Game Design, then update both specs to match. Proposed default: **hires in `decide` are provisional; hires in `roster` are final; simulator reads the value from the last-submitted roster write.**
@@ -335,13 +344,13 @@ Everything else depends on these writes. Do these first.
   - **Acceptance:** Professor token returns full CSV; player token returns 403.
   - **Depends on:** BE-16.
 
-- [~] **BE-18** — Professor custom claim setter ([#20](https://github.com/fenrix-ai/FenriX/pull/20) open — script `backend/scripts/set-professor-claim.js` not yet on `main`)
+- [ ] **BE-18** — Professor custom claim setter (**reset** — PR #20 closed without merging; `backend/scripts/set-professor-claim.js` never shipped. This is **P0-blocking for professor login** on May 1 — needs a new branch.)
   - **Goal:** A one-off admin script (or callable guarded by a deploy-time secret) that sets `professor: true` on a given UID.
   - **Files:** `backend/scripts/set-professor-claim.js`.
   - **Acceptance:** Running the script with a UID sets the claim; token refresh picks it up.
   - **Depends on:** none.
 
-- [~] **BE-19** — Disconnection handling ([#20](https://github.com/fenrix-ai/FenriX/pull/20) open)
+- [ ] **BE-19** — Disconnection handling (**reset** — PR #20 closed without merging; no `disconnected`/`missedPhase` logic exists in the backend today)
   - **Goal:** If a player submits no decision in a round, default all inputs to 0 (no stock, no sous chef hire, no bids). After 2 consecutive missed phases, set `disconnected: true`.
   - **Files:** `backend/functions/index.js`.
   - **Acceptance:** Simulated player with no submissions in rounds 3+4 → marked disconnected in round 4; revenue computed with zeros.
@@ -395,11 +404,7 @@ All existing frontend phase files need to be aligned to the April 15 proposal. *
   - **Acceptance:** Manual test — all inputs present, no budget string visible, submit locks the form, the FE-01 CI check passes.
   - **Depends on:** FE-05, FE-11, BE-DONE-07.
 
-- [ ] **FE-08** — Bid phase rework (two sequential auctions)
-  - **Goal:** Rebuild `BidPhase.tsx` as two 1-min sealed-bid auctions: Ad (4 cards, multi-bid allowed), then Chef (one `<ChefCard mode="bid">` per pool chef). Submit button calls `submitBids`. Running total of player's own bids is OK. **No budget.** If timer expires without submit, all bids treated as $0.
-  - **Files:** `app/src/pages/phases/BidPhase.tsx`.
-  - **Acceptance:** Manual test — both auctions flow correctly; chef cards never show specialty; timeout → $0 bids server-side.
-  - **Depends on:** FE-04, BE-09.
+- [x] **FE-08** — **Superseded** by MIG-06 reversal. `BidPhase.tsx` was deleted in [#29](https://github.com/fenrix-ai/FenriX/pull/29); the auction flow lives in `AuctionPage.tsx`, wired to real chef pool in [#31](https://github.com/fenrix-ai/FenriX/pull/31) and routed in [#35](https://github.com/fenrix-ai/FenriX/pull/35). Any remaining auction-hardening work (e.g. FE-04 ChefCard integration, timeout → $0 submit, BE-25 top-bid VALUE surface) now flows through those tasks directly against AuctionPage.
 
 - [ ] **FE-09** — Roster phase (`/game/roster`)
   - **Goal:** New page. Shows base chef card (greyed out, "cannot remove"), 3 specialty slots (filled or empty), overflow slot highlighted if `specialtyChefs.length > 3`, `<SousChefPanel>`. Lay-off confirmation modal. "Continue" disabled until specialty count ≤3; calls `rosterContinue`.
@@ -431,17 +436,17 @@ All existing frontend phase files need to be aligned to the April 15 proposal. *
   - **Acceptance:** 5-round test game → conclusion screen ranks correctly, tiebreaker works, expansion shows the per-round table.
   - **Depends on:** BE-15, FE-04.
 
-- [~] **FE-14** — Leaderboard page rework ([#27](https://github.com/fenrix-ai/FenriX/pull/27) under review — subscribes to `leaderboard/latest`, renders rank/bakery/revenueNet/budgetAfter with fallback chain)
+- [x] **FE-14** — Leaderboard page rework ([#27](https://github.com/fenrix-ai/FenriX/pull/27)/[#28](https://github.com/fenrix-ai/FenriX/pull/28) shipped the rank/bakery/revenueNet subscription; [#29](https://github.com/fenrix-ai/FenriX/pull/29) removed the budget column per Hard UI Rule #1)
   - **Goal:** Student view with Rank / Bakery / Net Revenue (this round) / Cumulative Net Revenue. Your row highlighted. **No budget column.** Subscribes to `games/{gameId}/leaderboard/latest`.
   - **Files:** `app/src/pages/LeaderboardPage.tsx`.
   - **Acceptance:** After each simulation, leaderboard updates within 1s.
   - **Depends on:** BE-14.
 
-- [~] **FE-15** — Professor control panel ([#27](https://github.com/fenrix-ai/FenriX/pull/27) under review — Start/Advance/Pause/Resume/End wired to callables with live phase + paused flags. Still missing: Create Game flow, submission status list, copy-join-link button, professor claim gating — those land after BE-18 merges in [#20](https://github.com/fenrix-ai/FenriX/pull/20).)
+- [~] **FE-15** — Professor control panel ([#27](https://github.com/fenrix-ai/FenriX/pull/27)/[#28](https://github.com/fenrix-ai/FenriX/pull/28) shipped Start/Advance/Pause/Resume/End wired to callables with live phase + paused flags; [#33](https://github.com/fenrix-ai/FenriX/pull/33) added a live roster table subscribing to `/games/{gameId}/roster` with per-player connection status. **Still missing:** Create Game flow, per-phase submission status grid (blocked on new **BE-22**), copy-join-link button, professor-claim gating (blocked on **BE-18**).)
   - **Goal:** Rebuild `ProfessorPage.tsx`: Create Game (calls `createGame`, shows join code huge), Start/Advance/Pause/Resume/End buttons (each disabled on invalid phase), player submission status list (✓ / ⏳ / ⚠️), live leaderboard, copy-join-link button. Protected by professor custom claim.
   - **Files:** `app/src/pages/ProfessorPage.tsx`.
   - **Acceptance:** Non-professor UID hitting `/professor` is rejected. Professor can drive a full game start-to-finish from this page.
-  - **Depends on:** BE-02, BE-05, BE-06, BE-18.
+  - **Depends on:** BE-02, BE-05, BE-06, BE-18, BE-22.
 
 - [ ] **FE-16** — Professor leaderboard + export (`/professor/leaderboard`)
   - **Goal:** Full visibility — every player's decisions, bids, and results. Aggregate class stats (avg/median/stddev revenue, avg satisfaction). Export-all-CSV button hitting `/api/professor/export`.
@@ -461,41 +466,65 @@ All existing frontend phase files need to be aligned to the April 15 proposal. *
 
 New MVP work that fell out of the April 19 meeting. All must land before the April 23 testing target.
 
-- [ ] **BE-20** — Team role schema + `joinGame` role assignment
-  - **Goal:** Extend the player doc with `role: "finance" | "advertising" | "operations"` and a `teamId` grouping ~3 players into a team. `joinGame` payload accepts an optional `role`; if unspecified (solo/incomplete team), backend auto-assigns in order. Team name is stored once per team at `games/{gameId}/teams/{teamId}.name` and reused for leaderboard + conclusion.
+- [~] **BE-20** — Team role schema + `joinGame` role assignment ([#33](https://github.com/fenrix-ai/FenriX/pull/33) added optional `bakeryName` + `role` to `joinGame` payload; [#35](https://github.com/fenrix-ai/FenriX/pull/35) added `/games/{gameId}/teams/{teamId}` Firestore security rule + the BE-23 role-mutation callables. **Still missing:** `teamId` grouping (multiple players sharing one bakery name aren't auto-merged into one team doc), auto role-assignment fallback for incomplete teams, and team doc creation on first `joinGame` — today teams come into existence only via `setTeamRole`.)
+  - **Goal:** Extend the player doc with `role: "finance" | "advertising" | "operations" | "solo"` and a `teamId` grouping ~3 players into a team. `joinGame` payload accepts an optional `role`; if unspecified (solo/incomplete team), backend auto-assigns in order. Team name is stored once per team at `games/{gameId}/teams/{teamId}.name` and reused for leaderboard + conclusion.
   - **Files:** `backend/functions/index.js` (joinGame), `backend/firestore-schema.js`, `backend/firestore.rules` (teams collection rules).
   - **Acceptance:** Three players joining the same game code with the same team name end up grouped under one `teamId`, with distinct roles. Solo join gets all three roles (or operations fallback) per DEC-21.
   - **Depends on:** MIG-08 (bakery name flow).
 
-- [ ] **BE-21** — Role-gated callable validation
+- [ ] **BE-21** — Role-gated callable validation (**P0 — backend enforcement gap**; FE-19 gates only on the client. A player who bypasses the UI today can submit any action regardless of role.)
   - **Goal:** `submitDecision` rejects with `permission-denied` unless caller's `role` owns the decide-phase action. `submitBids` splits: ad bids require `advertising` (or fallback), chef bids require `finance` (or fallback). `rosterContinue`/`layoffChef` require `operations` (or fallback). All callables accept fallback when a team has < 3 members (see DEC-21).
   - **Files:** `backend/functions/index.js`.
   - **Acceptance:** A player with `role: "finance"` cannot submit decisions; a solo player can submit everything.
   - **Depends on:** BE-20.
 
-- [ ] **FE-18** — Role selection on landing page
+- [x] **FE-18** — Role selection on landing page ([#33](https://github.com/fenrix-ai/FenriX/pull/33) — optional team-name input + role radio group on LandingPage, persisted in `localStorage` so a refresh during a round doesn't silently demote the player to `solo`. [#35](https://github.com/fenrix-ai/FenriX/pull/35) added a dedicated `/team` page for shared naming after initial join.)
   - **Goal:** Extend LandingPage with a team name input (optional) and a role picker (Finance / Advertising / Operations / "I'll play solo"). Pass through to `joinGame`. Store role locally for UI gating.
-  - **Files:** `app/src/pages/LandingPage.tsx`.
+  - **Files:** `app/src/pages/LandingPage.tsx`, `app/src/pages/TeamPage.tsx` (new).
   - **Acceptance:** Manual test — three browsers join one code with the same team name → lobby shows one team of three with distinct role badges.
   - **Depends on:** BE-20, FE-02.
 
-- [ ] **FE-19** — Role-based button gating (global)
+- [x] **FE-19** — Role-based button gating (global) ([#33](https://github.com/fenrix-ai/FenriX/pull/33) — new `PlayerRole` type + `roleOwns*` helpers; Decide/Ad/Chef submits disabled for non-owning roles with tooltip "Your [X] teammate submits this decision"; inputs stay editable so teammates can advise. **Client-side only — BE-21 still needed to enforce server-side.**)
   - **Goal:** Every phase submit/action button reads the player's `role` and disables (with tooltip: "Your [X] teammate submits this decision") when the player's role doesn't own that phase. All players still see the full UI and watch teammates' inputs live. Mapping per DEC-21.
-  - **Files:** `app/src/components/game/SubmissionLock.tsx`, all phase files under `app/src/pages/phases/`.
+  - **Files:** `app/src/components/game/SubmissionLock.tsx`, `app/src/pages/GamePage.tsx`, `app/src/pages/AuctionPage.tsx`.
   - **Acceptance:** Finance role on Decide phase sees the form but the Submit button is disabled with tooltip; Operations teammate can submit.
   - **Depends on:** BE-21, FE-18.
 
-- [ ] **FE-20** — Auction top-bid display enlargement
-  - **Goal:** In BidPhase, the "current top bid" readout for both ad and chef auctions should be large and high-contrast (readable at 2m from screen). Treat as a heads-up ticker, not a footnote.
-  - **Files:** `app/src/pages/phases/BidPhase.tsx`.
+- [x] **FE-20** — Auction top-bid display enlargement ([#33](https://github.com/fenrix-ai/FenriX/pull/33) — `.auction-{ad,chef}__top-bid` bumped to 1.6rem Press Start 2P with bold borders. **VALUE still shows `—` because backend doesn't surface competing bids during bid phase** — tracked as new **BE-25**.)
+  - **Goal:** On AuctionPage, the "current top bid" readout for both ad and chef auctions should be large and high-contrast (readable at 2m from screen). Treat as a heads-up ticker, not a footnote.
+  - **Files:** `app/src/pages/AuctionPage.tsx` + its stylesheet.
   - **Acceptance:** Visual check — top-bid text ≥ 48px, clearly dominant on the card.
-  - **Depends on:** FE-08.
+  - **Depends on:** AuctionPage (canonical per MIG-06 reversal), BE-25.
 
-- [ ] **FE-21** — Soften kitchen overcrowding copy
+- [x] **FE-21** — Soften kitchen overcrowding copy ([#29](https://github.com/fenrix-ai/FenriX/pull/29) removed the DEC-25 numeric threshold from StaffTab; [#33](https://github.com/fenrix-ai/FenriX/pull/33) replaced the warning with "Too many cooks in the kitchen — your head chef looks stressed." Audit confirmed no remaining "more than 4" / "don't hire" copy in player-facing surfaces.)
   - **Goal:** Audit every mention of "4 sous chefs" or "don't hire more than" in decide/roster UI copy. Replace with subtle behavioral hints ("Crowded kitchens slow down prep" / "Your head chef is looking stressed"). Never reveal the numeric threshold.
-  - **Files:** `app/src/components/game/SousChefPanel.tsx` (and any copy file under `app/src/pages/phases/`).
+  - **Files:** `app/src/components/game/tabs/StaffTab.tsx` (and any copy file under `app/src/pages/phases/`).
   - **Acceptance:** grep for `4 sous chefs` in student-facing UI returns 0 results; warning still visible at count >4.
   - **Depends on:** FE-05.
+
+- [x] **BE-23** — Team role mutation callables ([#35](https://github.com/fenrix-ai/FenriX/pull/35) — `updateTeamName({gameId, teamId, name})` rejects non-members and names > 64 chars; `setTeamRole({gameId, teamId, role})` rejects if another teammate holds the role, clears caller's previous role, writes `roleAssignments[uid]` on the team doc and mirrors to `players/{uid}.role`. `test:team-roles` emulator script — 12 assertions covering happy paths + error cases.)
+  - **Goal:** Backend callables to let teammates rename their team and (re)claim a role without restarting the join flow.
+  - **Files:** `backend/functions/index.js`, `backend/firestore.rules`, `backend/scripts/test-team-roles.js`.
+  - **Acceptance:** All 12 emulator assertions pass; role changes propagate to `players/{uid}.role` so existing role-gated submits keep working unchanged.
+  - **Depends on:** none (complements BE-20).
+
+- [ ] **BE-22** — Professor submission-state mirror (**new — identified in [#33](https://github.com/fenrix-ai/FenriX/pull/33) as backend blocker for FE-15**)
+  - **Goal:** Mirror per-player per-phase submission state to a professor-readable doc (e.g. `games/{gameId}/submissions/{round}_{phase}` or `games/{gameId}/professorView/submissions`) so the monitor can show ✓ submitted / ⏳ pending / ⚠️ missed per phase per player. Today `/players/*` is owner-only and `pendingDecision`/`pendingBids` aren't exposed to the professor.
+  - **Files:** `backend/functions/index.js` (write triggers on `submitDecision` / `submitBids` / `layoffChef` / `continueFromRoster`), `backend/firestore.rules` (professor-only read).
+  - **Acceptance:** Professor page shows a live grid: rows = players, cols = current-round phases (decide / bid / roster), cells update within 1s of a teammate submitting.
+  - **Depends on:** BE-20, BE-18.
+
+- [ ] **BE-24** — `joinGame` error-type fix (**P0 demo polish — known issue from PR #27 audit**)
+  - **Goal:** When `joinGame` receives bad input (empty name, invalid code format, game-not-found, game-already-started, game-full), throw a controlled `functions.https.HttpsError("invalid-argument", ...)` / `not-found` / `failed-precondition` / `resource-exhausted` instead of letting the validator throw to Firebase's generic `internal`. Frontend already has `humanizeFunctionError` (PR #31) but it's currently being fed the wrong code.
+  - **Files:** `backend/functions/index.js` (joinGame).
+  - **Acceptance:** Each error state surfaces a specific `HttpsError` code that the frontend renders with a distinct, correct message.
+  - **Depends on:** none.
+
+- [ ] **BE-25** — Competing-bid surface for auction top-bid readout (**unblocks FE-20 VALUE display**)
+  - **Goal:** During `round_N_bid_ad` and `round_N_bid_chef`, maintain a live `topBids` subdoc (`games/{gameId}/rounds/{N}/topBids`) that exposes the current highest bid per ad type and per chef slot to all players in that game (without revealing bidder identity until resolution). Update on every `submitBids` write.
+  - **Files:** `backend/functions/index.js` (submitBids trigger), `backend/firestore.rules` (read: signedIn in that game; write: blocked).
+  - **Acceptance:** AuctionPage top-bid readout populates with live dollar amounts during bid phase.
+  - **Depends on:** BE-09.
 
 - [ ] **INT-07** — 3-minute video walkthrough
   - **Goal:** Produce an AI-enhanced 3-min overview video introducing the game mechanics, target audience is 8 AM undergrads on May 1. Draft script → record gameplay → edit with AI tooling. **Ship well before May 1**, not day-of.
@@ -676,13 +705,17 @@ All resolved. Any change requires a design-review revisit.
 
 Updated April 19, 2026 after team meeting with Prof. Frenzel. **May 1 is the hard launch date** — April 27 alternate is dropped.
 
-| Date | Milestone | Status (as of 2026-04-19) |
+| Date | Milestone | Status (as of 2026-04-19 EOD) |
 |---|---|---|
 | April 17 | Roadmap published, team aligned on task IDs | ✅ done |
-| April 19 | Meeting with Prof. — team roles, team names, launch locked | ✅ done; DEC-19..26 added |
-| April 19 | Phase A + B complete (config, schema, state machine) | ✅ on backend (via [#19](https://github.com/fenrix-ai/FenriX/pull/19)); ⚠️ MIG-01 and MIG-02 schema cleanup still unstarted; frontend phase rework (FE-06/07/09) not started |
-| April 22 (Wed) | **Internal team testing session** (reserved study room) | scheduled — requires INT-01 smoke test green |
-| April 23 (Thu) | **MVP-ready for external testing** (INT-08 recruits) | target |
+| April 19 AM | Meeting with Prof. — team roles, team names, launch locked | ✅ done; DEC-19..26 added |
+| April 19 PM | Phase A + B complete (config, schema, state machine) | ✅ on backend (via [#19](https://github.com/fenrix-ai/FenriX/pull/19)); ✅ MIG-02 schema doc resync'd ([#32](https://github.com/fenrix-ai/FenriX/pull/32)); ⚠️ MIG-01 still unstarted |
+| April 19 PM | April 19 meeting-delta frontend shipped ([#33](https://github.com/fenrix-ai/FenriX/pull/33)): team roles + role-gated submits (client-side), decide countdown, auction top-bid enlargement, softened overcrowding copy, prof roster monitor | ✅ frontend done; ⚠️ backend enforcement gap (BE-21) + new BE-22/24/25 blockers |
+| April 19 PM | Infra: `/auction` route restored, Cloud Functions Node 20 → 22 ([#35](https://github.com/fenrix-ai/FenriX/pull/35)); new `updateTeamName`/`setTeamRole` callables (BE-23) | ✅ done |
+| April 19 PM | DEC-03 ad-winner bonus bug fix ([#29](https://github.com/fenrix-ai/FenriX/pull/29) — was defined in config but never read by simulator); AuctionPage wired to real chef pool ([#31](https://github.com/fenrix-ai/FenriX/pull/31)) | ✅ done |
+| April 20–21 | Close BE-21 server-side role enforcement + BE-24 `joinGame` error polish + BE-18 professor claim script + BE-22 submission monitor | target — P0 blockers for internal testing |
+| April 22 (Wed) | **Internal team testing session** (reserved study room) | scheduled — requires INT-01 smoke test green + BE-18/BE-21/BE-22 |
+| April 23 (Thu) | **MVP-ready for external testing** (INT-08 recruits) | target; requires Phase F FE-04..FE-13 frontend rework + Phase H art pipeline in progress |
 | April 24–25 (Fri/Sat) | Assignment release hard cutoff + external stress testing | target |
 | April 26–29 | INT-06 team playtest, coefficient tuning, INT-07 video finalization | target |
 | **May 1 (Thu) 8–10 AM** | **LIVE SESSION — launch** | single hard date, no fallback |
