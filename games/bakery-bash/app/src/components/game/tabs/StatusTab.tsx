@@ -24,7 +24,7 @@ function healthColor(pct: number): string {
 function healthTier(pct: number): string {
   if (pct >= 85) return "Pristine";
   if (pct >= 60) return "Good";
-  if (pct > 30) return "Worn";
+  if (pct > 30) return "Fair";
   return "Critical";
 }
 
