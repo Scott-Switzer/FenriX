@@ -188,7 +188,7 @@
       }
     },
     {
-      "path": "games/demo-lobby/leaderboard/current",
+      "path": "games/demo-lobby/leaderboard/latest",
       "data": {
         "rankings": [
           {

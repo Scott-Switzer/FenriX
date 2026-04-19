@@ -214,7 +214,7 @@ async function main() {
     db.doc(`games/${GAME_ID}/players/${PLAYER_A}/rounds/${ROUND_ID}`).get(),
     db.doc(`games/${GAME_ID}/players/${PLAYER_B}/rounds/${ROUND_ID}`).get(),
     db.doc(`games/${GAME_ID}/rounds/${ROUND_ID}`).get(),
-    db.doc(`games/${GAME_ID}/leaderboard/current`).get(),
+    db.doc(`games/${GAME_ID}/leaderboard/latest`).get(),
     db.doc(`games/${GAME_ID}/csvRows/${PLAYER_A}/rounds/${ROUND_ID}`).get(),
     db.doc(`games/${GAME_ID}/players/${PLAYER_A}/emails/round_2_data`).get(),
   ]);

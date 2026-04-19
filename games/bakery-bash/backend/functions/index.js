@@ -469,14 +469,16 @@ exports.joinGame = onCall(async (request) => {
   }
   const gameRef = gameSnap.docs[0].ref;
   const playerRef = gameRef.collection('players').doc(auth.uid);
+  const rosterRef = gameRef.collection('roster').doc(auth.uid);
 
   let playerId = auth.uid;
 
   await db.runTransaction(async (transaction) => {
-    const [gSnap, pSnap, cfgSnap] = await Promise.all([
+    const [gSnap, pSnap, cfgSnap, rSnap] = await Promise.all([
       transaction.get(gameRef),
       transaction.get(playerRef),
       transaction.get(gameRef.collection('config').doc('params')),
+      transaction.get(rosterRef),
     ]);
 
     if (!gSnap.exists) {
@@ -495,6 +497,13 @@ exports.joinGame = onCall(async (request) => {
         bakeryName,
         updatedAt: FieldValue.serverTimestamp(),
       });
+      transaction.set(rosterRef, {
+        uid: auth.uid,
+        displayName,
+        bakeryName,
+        updatedAt: FieldValue.serverTimestamp(),
+        ...(rSnap.exists ? {} : { joinedAt: FieldValue.serverTimestamp() }),
+      }, { merge: true });
       return;
     }
 
@@ -513,6 +522,14 @@ exports.joinGame = onCall(async (request) => {
       pendingBids: { ad: null, chef: null },
       pendingRosterAction: false,
       lastRoundResult: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    transaction.set(rosterRef, {
+      uid: auth.uid,
+      displayName,
+      bakeryName,
+      joinedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
 

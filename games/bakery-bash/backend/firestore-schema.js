@@ -382,7 +382,7 @@ const AggregateRoundDocument = {
 };
 
 // ─────────────────────────────────────────────────────────────
-// /games/{gameId}/leaderboard/current
+// /games/{gameId}/leaderboard/latest
 // Rewritten by Cloud Function at the end of each round.
 // ─────────────────────────────────────────────────────────────
 const LeaderboardDocument = {
@@ -400,6 +400,20 @@ const LeaderboardDocument = {
 
   updatedAt: null,                // Timestamp
   round: 1,                       // number — which round this snapshot reflects
+};
+
+// ─────────────────────────────────────────────────────────────
+// /games/{gameId}/roster/{playerId}
+// Public-safe lobby roster. Written only by the joinGame callable.
+// Readable (get + list) by any signed-in user so the lobby can subscribe
+// to the player list. Intentionally excludes financial state.
+// ─────────────────────────────────────────────────────────────
+const RosterMemberDocument = {
+  uid: "uid_abc",                 // string — Firebase Auth uid, matches doc id
+  displayName: "The Rolling Scone", // string (2–40 chars, validated in joinGame)
+  bakeryName: "Rolling Scone Bakery", // string (≤60 chars)
+  joinedAt: null,                 // Timestamp — set on first join, preserved on rejoin
+  updatedAt: null,                // Timestamp — refreshed on each join/rejoin
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -469,7 +483,8 @@ const PlayerEmailDocument = {
 // /games/{gameId}/players/{playerId}/rounds/{roundId}     ← RoundResultDocument
 // /games/{gameId}/players/{playerId}/emails/{emailId}     ← PlayerEmailDocument
 // /games/{gameId}/rounds/{roundId}         ← AggregateRoundDocument
-// /games/{gameId}/leaderboard/current      ← LeaderboardDocument
+// /games/{gameId}/leaderboard/latest       ← LeaderboardDocument
+// /games/{gameId}/roster/{playerId}        ← RosterMemberDocument (public-safe)
 // /games/{gameId}/csvRows/{playerId}/rounds/{roundId}  ← CsvRowsDocument
 //
 // ─────────────────────────────────────────────────────────────

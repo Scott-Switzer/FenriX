@@ -6,9 +6,11 @@ const {
   initializeTestEnvironment,
 } = require("@firebase/rules-unit-testing");
 const {
+  collection,
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   setDoc,
   updateDoc,
 } = require("firebase/firestore");
@@ -187,7 +189,7 @@ async function seedBaseGame() {
       },
     });
 
-    await setDoc(doc(db, "games", GAME_ID, "leaderboard", "current"), {
+    await setDoc(doc(db, "games", GAME_ID, "leaderboard", "latest"), {
       rankings: [
         {
           rank: 1,
@@ -207,6 +209,19 @@ async function seedBaseGame() {
       classStats: {
         avgRevenue: 630,
       },
+    });
+
+    await setDoc(doc(db, "games", GAME_ID, "roster", PLAYER_A), {
+      uid: PLAYER_A,
+      displayName: "The Rolling Scone",
+      bakeryName: "Rolling Scone Bakery",
+      joinedAt: null,
+    });
+    await setDoc(doc(db, "games", GAME_ID, "roster", PLAYER_B), {
+      uid: PLAYER_B,
+      displayName: "Bagel Bros",
+      bakeryName: "Bagel Bros Bakery",
+      joinedAt: null,
     });
   });
 }
@@ -246,7 +261,7 @@ describe("Bakery Bash Firestore security rules", () => {
     const db = authedDb(PLAYER_A);
 
     await assertSucceeds(getDoc(doc(db, "games", GAME_ID, "config", "params")));
-    await assertSucceeds(getDoc(doc(db, "games", GAME_ID, "leaderboard", "current")));
+    await assertSucceeds(getDoc(doc(db, "games", GAME_ID, "leaderboard", "latest")));
     await assertSucceeds(getDoc(doc(db, "games", GAME_ID, "rounds", "round_1")));
   });
 
@@ -305,7 +320,7 @@ describe("Bakery Bash Firestore security rules", () => {
 
     await assertFails(setDoc(doc(db, "games", GAME_ID), { phase: "game_over" }));
     await assertFails(
-      updateDoc(doc(db, "games", GAME_ID, "leaderboard", "current"), { round: 2 })
+      updateDoc(doc(db, "games", GAME_ID, "leaderboard", "latest"), { round: 2 })
     );
     await assertFails(
       updateDoc(doc(db, "games", GAME_ID, "rounds", "round_1"), {
@@ -318,6 +333,33 @@ describe("Bakery Bash Firestore security rules", () => {
         { read: true }
       )
     );
+  });
+
+  it("lets any signed-in player get and list the public roster", async () => {
+    const db = authedDb(PLAYER_A);
+
+    await assertSucceeds(getDoc(doc(db, "games", GAME_ID, "roster", PLAYER_A)));
+    await assertSucceeds(getDoc(doc(db, "games", GAME_ID, "roster", PLAYER_B)));
+    await assertSucceeds(getDocs(collection(db, "games", GAME_ID, "roster")));
+
+    await assertFails(getDoc(doc(anonDb(), "games", GAME_ID, "roster", PLAYER_A)));
+    await assertFails(getDocs(collection(anonDb(), "games", GAME_ID, "roster")));
+  });
+
+  it("does not let clients write roster documents", async () => {
+    const db = authedDb(PLAYER_A);
+    const rosterRef = doc(db, "games", GAME_ID, "roster", PLAYER_A);
+
+    await assertFails(
+      setDoc(rosterRef, {
+        uid: PLAYER_A,
+        displayName: "Bypass",
+        bakeryName: "Bypass",
+        joinedAt: null,
+      })
+    );
+    await assertFails(updateDoc(rosterRef, { displayName: "Bypass" }));
+    await assertFails(deleteDoc(rosterRef));
   });
 
   it("does not let players write decision snapshots directly", async () => {

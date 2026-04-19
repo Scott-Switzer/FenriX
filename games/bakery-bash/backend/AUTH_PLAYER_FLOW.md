@@ -94,7 +94,8 @@ Players can read:
 
 - `/games/{gameId}`
 - `/games/{gameId}/config/params`
-- `/games/{gameId}/leaderboard/current`
+- `/games/{gameId}/leaderboard/latest`
+- `/games/{gameId}/roster/{playerId}` (lobby roster — public-safe fields only)
 - `/games/{gameId}/rounds/{roundId}`
 - their own `/games/{gameId}/players/{uid}`
 - their own `/games/{gameId}/players/{uid}/decisions/{roundId}`

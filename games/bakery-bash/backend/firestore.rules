@@ -85,6 +85,20 @@ service cloud.firestore {
       }
 
       // ─────────────────────────────────────────────────────
+      // /games/{gameId}/roster/{playerId}
+      // Public-safe lobby roster — { uid, displayName, bakeryName, joinedAt,
+      // updatedAt }. Readable (get + list) by any signed-in user so the lobby
+      // can subscribe to the full player list via onSnapshot. Written only by
+      // the joinGame callable. Intentionally excludes financial state (budget,
+      // revenue) which remains in /players/{playerId} and is readable only by
+      // the owner.
+      // ─────────────────────────────────────────────────────
+      match /roster/{playerId} {
+        allow read: if signedIn();
+        allow write: if false;
+      }
+
+      // ─────────────────────────────────────────────────────
       // /games/{gameId}/csvRows/{playerId}/rounds/{roundId}
       // Players can only read their own CSV rows.
       // Written exclusively by Cloud Functions.

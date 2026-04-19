@@ -161,7 +161,7 @@ See `firestore.rules` for the full rules. The policy is:
 
 - **Players** can read/write only their own player document (`/games/{gameId}/players/{uid}`), and only the `displayName`, `pendingDecision`, and `pendingBids` fields. Financial state is Cloud Functions only.
 - **Game state** (`/games/{gameId}`) is read-only for players. Phase transitions are Cloud Functions only.
-- **Leaderboard** (`/games/{gameId}/leaderboard/current`) is read-only for all authenticated players.
+- **Leaderboard** (`/games/{gameId}/leaderboard/latest`) is read-only for all authenticated players.
 - **Aggregate rounds** (`/games/{gameId}/rounds/{roundId}`) are read-only for all authenticated players.
 - **CSV rows** are readable only by the player they belong to.
 - **Decisions** can be created once per round but never updated or deleted.
