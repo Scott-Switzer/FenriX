@@ -1,5 +1,11 @@
+import { useEffect, useState } from "react";
 import { useGame } from "../../contexts/GameContext";
-import type { MaintenanceBars, RoundResult, StaffCounts } from "../../types/game";
+import {
+  PLAYER_ROLE_LABELS,
+  type MaintenanceBars,
+  type RoundResult,
+  type StaffCounts,
+} from "../../types/game";
 
 /**
  * Column schema for the round-history CSV download. Kept in one place so
@@ -74,14 +80,55 @@ function downloadResultsCsv(results: RoundResult[]) {
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Live phase countdown derived from `games/{gameId}.phaseEndsAt`.
+ *
+ * Re-ticks every 500ms (sub-second granularity for smooth final-10s feel)
+ * and clamps at zero. Returns `null` whenever the backend hasn't set an
+ * end time (lobby / paused / between phases) so the header can hide the
+ * timer entirely instead of rendering `0:00`.
+ */
+function usePhaseCountdownSeconds(): number | null {
+  const { phaseEndsAtMs } = useGame();
+  const [now, setNow] = useState<number>(() => Date.now());
+
+  useEffect(() => {
+    if (phaseEndsAtMs === null) return;
+    const tick = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(tick);
+  }, [phaseEndsAtMs]);
+
+  if (phaseEndsAtMs === null) return null;
+  return Math.max(0, Math.ceil((phaseEndsAtMs - now) / 1000));
+}
+
 export function RoundHeader() {
-  const { currentRound, totalRounds, timeRemaining, roundResults } = useGame();
+  const {
+    currentRound,
+    totalRounds,
+    timeRemaining,
+    roundResults,
+    teamName,
+    player,
+    role,
+    teamId,
+  } = useGame();
+
+  const phaseSeconds = usePhaseCountdownSeconds();
+  // Prefer the backend-driven `phaseEndsAt` countdown; fall back to the
+  // legacy local `timeRemaining` (only used by AuctionPage's tab timer
+  // until `phaseEndsAt` is wired through there too).
+  const displaySeconds = phaseSeconds ?? timeRemaining;
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
+
+  // Team label preference: explicit team name → bakery name → display name.
+  const teamLabel =
+    teamName ?? player?.bakeryName ?? player?.name ?? null;
 
   return (
     <header className="round-header">
@@ -97,13 +144,27 @@ export function RoundHeader() {
         Round {currentRound} of {totalRounds}
       </div>
 
-      {timeRemaining !== null && (
+      {teamLabel && (
+        <div className="round-header__team" title="Team">
+          <span className="round-header__team-label">{teamLabel}</span>
+          {/* Hide the role badge until backend assignment writes a real
+              teamId — otherwise every fresh client claims to be "solo"
+              even when they're actually one of three teammates. */}
+          {teamId && (
+            <span className={`role-badge role-badge--${role}`}>
+              {PLAYER_ROLE_LABELS[role]}
+            </span>
+          )}
+        </div>
+      )}
+
+      {displaySeconds !== null && (
         <div
           className={`round-header__timer ${
-            timeRemaining < 60 ? "round-header__timer--urgent" : ""
+            displaySeconds < 30 ? "round-header__timer--urgent" : ""
           }`}
         >
-          {formatTime(timeRemaining)}
+          {formatTime(displaySeconds)}
         </div>
       )}
     </header>

@@ -1,14 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  collection,
   doc,
   onSnapshot,
   type DocumentData,
+  type Timestamp,
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { useGame } from "../contexts/GameContext";
 import { db, functions } from "../lib/firebase";
 import { PageShell } from "../components/ui/PageShell";
 import { humanizeFunctionError } from "../lib/errors";
+import { parseGamePhase } from "../types/game";
+
+/**
+ * Roster entry mirrored from `/games/{gameId}/roster/{uid}`. The roster
+ * subcollection is the only client-readable view of joined players (PR #25).
+ */
+interface ProfessorRosterEntry {
+  uid: string;
+  displayName: string;
+  bakeryName?: string;
+  joinedAt?: Timestamp | null;
+}
 
 /**
  * Professor control panel.
@@ -35,12 +49,15 @@ interface CallableResult {
 }
 
 export function ProfessorPage() {
-  const { gameId } = useGame();
+  const { gameId, currentRound } = useGame();
   const [phase, setPhase] = useState<string | null>(null);
   const [paused, setPaused] = useState<boolean>(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [roster, setRoster] = useState<ProfessorRosterEntry[]>([]);
+  const [rosterError, setRosterError] = useState<string | null>(null);
+  const [rosterReady, setRosterReady] = useState(false);
 
   // Mirror the game doc's phase + paused flag so button labels and
   // disabled-states reflect live backend state.
@@ -57,6 +74,54 @@ export function ProfessorPage() {
       },
       (err) => {
         console.error("professor: games listener error", { gameId, err });
+      },
+    );
+    return unsubscribe;
+  }, [gameId]);
+
+  // Per-team monitoring (April 19 meeting): subscribe to the roster
+  // subcollection and render one row per joined player. The richer
+  // per-phase submission grid + drill-down (FE-15/FE-16) requires either
+  // BE-22 (mirror submission status to a public doc) or relaxed read
+  // rules on /players for professor UIDs — neither has shipped yet, so
+  // for MVP we render the roster + a footnote pointing at the gap.
+  useEffect(() => {
+    if (!gameId) return;
+    const rosterRef = collection(db, "games", gameId, "roster");
+    const unsubscribe = onSnapshot(
+      rosterRef,
+      (snap) => {
+        const entries: ProfessorRosterEntry[] = snap.docs.map((d) => {
+          const data = d.data() as DocumentData;
+          return {
+            uid: typeof data.uid === "string" ? data.uid : d.id,
+            displayName:
+              typeof data.displayName === "string"
+                ? data.displayName
+                : "Player",
+            bakeryName:
+              typeof data.bakeryName === "string"
+                ? data.bakeryName
+                : undefined,
+            joinedAt: (data.joinedAt as Timestamp | null) ?? null,
+          };
+        });
+        entries.sort((a, b) => {
+          const ta = a.joinedAt?.toMillis?.() ?? Number.POSITIVE_INFINITY;
+          const tb = b.joinedAt?.toMillis?.() ?? Number.POSITIVE_INFINITY;
+          if (ta !== tb) return ta - tb;
+          return a.uid.localeCompare(b.uid);
+        });
+        setRoster(entries);
+        setRosterError(null);
+        setRosterReady(true);
+      },
+      (err) => {
+        console.error("professor: roster listener error:", err);
+        setRosterError(
+          "Could not load the roster. Confirm rules allow professor reads.",
+        );
+        setRosterReady(true);
       },
     );
     return unsubscribe;
@@ -199,6 +264,63 @@ export function ProfessorPage() {
         <p className="professor-page__info" role="status">
           {info}
         </p>
+      )}
+
+      {gameId && (
+        <section className="professor-page__monitor">
+          <h2 className="professor-page__monitor-title">
+            Players {rosterReady ? `(${roster.length})` : "(—)"}
+            {currentRound > 0 && (
+              <span className="professor-page__monitor-round">
+                · Round {currentRound}
+                {phase ? ` · ${parseGamePhase(phase, currentRound).base}` : ""}
+              </span>
+            )}
+          </h2>
+
+          {rosterError && (
+            <p className="professor-page__error" role="alert">
+              {rosterError}
+            </p>
+          )}
+
+          {rosterReady && roster.length === 0 && !rosterError && (
+            <p className="professor-page__note">
+              No players have joined yet.
+            </p>
+          )}
+
+          {roster.length > 0 && (
+            <table className="professor-monitor-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Player</th>
+                  <th>Bakery</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {roster.map((entry, i) => (
+                  <tr key={entry.uid}>
+                    <td>{i + 1}</td>
+                    <td>{entry.displayName}</td>
+                    <td>{entry.bakeryName ?? "—"}</td>
+                    <td title={entry.uid}>🟢 connected</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          <p className="professor-page__monitor-footnote">
+            Per-phase submission status (✓ submitted / ⏳ pending) requires
+            backend BE-22 to mirror player submission state to a
+            professor-readable doc. Connection status is the most we can
+            surface today; the per-team progress grid will appear here once
+            BE-22 ships.
+          </p>
+        </section>
       )}
     </PageShell>
   );

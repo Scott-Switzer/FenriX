@@ -14,6 +14,8 @@ import { humanizeFunctionError } from "../lib/errors";
 import {
   PRODUCT_STATION,
   parseGamePhase,
+  ownerOfDecide,
+  roleOwnsDecide,
   totalSousChefs,
   type GameConfigParams,
   type MaintenanceBars,
@@ -98,13 +100,14 @@ export function GamePage() {
     currentRound,
     pendingDecision,
     decisionSubmitted,
+    role,
   } = useGame();
   const dispatch = useGameDispatch();
   const navigate = useNavigate();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // --- Listener: /games/{gameId} — drives phase + round from backend. ---
+  // --- Listener: /games/{gameId} — drives phase + round + phaseEndsAt. ---
   useEffect(() => {
     if (!gameId) return;
     const gameRef = doc(db, "games", gameId);
@@ -125,6 +128,16 @@ export function GamePage() {
             : null;
         if (nextRound !== null) {
           dispatch({ type: "SET_ROUND", payload: nextRound });
+        }
+        // `phaseEndsAt` is a Firestore Timestamp written by `advanceGamePhase`
+        // (see backend/functions/index.js::phaseEndsAtFromNow). The
+        // RoundHeader uses it to render the live decide / auction
+        // countdown. Pause sets it to null (DEC-21 — backend pauseGame).
+        const ends = data.phaseEndsAt;
+        if (ends && typeof ends.toMillis === "function") {
+          dispatch({ type: "SET_PHASE_ENDS_AT", payload: ends.toMillis() });
+        } else if (ends === null || ends === undefined) {
+          dispatch({ type: "SET_PHASE_ENDS_AT", payload: null });
         }
       },
       (err) => {
@@ -198,6 +211,24 @@ export function GamePage() {
           // clear so the BudgetSummary doesn't display a stale value from a
           // previous round / previous game session.
           dispatch({ type: "SET_BUDGET", payload: null });
+        }
+        // DEC-21: backend assigns role + teamId on the player doc once
+        // teams are formed. Mirror them so the team page + role-gated
+        // submits can react. The team doc's `name` is read separately
+        // by `TeamPage` (subscribes to /teams/{teamId} for live sync).
+        if (
+          data.role === "operations" ||
+          data.role === "advertising" ||
+          data.role === "finance" ||
+          data.role === "solo"
+        ) {
+          dispatch({ type: "SET_ROLE", payload: data.role });
+        }
+        if (typeof data.teamId === "string" && data.teamId.length > 0) {
+          // teamName itself comes from the team-doc listener (TeamPage).
+          dispatch({ type: "SET_TEAM_ID", payload: data.teamId });
+        } else if (data.teamId === null) {
+          dispatch({ type: "SET_TEAM_ID", payload: null });
         }
       },
       (err) => {
@@ -328,17 +359,36 @@ export function GamePage() {
           {submitError}
         </p>
       )}
-      <button
-        className="btn btn--primary game-page__submit"
-        onClick={handleSubmit}
-        disabled={submitting || decisionSubmitted || !gameId}
-      >
-        {submitting
+      {(() => {
+        // DEC-21: only the Operations role (or solo) may submit Decide.
+        // Other teammates still see and edit the form so they can advise,
+        // but the button is disabled with an explicit owner tooltip.
+        const canSubmit = roleOwnsDecide(role);
+        const ownerLabel = ownerOfDecide();
+        const disabled =
+          submitting || decisionSubmitted || !gameId || !canSubmit;
+        const label = !canSubmit
+          ? `Your ${ownerLabel} teammate submits this decision`
+          : submitting
           ? "Submitting…"
           : decisionSubmitted
           ? "Submitted — waiting for other players…"
-          : "Submit Decisions"}
-      </button>
+          : "Submit Decisions";
+        return (
+          <button
+            className="btn btn--primary game-page__submit"
+            onClick={handleSubmit}
+            disabled={disabled}
+            title={
+              !canSubmit
+                ? `Your ${ownerLabel} teammate submits this decision.`
+                : undefined
+            }
+          >
+            {label}
+          </button>
+        );
+      })()}
     </PageShell>
   );
 }

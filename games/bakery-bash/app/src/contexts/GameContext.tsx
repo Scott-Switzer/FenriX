@@ -23,6 +23,7 @@ import {
   type PendingChefBidsDraft,
   type PendingDecisionDraft,
   type Player,
+  type PlayerRole,
   type ProductKey,
   type RoundResult,
   type StaffCounts,
@@ -84,6 +85,15 @@ const initialState: GameState = {
   maintenanceBars: { ...DEFAULT_MAINTENANCE_BARS },
   chefSatisfactionScores: {},
   budgetCurrent: null,
+  // DEC-21 default: solo / all-roles. The real role + team assignment is
+  // written by the backend onto the player doc and the team doc; the
+  // player doc listener mirrors them into context. "solo" stays the
+  // default so a single-browser playtest keeps every submit button
+  // enabled before BE-20/BE-21 ship.
+  role: "solo",
+  teamId: null,
+  teamName: null,
+  phaseEndsAtMs: null,
 };
 
 type GameAction =
@@ -96,6 +106,10 @@ type GameAction =
         player: Player;
       };
     }
+  | { type: "SET_ROLE"; payload: PlayerRole }
+  | { type: "SET_TEAM_ID"; payload: string | null }
+  | { type: "SET_TEAM_NAME"; payload: string | null }
+  | { type: "SET_PHASE_ENDS_AT"; payload: number | null }
   | { type: "SET_PHASE"; payload: GamePhaseString }
   | { type: "SET_ROUND"; payload: number }
   | { type: "SET_PLAYERS"; payload: Player[] }
@@ -142,8 +156,34 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         playerId: action.payload.playerId,
         gameCode: action.payload.gameCode,
         player: action.payload.player,
+        // Reset team-assignment state on a fresh join; backend writes
+        // role + teamId onto the player doc and the team doc, and the
+        // player-doc / team-doc listeners mirror them back into context.
+        role: "solo",
+        teamId: null,
+        teamName: null,
         phase: "lobby",
       };
+
+    case "SET_ROLE":
+      return state.role === action.payload
+        ? state
+        : { ...state, role: action.payload };
+
+    case "SET_TEAM_ID":
+      return state.teamId === action.payload
+        ? state
+        : { ...state, teamId: action.payload };
+
+    case "SET_TEAM_NAME":
+      return state.teamName === action.payload
+        ? state
+        : { ...state, teamName: action.payload };
+
+    case "SET_PHASE_ENDS_AT":
+      return state.phaseEndsAtMs === action.payload
+        ? state
+        : { ...state, phaseEndsAtMs: action.payload };
 
     case "SET_PHASE": {
       if (state.phase === action.payload) return state;
