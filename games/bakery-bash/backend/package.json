@@ -10,7 +10,9 @@
     "test:revenue-flow": "firebase emulators:exec --only firestore,functions \"node scripts/test-revenue-flow.js\" --project bakery-bash-54d12",
     "test:submit-decision": "firebase emulators:exec --only auth,firestore,functions \"node scripts/test-submit-decision-flow.js\" --project bakery-bash-54d12",
     "test:team-roles": "firebase emulators:exec --only auth,firestore,functions \"node scripts/test-team-roles.js\" --project bakery-bash-54d12",
-    "seed:emulator": "node scripts/seed-emulator.js"
+    "seed:emulator": "node scripts/seed-emulator.js",
+    "seed:catalogs": "node scripts/seed-catalogs.js",
+    "set:professor-claim": "node scripts/set-professor-claim.js"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^3.0.3",

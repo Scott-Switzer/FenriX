@@ -203,6 +203,109 @@ function gameDoc(gameId) {
   return db.collection('games').doc(gameId);
 }
 
+// ---------------------------------------------------------------------------
+// assertRoleAllowed — BE-21 role-gated callable guard
+// Throws HttpsError('permission-denied') unless playerRole is in allowedRoles.
+// The 'solo' role bypasses all checks (single player doing everything).
+// ---------------------------------------------------------------------------
+function assertRoleAllowed(playerRole, allowedRoles) {
+  if (playerRole === 'solo') return;
+  if (!playerRole) {
+    // No role set — team game but player hasn't been assigned yet; block the action.
+    throw new HttpsError('failed-precondition',
+      'You have not been assigned a role yet. Ask your team to set roles first.');
+  }
+  if (!allowedRoles.includes(playerRole)) {
+    throw new HttpsError('permission-denied',
+      `Your role "${playerRole}" cannot perform this action. Required: ${allowedRoles.join(' or ')}.`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// updateTopBids — BE-25 competing-bid surface
+// After a successful submitBids, update the round's topBids map so the FE
+// can surface the current top VALUE for each ad slot / chef without revealing
+// who the high bidder is.  Non-fatal: logged and swallowed on failure.
+// ---------------------------------------------------------------------------
+async function updateTopBids(gameRef, round, bidType, validated) {
+  const roundRef = gameRef.collection('rounds').doc(`round_${round}`);
+  try {
+    await db.runTransaction(async (tx) => {
+      const roundSnap = await tx.get(roundRef);
+      const data = (roundSnap.exists && roundSnap.data()) || {};
+      const topBids = data.topBids || {};
+      const updates = {};
+
+      if (bidType === 'ad') {
+        const adTop = topBids.ad || {};
+        for (const [adType, amount] of Object.entries(validated || {})) {
+          if (amount > 0 && amount > numberOrDefault(adTop[adType], 0)) {
+            updates[`topBids.ad.${adType}`] = amount;
+          }
+        }
+      } else {
+        const chefTop = topBids.chef || {};
+        for (const bid of (Array.isArray(validated) ? validated : [])) {
+          const { chefId, amount } = bid || {};
+          if (chefId && amount > 0 && amount > numberOrDefault(chefTop[chefId], 0)) {
+            updates[`topBids.chef.${chefId}`] = amount;
+          }
+        }
+      }
+
+      if (Object.keys(updates).length === 0) return;
+      updates.updatedAt = FieldValue.serverTimestamp();
+
+      if (roundSnap.exists) {
+        tx.update(roundRef, updates);
+      } else {
+        // Round doc may not exist yet during early bid phase — set with merge.
+        const topBidsPayload = { ad: {}, chef: {} };
+        for (const [key, val] of Object.entries(updates)) {
+          if (key === 'updatedAt') continue;
+          const parts = key.split('.');  // ['topBids', 'ad'|'chef', slot]
+          if (parts[1] === 'ad' && parts[2]) topBidsPayload.ad[parts[2]] = val;
+          else if (parts[1] === 'chef' && parts[2]) topBidsPayload.chef[parts[2]] = val;
+        }
+        tx.set(roundRef, {
+          round,
+          topBids: topBidsPayload,
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+    });
+  } catch (err) {
+    logger.warn('updateTopBids side-effect failed — non-fatal.', {
+      gameId: gameRef.id, round, bidType, error: err && err.message,
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// recordSubmission — BE-22 professor submission-state mirror
+// Writes { uid: { status, submittedAt, displayName, role } } to
+// games/{gameId}/submissions/{submissionDocId} with merge so the professor
+// dashboard can track per-player submission state in real time.
+// submissionDocId pattern: "round_{N}_{phase}"  e.g. "round_1_decide"
+// Non-fatal: logged and swallowed on failure.
+// ---------------------------------------------------------------------------
+async function recordSubmission(gameRef, submissionDocId, uid, displayName, role) {
+  try {
+    await gameRef.collection('submissions').doc(submissionDocId).set({
+      [uid]: {
+        status: 'submitted',
+        submittedAt: Timestamp.now(),
+        displayName: displayName || '',
+        role: role || null,
+      },
+    }, { merge: true });
+  } catch (err) {
+    logger.warn('recordSubmission side-effect failed — non-fatal.', {
+      gameId: gameRef.id, submissionDocId, uid, error: err && err.message,
+    });
+  }
+}
+
 /**
  * Load config for a game.
  */
@@ -471,14 +574,23 @@ exports.joinGame = onCall(async (request) => {
   const playerRef = gameRef.collection('players').doc(auth.uid);
   const rosterRef = gameRef.collection('roster').doc(auth.uid);
 
+  // BE-20: deterministic teamId derived from bakeryName (same name → same team).
+  // Players sharing a bakeryName in the same game are grouped automatically.
+  const teamId = (
+    bakeryName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') ||
+    auth.uid.slice(0, 8)
+  ).slice(0, 50);
+  const teamRef = gameRef.collection('teams').doc(teamId);
+
   let playerId = auth.uid;
 
   await db.runTransaction(async (transaction) => {
-    const [gSnap, pSnap, cfgSnap, rSnap] = await Promise.all([
+    const [gSnap, pSnap, cfgSnap, rSnap, tSnap] = await Promise.all([
       transaction.get(gameRef),
       transaction.get(playerRef),
       transaction.get(gameRef.collection('config').doc('params')),
       transaction.get(rosterRef),
+      transaction.get(teamRef),
     ]);
 
     if (!gSnap.exists) {
@@ -489,6 +601,23 @@ exports.joinGame = onCall(async (request) => {
     }
 
     const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
+
+    // BE-24: enforce player cap for new joins (rejoins are always allowed)
+    if (!pSnap.exists) {
+      const playerCap = numberOrDefault(config.playerCap, 20);
+      const currentTotal = numberOrDefault(gSnap.get('totalPlayers'), 0);
+      if (currentTotal >= playerCap) {
+        throw new HttpsError('resource-exhausted', 'This game is full.');
+      }
+    }
+
+    // BE-20: auto-assign role from team's available slots
+    const ROLES_ORDER = ['finance', 'advertising', 'operations'];
+    const existingRoleAssignments = tSnap.exists
+      ? ((tSnap.data() || {}).roleAssignments || {})
+      : {};
+    const takenRoles = new Set(Object.values(existingRoleAssignments));
+    const autoRole = ROLES_ORDER.find((r) => !takenRoles.has(r)) || 'solo';
 
     if (pSnap.exists) {
       // Rejoin: refresh display name / bakery name but do not reset progress.
@@ -512,18 +641,40 @@ exports.joinGame = onCall(async (request) => {
       playerId: auth.uid,
       displayName,
       bakeryName,
+      teamId,                                    // BE-20
+      role: autoRole,                            // BE-20
       joinedAt: FieldValue.serverTimestamp(),
       budgetCurrent: config.startingBudget,
       cumulativeRevenue: 0,
       specialtyChefs: [],
       sousChefCount: 0,
       returningCustomersPending: 0,
+      consecutiveMissedRounds: 0,                // BE-19
+      disconnected: false,                       // BE-19
       pendingDecision: { submitted: false },
       pendingBids: { ad: null, chef: null },
       pendingRosterAction: false,
       lastRoundResult: null,
       updatedAt: FieldValue.serverTimestamp(),
     });
+
+    // BE-20: create or update the team doc with this player's role assignment
+    if (!tSnap.exists) {
+      transaction.set(teamRef, {
+        name: bakeryName,
+        teamId,
+        roleAssignments: { [auth.uid]: autoRole },
+        memberCount: 1,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    } else {
+      transaction.update(teamRef, {
+        [`roleAssignments.${auth.uid}`]: autoRole,
+        memberCount: FieldValue.increment(1),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
 
     transaction.set(rosterRef, {
       uid: auth.uid,
@@ -597,6 +748,12 @@ exports.startGame = onCall(async (request) => {
     round: 1,
     ...insight,
     createdAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  // BE-07: mirror to rounds/round_1.marketEmail for FE consumption
+  await gameRef.collection('rounds').doc('round_1').set({
+    round: 1,
+    marketEmail: insight,
+    marketEmailAt: FieldValue.serverTimestamp(),
   }, { merge: true });
 
   return { gameId, phase: 'round_1_email', round: 1 };
@@ -707,6 +864,13 @@ exports.advanceGamePhase = onCall(async (request) => {
         ...insight,
         createdAt: FieldValue.serverTimestamp(),
       }, { merge: true });
+      // BE-07: also mirror to rounds/round_N.marketEmail so FE can read it
+      // from the rounds collection without a separate marketInsights listener.
+      await gameRef.collection('rounds').doc(`round_${round}`).set({
+        round,
+        marketEmail: insight,
+        marketEmailAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
     }
 
     if (basePhaseName === 'bid_chef') {
@@ -812,11 +976,29 @@ async function runSimulationAndPersist(gameRef, round, config) {
     )
   );
 
+  // BE-19: compute disconnection state for each player before simulation.
+  // A player is considered "disconnected" if they have missed 2+ consecutive rounds.
+  const disconnectionMap = new Map();
+  for (let _i = 0; _i < playerDocs.length; _i++) {
+    const _pd = playerDocs[_i];
+    const _p = _pd.data() || {};
+    const _dSnap = decisionSnaps[_i];
+    const _prevMissed = numberOrDefault(_p.consecutiveMissedRounds, 0);
+    const _missed = !_dSnap.exists;
+    disconnectionMap.set(_pd.id, {
+      consecutiveMissedRounds: _missed ? _prevMissed + 1 : 0,
+      disconnected: _missed ? _prevMissed + 1 >= 2 : false,
+    });
+  }
+
   // Assemble per-player input for the pure simulation engine.
   const players = playerDocs.map((pd, i) => {
     const p = pd.data() || {};
     const dSnap = decisionSnaps[i];
-    const decision = dSnap.exists ? dSnap.data() : (p.pendingDecision || {});
+    // BE-19 / regression fix (c7c859f): missed players contribute zero
+    // quantities/menu to the sim — never replay stale pendingDecision.
+    const missed = !dSnap.exists;
+    const decision = missed ? {} : dSnap.data();
     const ar = auctionByPlayer.get(pd.id) || {
       adWon: null, adBidPaid: 0, chefsWon: [], chefBidPaid: 0,
     };
@@ -827,7 +1009,7 @@ async function runSimulationAndPersist(gameRef, round, config) {
       decision: {
         menu: (decision && decision.menu) || {},
         quantities: (decision && decision.quantities) || {},
-        sousChefCount: numberOrDefault(decision && decision.sousChefCount, p.sousChefCount || 0),
+        sousChefCount: missed ? 0 : numberOrDefault(decision && decision.sousChefCount, p.sousChefCount || 0),
         sousChefAssignments: (decision && decision.sousChefAssignments) || {},
       },
       specialtyChefs: Array.isArray(p.specialtyChefs) ? p.specialtyChefs : [],
@@ -879,6 +1061,7 @@ async function runSimulationAndPersist(gameRef, round, config) {
       opsInBatch = 0;
     }
 
+    const dc = disconnectionMap.get(r.playerId) || { consecutiveMissedRounds: 0, disconnected: false };
     batch.update(playerRef, {
       budgetCurrent: r.budgetAfter,
       cumulativeRevenue: FieldValue.increment(r.revenueNet),
@@ -887,6 +1070,8 @@ async function runSimulationAndPersist(gameRef, round, config) {
         (r.csvRow && r.csvRow.sous_chef_count),
         0
       ),
+      consecutiveMissedRounds: dc.consecutiveMissedRounds,  // BE-19
+      disconnected: dc.disconnected,                         // BE-19
       lastRoundResult: {
         round,
         revenueGross: r.revenueGross,
@@ -1078,6 +1263,8 @@ exports.submitDecision = onCall(async (request) => {
   const playerRef = gameRef.collection('players').doc(uid);
 
   let roundId = null;
+  let _submitDecision_role = null;
+  let _submitDecision_displayName = '';
 
   await db.runTransaction(async (transaction) => {
     const [gSnap, pSnap, cfgSnap] = await Promise.all([
@@ -1088,6 +1275,11 @@ exports.submitDecision = onCall(async (request) => {
 
     if (!gSnap.exists) throw new HttpsError('not-found', 'Game not found.');
     if (!pSnap.exists) throw new HttpsError('failed-precondition', 'Join the game before submitting.');
+
+    // BE-21: operations role (or solo) required to submit decisions
+    assertRoleAllowed(pSnap.get('role'), ['operations']);
+    _submitDecision_role = pSnap.get('role') || null;
+    _submitDecision_displayName = pSnap.get('displayName') || '';
 
     const game = gSnap.data();
     if (!canSubmitDecision(game.phase)) {
@@ -1126,6 +1318,11 @@ exports.submitDecision = onCall(async (request) => {
         sousChefCount: validated.sousChefCount || 0,
         sousChefAssignments: validated.sousChefAssignments || {},
       },
+      // BE-19: un-flag a reconnected player immediately on successful submit.
+      // Without this, a previously-disconnected player stays flagged on the
+      // professor dashboard until the next simulation batch runs.
+      consecutiveMissedRounds: 0,
+      disconnected: false,
       updatedAt: FieldValue.serverTimestamp(),
     });
 
@@ -1134,6 +1331,14 @@ exports.submitDecision = onCall(async (request) => {
       updatedAt: FieldValue.serverTimestamp(),
     });
   });
+
+  // BE-22: mirror submission state for professor dashboard
+  if (roundId) {
+    await recordSubmission(
+      gameRef, `${roundId}_decide`, uid,
+      _submitDecision_displayName, _submitDecision_role
+    );
+  }
 
   return { gameId, playerId: uid, roundId, submitted: true };
 });
@@ -1155,6 +1360,11 @@ exports.submitBids = onCall(async (request) => {
   const gameRef = gameDoc(gameId);
   const playerRef = gameRef.collection('players').doc(uid);
 
+  let _submitBids_round = null;
+  let _submitBids_validated = null;
+  let _submitBids_role = null;
+  let _submitBids_displayName = '';
+
   await db.runTransaction(async (transaction) => {
     const [gSnap, pSnap, cfgSnap] = await Promise.all([
       transaction.get(gameRef),
@@ -1164,12 +1374,22 @@ exports.submitBids = onCall(async (request) => {
     if (!gSnap.exists) throw new HttpsError('not-found', 'Game not found.');
     if (!pSnap.exists) throw new HttpsError('failed-precondition', 'Join the game before bidding.');
 
+    // BE-21: advertising role (or solo) for ad bids; finance role (or solo) for chef bids
+    if (bidType === 'ad') {
+      assertRoleAllowed(pSnap.get('role'), ['advertising']);
+    } else {
+      assertRoleAllowed(pSnap.get('role'), ['finance']);
+    }
+    _submitBids_role = pSnap.get('role') || null;
+    _submitBids_displayName = pSnap.get('displayName') || '';
+
     const game = gSnap.data();
     if (!canSubmitBids(game.phase, bidType)) {
       throw new HttpsError('failed-precondition', `Current phase ${game.phase} does not accept ${bidType} bids.`);
     }
 
     const round = numberOrDefault(game.currentRound || game.round, 1);
+    _submitBids_round = round;
     const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
 
     let validated;
@@ -1183,6 +1403,7 @@ exports.submitBids = onCall(async (request) => {
       const chefPool = (roundSnap.exists && roundSnap.data().chefPool) || [];
       validated = decisionValidation.validateChefBids(data, chefPool);
     }
+    _submitBids_validated = validated;
 
     const bidsRef = playerRef.collection('bids').doc(`round_${round}`);
     const existing = await transaction.get(bidsRef);
@@ -1200,6 +1421,20 @@ exports.submitBids = onCall(async (request) => {
       updatedAt: FieldValue.serverTimestamp(),
     });
   });
+
+  // BE-25: update topBids on the round doc after transaction (non-fatal)
+  if (_submitBids_round !== null && _submitBids_validated !== null) {
+    await updateTopBids(gameRef, _submitBids_round, bidType, _submitBids_validated);
+  }
+
+  // BE-22: mirror submission state for professor dashboard
+  if (_submitBids_round !== null) {
+    const phase = bidType === 'ad' ? 'bid_ad' : 'bid_chef';
+    await recordSubmission(
+      gameRef, `round_${_submitBids_round}_${phase}`, uid,
+      _submitBids_displayName, _submitBids_role
+    );
+  }
 
   return { gameId, playerId: uid, bidType, submitted: true };
 });
@@ -1228,6 +1463,9 @@ exports.layoffChef = onCall(async (request) => {
     ]);
     if (!gSnap.exists) throw new HttpsError('not-found', 'Game not found.');
     if (!pSnap.exists) throw new HttpsError('failed-precondition', 'Player not in this game.');
+
+    // BE-21: operations role (or solo) required to manage roster
+    assertRoleAllowed(pSnap.get('role'), ['operations']);
 
     const game = gSnap.data();
     const { phase } = parsePhase(game.phase, game.currentRound || game.round);
@@ -1284,6 +1522,10 @@ exports.continueFromRoster = onCall(async (request) => {
   const gameRef = gameDoc(gameId);
   const playerRef = gameRef.collection('players').doc(uid);
 
+  let _roster_round = null;
+  let _roster_role = null;
+  let _roster_displayName = '';
+
   await db.runTransaction(async (transaction) => {
     // MED-05 fix: read game doc to validate phase is 'roster'.
     // LOGIC-1 fix: read config for specialtyChefCap instead of hardcoding 3.
@@ -1294,6 +1536,9 @@ exports.continueFromRoster = onCall(async (request) => {
     ]);
     if (!gSnap.exists) throw new HttpsError('not-found', 'Game not found.');
     if (!pSnap.exists) throw new HttpsError('failed-precondition', 'Player not in this game.');
+
+    // BE-21: operations role (or solo) required to complete roster
+    assertRoleAllowed(pSnap.get('role'), ['operations']);
 
     const game = gSnap.data();
     const { phase } = parsePhase(game.phase, game.currentRound || game.round);
@@ -1311,12 +1556,24 @@ exports.continueFromRoster = onCall(async (request) => {
         `Lay off chefs until you have at most ${specialtyChefCap}.`);
     }
 
+    _roster_round = numberOrDefault(game.currentRound || game.round, 1);
+    _roster_role = pSnap.get('role') || null;
+    _roster_displayName = pSnap.get('displayName') || '';
+
     transaction.update(playerRef, {
       pendingRosterAction: false,
       rosterCompleted: true,
       updatedAt: FieldValue.serverTimestamp(),
     });
   });
+
+  // BE-22: mirror roster-complete submission for professor dashboard
+  if (_roster_round !== null) {
+    await recordSubmission(
+      gameRef, `round_${_roster_round}_roster`, uid,
+      _roster_displayName, _roster_role
+    );
+  }
 
   return { gameId, playerId: uid, rosterCompleted: true };
 });

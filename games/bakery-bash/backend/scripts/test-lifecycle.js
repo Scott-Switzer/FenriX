@@ -258,14 +258,14 @@ async function main() {
       staffCount: Math.min(10 + round, 20), // Grows each round
       adSpend: round <= 3 ? 100 : 0,
       adType: round <= 3 ? "TV" : null,
-      menu: { croissant: true, cookie: true, bagel: true, sandwich: true, latte: true, matchaLatte: round >= 3 },
+      menu: { croissant: true, cookie: true, bagel: true, sandwich: true, coffee: true, matcha: round >= 3 },
       productPrices: {
         croissant: 5, cookie: 4, bagel: 3, sandwich: 6,
-        latte: 7, matchaLatte: round >= 3 ? 8 : 0,
+        coffee: 7, matcha: round >= 3 ? 8 : 0,
       },
       quantities: {
         croissant: 30, cookie: 30, bagel: 30, sandwich: 30,
-        latte: 30, matchaLatte: round >= 3 ? 30 : 0,
+        coffee: 30, matcha: round >= 3 ? 30 : 0,
       },
       chefBid: { skillLevel: 50, amount: round * 20 },
     };
@@ -275,14 +275,14 @@ async function main() {
       staffCount: 2,
       adSpend: 0,
       adType: null,
-      menu: { croissant: true, cookie: false, bagel: true, sandwich: false, latte: true, matchaLatte: false },
+      menu: { croissant: true, cookie: false, bagel: true, sandwich: false, coffee: true, matcha: false },
       productPrices: {
         croissant: 3, cookie: 0, bagel: 3, sandwich: 0,
-        latte: 4, matchaLatte: 0,
+        coffee: 4, matcha: 0,
       },
       quantities: {
         croissant: 20, cookie: 0, bagel: 20, sandwich: 0,
-        latte: 20, matchaLatte: 0,
+        coffee: 20, matcha: 0,
       },
       chefBid: { skillLevel: 0, amount: 0 },
     };
@@ -292,14 +292,14 @@ async function main() {
       staffCount: 5,
       adSpend: round % 2 === 0 ? 75 : 0,
       adType: round % 2 === 0 ? "Billboard" : null,
-      menu: { croissant: true, cookie: true, bagel: true, sandwich: false, latte: true, matchaLatte: false },
+      menu: { croissant: true, cookie: true, bagel: true, sandwich: false, coffee: true, matcha: false },
       productPrices: {
         croissant: 4, cookie: 4, bagel: 4, sandwich: 0,
-        latte: 5, matchaLatte: 0,
+        coffee: 5, matcha: 0,
       },
       quantities: {
         croissant: 40, cookie: 40, bagel: 40, sandwich: 0,
-        latte: 40, matchaLatte: 0,
+        coffee: 40, matcha: 0,
       },
       chefBid: { skillLevel: 30, amount: round * 10 },
     };
@@ -551,9 +551,9 @@ async function main() {
         gameId,
         staffCount: 3,
         adSpend: 0,
-        menu: { croissant: true, cookie: true, bagel: true, latte: true },
-        productPrices: { croissant: 5, cookie: 4, bagel: 3, latte: 6 },
-        quantities: { croissant: 10, cookie: 10, bagel: 10, latte: 10 },
+        menu: { croissant: true, cookie: true, bagel: true, coffee: true },
+        productPrices: { croissant: 5, cookie: 4, bagel: 3, coffee: 6 },
+        quantities: { croissant: 10, cookie: 10, bagel: 10, coffee: 10 },
         chefBid: { skillLevel: 0, amount: 0 },
       });
       throw new Error("Should have thrown");

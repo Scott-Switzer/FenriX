@@ -10,6 +10,14 @@ service cloud.firestore {
     }
 
     // ─────────────────────────────────────────────────────────
+    // isProfessor — BE-22: checks the custom claim set by
+    // the set-professor-claim admin script (BE-18).
+    // ─────────────────────────────────────────────────────────
+    function isProfessor() {
+      return signedIn() && request.auth.token.professor == true;
+    }
+
+    // ─────────────────────────────────────────────────────────
     // /games/{gameId}
     // Players can read game state to track phase, round, timers.
     // Only Cloud Functions can write (phase transitions, score updates).
@@ -128,6 +136,19 @@ service cloud.firestore {
       // ─────────────────────────────────────────────────────
       match /teams/{teamId} {
         allow read: if signedIn();
+        allow write: if false;
+      }
+
+      // ─────────────────────────────────────────────────────
+      // /games/{gameId}/submissions/{doc}
+      // BE-22: Professor submission-state mirror. Written
+      // exclusively by Cloud Functions (submitDecision,
+      // submitBids, continueFromRoster). Readable only by
+      // the professor (custom claim: professor == true).
+      // Doc IDs follow the pattern "round_{N}_{phase}".
+      // ─────────────────────────────────────────────────────
+      match /submissions/{doc} {
+        allow read: if isProfessor();
         allow write: if false;
       }
     }

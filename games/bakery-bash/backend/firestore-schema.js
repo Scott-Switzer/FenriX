@@ -172,6 +172,17 @@ const PlayerDocument = {
     sousChefAssignments: {},      // { [product]: number } — sums to sousChefCount
   },
 
+  // BE-20: Team membership. teamId is derived deterministically from bakeryName.
+  // All players sharing the same bakeryName in a game form the same team.
+  teamId: 'rolling-scone-bakery',  // string — deterministic slug from bakeryName
+  role: 'finance',                 // string — 'finance' | 'advertising' | 'operations' | 'solo'
+
+  // BE-19: Disconnection tracking. consecutiveMissedRounds counts how many
+  // back-to-back rounds the player submitted no decision. Reset to 0 on submit.
+  // disconnected is set to true when consecutiveMissedRounds >= 2.
+  consecutiveMissedRounds: 0,     // number — resets to 0 on any decision submit
+  disconnected: false,            // boolean — true when consecutiveMissedRounds >= 2
+
   // Specialty chef roster (max 3; written server-side after auction)
   specialtyChefs: [],             // ChefObject[] — max 3; specialty field hidden from client
 
@@ -273,8 +284,46 @@ const RoundResultDocument = {
 // roundId = "round_1" … "round_5"
 // Used by professor dashboard for class-wide analytics.
 // ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// /games/{gameId}/submissions/{doc}
+// BE-22: Professor submission-state mirror. Written by Cloud Functions
+// after submitDecision / submitBids / continueFromRoster. Doc id follows
+// the pattern "round_{N}_{phase}" (e.g. "round_1_decide").
+// ─────────────────────────────────────────────────────────────
+const SubmissionDocument = {
+  // Keyed by uid; one entry per submitting player.
+  '<uid>': {
+    status: 'submitted',          // string — always 'submitted'
+    submittedAt: null,            // Timestamp — Timestamp.now() at submission time
+    displayName: 'The Rolling Scone', // string — denormalised for dashboard display
+    role: 'operations',           // string | null — player's role at submit time
+  },
+};
+
 const AggregateRoundDocument = {
   round: 1,                       // number
+
+  // BE-07: Market insight email mirrored from marketInsights collection
+  // so the FE can subscribe to a single rounds/{N} listener.
+  marketEmail: {
+    subject: 'Round 1 market insight', // string
+    body: 'Customers this round prefer…', // string
+    from: 'The Plaza Times',            // string
+  },
+  marketEmailAt: null,            // Timestamp | null — set when email is written
+
+  // BE-25: Per-bid-type top bid values. Reveals the current highest bid amount
+  // for each slot without disclosing the high bidder's identity.
+  // Updated in real-time as bids come in via the updateTopBids helper.
+  topBids: {
+    ad: {
+      TV: 0,                      // number ($) — highest TV bid seen so far
+      Billboard: 0,
+      Radio: 0,
+      Newspaper: 0,
+    },
+    chef: {},                     // { [chefId]: number } — highest bid per chef
+  },
 
   // Auction winners (sealed-bid, first-price: highest bid wins, pays their bid)
   auctionResults: {
@@ -495,6 +544,7 @@ module.exports = {
   DecisionDocument,
   RoundResultDocument,
   AggregateRoundDocument,
+  SubmissionDocument,
   LeaderboardDocument,
   CsvRowsDocument,
   PlayerEmailDocument,
