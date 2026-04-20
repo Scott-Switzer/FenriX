@@ -995,7 +995,10 @@ async function runSimulationAndPersist(gameRef, round, config) {
   const players = playerDocs.map((pd, i) => {
     const p = pd.data() || {};
     const dSnap = decisionSnaps[i];
-    const decision = dSnap.exists ? dSnap.data() : (p.pendingDecision || {});
+    // BE-19 / regression fix (c7c859f): missed players contribute zero
+    // quantities/menu to the sim — never replay stale pendingDecision.
+    const missed = !dSnap.exists;
+    const decision = missed ? {} : dSnap.data();
     const ar = auctionByPlayer.get(pd.id) || {
       adWon: null, adBidPaid: 0, chefsWon: [], chefBidPaid: 0,
     };
@@ -1315,6 +1318,11 @@ exports.submitDecision = onCall(async (request) => {
         sousChefCount: validated.sousChefCount || 0,
         sousChefAssignments: validated.sousChefAssignments || {},
       },
+      // BE-19: un-flag a reconnected player immediately on successful submit.
+      // Without this, a previously-disconnected player stays flagged on the
+      // professor dashboard until the next simulation batch runs.
+      consecutiveMissedRounds: 0,
+      disconnected: false,
       updatedAt: FieldValue.serverTimestamp(),
     });
 
