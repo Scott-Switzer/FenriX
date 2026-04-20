@@ -1009,7 +1009,7 @@ async function runSimulationAndPersist(gameRef, round, config) {
       decision: {
         menu: (decision && decision.menu) || {},
         quantities: (decision && decision.quantities) || {},
-        sousChefCount: numberOrDefault(decision && decision.sousChefCount, p.sousChefCount || 0),
+        sousChefCount: missed ? 0 : numberOrDefault(decision && decision.sousChefCount, p.sousChefCount || 0),
         sousChefAssignments: (decision && decision.sousChefAssignments) || {},
       },
       specialtyChefs: Array.isArray(p.specialtyChefs) ? p.specialtyChefs : [],
