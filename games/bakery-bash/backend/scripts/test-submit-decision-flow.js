@@ -79,8 +79,8 @@ async function seedGame(db, playerId) {
         cookie: true,
         bagel: true,
         sandwich: false,
-        latte: false,
-        matchaLatte: false,
+        coffee: false,
+        matcha: false,
       },
       productPrices: {},
       quantities: {},
@@ -133,7 +133,7 @@ async function main() {
       menu: {
         croissant: true,
         bagel: true,
-        latte: false,
+        coffee: false,
       },
       productPrices: {
         croissant: 5,
@@ -162,17 +162,17 @@ async function main() {
       menu: {
         croissant: true,
         bagel: true,
-        latte: true,
+        coffee: true,
       },
       productPrices: {
         croissant: 5,
         bagel: 6,
-        latte: 4,
+        coffee: 4,
       },
       quantities: {
         croissant: 10,
         bagel: 10,
-        latte: 10,
+        coffee: 10,
       },
       staffCount: 20,
       adSpend: 1200,
@@ -198,17 +198,17 @@ async function main() {
     menu: {
       croissant: true,
       bagel: true,
-      latte: true,
+      coffee: true,
     },
     productPrices: {
       croissant: 5,
       bagel: 6,
-      latte: 4,
+      coffee: 4,
     },
     quantities: {
       croissant: 10,
       bagel: 10,
-      latte: 10,
+      coffee: 10,
     },
     staffCount: 3,
     adSpend: 25,
@@ -234,7 +234,7 @@ async function main() {
   assertEqual(decisionSnap.get("staffCount"), 3, "Decision staff count mismatch.");
   assertEqual(decisionSnap.get("adSpend"), 25, "Decision ad spend mismatch.");
   assertEqual(decisionSnap.get("adBid.adType"), "TV", "Decision ad type mismatch.");
-  assertEqual(decisionSnap.get("menu.matchaLatte"), false, "Matcha default mismatch.");
+  assertEqual(decisionSnap.get("menu.matcha"), false, "Matcha default mismatch.");
   assertEqual(decisionSnap.get("numProducts"), 3, "Decision product count mismatch.");
   assertEqual(playerSnap.get("pendingDecision.submitted"), true, "Pending state mismatch.");
 

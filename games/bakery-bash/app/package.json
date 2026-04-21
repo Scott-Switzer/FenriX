@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "audit:ui": "bash scripts/audit-ui-rules.sh",
     "preview": "vite preview"
   },
   "dependencies": {

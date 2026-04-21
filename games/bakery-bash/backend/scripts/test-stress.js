@@ -132,15 +132,15 @@ async function addPlayerDirectly(gameRef, uid, displayName, budget) {
     cumulativeRevenue: 0,
     pendingDecision: {
       submitted: false, submittedAt: null, staffCount: 3, adSpend: 0,
-      menu: { croissant: true, cookie: true, bagel: true, sandwich: false, latte: false, matchaLatte: false },
-      productPrices: { croissant: 0, cookie: 0, bagel: 0, sandwich: 0, latte: 0, matchaLatte: 0 },
-      quantities: { croissant: 0, cookie: 0, bagel: 0, sandwich: 0, latte: 0, matchaLatte: 0 },
+      menu: { croissant: true, cookie: true, bagel: true, sandwich: false, coffee: false, matcha: false },
+      productPrices: { croissant: 0, cookie: 0, bagel: 0, sandwich: 0, coffee: 0, matcha: 0 },
+      quantities: { croissant: 0, cookie: 0, bagel: 0, sandwich: 0, coffee: 0, matcha: 0 },
     },
     pendingBids: { adBid: { adType: null, amount: 0 }, chefBid: { skillLevel: 0, amount: 0 } },
     lastRoundResult: {
       round: 0, revenue: 0, customerCount: 0, customerSatisfaction: 0,
       headchefSkill: 0, adTypeWon: null,
-      productsSold: { croissant: 0, cookie: 0, bagel: 0, sandwich: 0, latte: 0, matchaLatte: 0 },
+      productsSold: { croissant: 0, cookie: 0, bagel: 0, sandwich: 0, coffee: 0, matcha: 0 },
     },
   });
   await gameRef.update({ totalPlayers: FieldValue.increment(1) });
@@ -152,9 +152,9 @@ function validDecision(gameId, overrides = {}) {
     staffCount: 3,
     adSpend: 0,
     adType: null,
-    menu: { croissant: true, cookie: true, bagel: true, sandwich: false, latte: true, matchaLatte: false },
-    productPrices: { croissant: 5, cookie: 4, bagel: 3, sandwich: 0, latte: 6, matchaLatte: 0 },
-    quantities: { croissant: 50, cookie: 50, bagel: 50, sandwich: 0, latte: 50, matchaLatte: 0 },
+    menu: { croissant: true, cookie: true, bagel: true, sandwich: false, coffee: true, matcha: false },
+    productPrices: { croissant: 5, cookie: 4, bagel: 3, sandwich: 0, coffee: 6, matcha: 0 },
+    quantities: { croissant: 50, cookie: 50, bagel: 50, sandwich: 0, coffee: 50, matcha: 0 },
     chefBid: { skillLevel: 0, amount: 0 },
     ...overrides,
   };
@@ -293,8 +293,8 @@ async function suiteSubmitDecision() {
     const playerAuth = await signInAnonymously(auth);
     await addPlayerDirectly(gameRef, playerAuth.user.uid, "No Sweet", 2000);
     await expectError(submitDecision, validDecision(gameId, {
-      menu: { croissant: false, cookie: false, bagel: true, sandwich: true, latte: true, matchaLatte: false },
-      productPrices: { croissant: 0, cookie: 0, bagel: 5, sandwich: 5, latte: 5, matchaLatte: 0 },
+      menu: { croissant: false, cookie: false, bagel: true, sandwich: true, coffee: true, matcha: false },
+      productPrices: { croissant: 0, cookie: 0, bagel: 5, sandwich: 5, coffee: 5, matcha: 0 },
     }), "invalid-argument");
   });
 
@@ -303,8 +303,8 @@ async function suiteSubmitDecision() {
     const playerAuth = await signInAnonymously(auth);
     await addPlayerDirectly(gameRef, playerAuth.user.uid, "No Savory", 2000);
     await expectError(submitDecision, validDecision(gameId, {
-      menu: { croissant: true, cookie: true, bagel: false, sandwich: false, latte: true, matchaLatte: false },
-      productPrices: { croissant: 5, cookie: 5, bagel: 0, sandwich: 0, latte: 5, matchaLatte: 0 },
+      menu: { croissant: true, cookie: true, bagel: false, sandwich: false, coffee: true, matcha: false },
+      productPrices: { croissant: 5, cookie: 5, bagel: 0, sandwich: 0, coffee: 5, matcha: 0 },
     }), "invalid-argument");
   });
 
@@ -313,8 +313,8 @@ async function suiteSubmitDecision() {
     const playerAuth = await signInAnonymously(auth);
     await addPlayerDirectly(gameRef, playerAuth.user.uid, "No Drink", 2000);
     await expectError(submitDecision, validDecision(gameId, {
-      menu: { croissant: true, cookie: true, bagel: true, sandwich: false, latte: false, matchaLatte: false },
-      productPrices: { croissant: 5, cookie: 5, bagel: 5, sandwich: 0, latte: 0, matchaLatte: 0 },
+      menu: { croissant: true, cookie: true, bagel: true, sandwich: false, coffee: false, matcha: false },
+      productPrices: { croissant: 5, cookie: 5, bagel: 5, sandwich: 0, coffee: 0, matcha: 0 },
     }), "invalid-argument");
   });
 
@@ -323,7 +323,7 @@ async function suiteSubmitDecision() {
     const playerAuth = await signInAnonymously(auth);
     await addPlayerDirectly(gameRef, playerAuth.user.uid, "Zero Price", 2000);
     await expectError(submitDecision, validDecision(gameId, {
-      productPrices: { croissant: 0, cookie: 4, bagel: 3, sandwich: 0, latte: 6, matchaLatte: 0 },
+      productPrices: { croissant: 0, cookie: 4, bagel: 3, sandwich: 0, coffee: 6, matcha: 0 },
     }), "invalid-argument");
   });
 
@@ -392,7 +392,7 @@ async function suiteSubmitDecision() {
     const playerAuth = await signInAnonymously(auth);
     await addPlayerDirectly(gameRef, playerAuth.user.uid, "NegPrice", 2000);
     await expectError(submitDecision, validDecision(gameId, {
-      productPrices: { croissant: -5, cookie: 4, bagel: 3, sandwich: 0, latte: 6, matchaLatte: 0 },
+      productPrices: { croissant: -5, cookie: 4, bagel: 3, sandwich: 0, coffee: 6, matcha: 0 },
     }), "invalid-argument");
   });
 
@@ -401,7 +401,7 @@ async function suiteSubmitDecision() {
     const playerAuth = await signInAnonymously(auth);
     await addPlayerDirectly(gameRef, playerAuth.user.uid, "NegQty", 2000);
     await expectError(submitDecision, validDecision(gameId, {
-      quantities: { croissant: -10, cookie: 50, bagel: 50, sandwich: 0, latte: 50, matchaLatte: 0 },
+      quantities: { croissant: -10, cookie: 50, bagel: 50, sandwich: 0, coffee: 50, matcha: 0 },
     }), "invalid-argument");
   });
 
@@ -410,7 +410,7 @@ async function suiteSubmitDecision() {
     const playerAuth = await signInAnonymously(auth);
     await addPlayerDirectly(gameRef, playerAuth.user.uid, "HugeQty", 2000);
     await expectError(submitDecision, validDecision(gameId, {
-      quantities: { croissant: 10001, cookie: 50, bagel: 50, sandwich: 0, latte: 50, matchaLatte: 0 },
+      quantities: { croissant: 10001, cookie: 50, bagel: 50, sandwich: 0, coffee: 50, matcha: 0 },
     }), "invalid-argument");
   });
 
@@ -419,7 +419,7 @@ async function suiteSubmitDecision() {
     const playerAuth = await signInAnonymously(auth);
     await addPlayerDirectly(gameRef, playerAuth.user.uid, "ZeroQty", 2000);
     const result = await submitDecision(validDecision(gameId, {
-      quantities: { croissant: 0, cookie: 0, bagel: 0, sandwich: 0, latte: 0, matchaLatte: 0 },
+      quantities: { croissant: 0, cookie: 0, bagel: 0, sandwich: 0, coffee: 0, matcha: 0 },
     }));
     assert(result.data.submitted === true, "Zero quantities accepted");
   });
@@ -510,7 +510,7 @@ async function suiteSubmitDecision() {
       staffCount: 3,
       adSpend: 0,
       chefBid: { skillLevel: 0, amount: 0 },
-      quantities: { croissant: 50, cookie: 50, bagel: 50, sandwich: 0, latte: 50, matchaLatte: 0 },
+      quantities: { croissant: 50, cookie: 50, bagel: 50, sandwich: 0, coffee: 50, matcha: 0 },
     }));
     assert(result.data.submitted === true, "Exact budget decision accepted");
   });
@@ -524,7 +524,7 @@ async function suiteSubmitDecision() {
       staffCount: 3,
       adSpend: 0,
       chefBid: { skillLevel: 0, amount: 0 },
-      quantities: { croissant: 50, cookie: 50, bagel: 50, sandwich: 0, latte: 50, matchaLatte: 0 },
+      quantities: { croissant: 50, cookie: 50, bagel: 50, sandwich: 0, coffee: 50, matcha: 0 },
     }), "failed-precondition");
   });
 
@@ -601,9 +601,9 @@ async function suiteSubmitDecision() {
       gameId,
       staffCount: 3,
       adSpend: 0,
-      menu: { croissant: true, cookie: true, bagel: true, cupcake: true, latte: true, matchaLatte: false },
-      productPrices: { croissant: 5, cookie: 4, bagel: 3, cupcake: 5, latte: 6, matchaLatte: 0 },
-      quantities: { croissant: 50, cookie: 50, bagel: 50, cupcake: 50, latte: 50, matchaLatte: 0 },
+      menu: { croissant: true, cookie: true, bagel: true, cupcake: true, coffee: true, matcha: false },
+      productPrices: { croissant: 5, cookie: 4, bagel: 3, cupcake: 5, coffee: 6, matcha: 0 },
+      quantities: { croissant: 50, cookie: 50, bagel: 50, cupcake: 50, coffee: 50, matcha: 0 },
       chefBid: { skillLevel: 0, amount: 0 },
     }, "invalid-argument");
   });
@@ -617,16 +617,16 @@ async function suiteSubmitDecision() {
       gameId,
       staffCount: 3,
       adSpend: 0,
-      menu: ["croissant", "cookie", "bagel", "latte"],
-      productPrices: { croissant: 5, cookie: 4, bagel: 3, latte: 6 },
-      quantities: { croissant: 50, cookie: 50, bagel: 50, latte: 50 },
+      menu: ["croissant", "cookie", "bagel", "coffee"],
+      productPrices: { croissant: 5, cookie: 4, bagel: 3, coffee: 6 },
+      quantities: { croissant: 50, cookie: 50, bagel: 50, coffee: 50 },
       chefBid: { skillLevel: 0, amount: 0 },
     });
     assert(result.data.submitted === true, "Array menu accepted");
   });
 
   // --- Product alias handling ---
-  await test("Accept matcha-latte alias for matchaLatte", async () => {
+  await test("Accept matcha as canonical product keyLatte", async () => {
     const { gameId, gameRef } = await createTestGame({ phase: "closing_hours" });
     const playerAuth = await signInAnonymously(auth);
     await addPlayerDirectly(gameRef, playerAuth.user.uid, "Alias Test", 2000);
@@ -634,12 +634,12 @@ async function suiteSubmitDecision() {
       gameId,
       staffCount: 3,
       adSpend: 0,
-      menu: { croissant: true, cookie: true, bagel: true, "matcha-latte": true, latte: false, matchaLatte: false },
-      productPrices: { croissant: 5, cookie: 4, bagel: 3, "matcha-latte": 6 },
-      quantities: { croissant: 50, cookie: 50, bagel: 50, "matcha-latte": 50 },
+      menu: { croissant: true, cookie: true, bagel: true, "matcha": true, coffee: false, matcha: false },
+      productPrices: { croissant: 5, cookie: 4, bagel: 3, "matcha": 6 },
+      quantities: { croissant: 50, cookie: 50, bagel: 50, "matcha": 50 },
       chefBid: { skillLevel: 0, amount: 0 },
     });
-    assert(result.data.submitted === true, "matcha-latte alias accepted");
+    assert(result.data.submitted === true, "matcha alias accepted");
   });
 
   // --- Ad type normalization ---
@@ -749,9 +749,9 @@ async function suiteDataIntegrity() {
       staffCount: 20,
       adSpend: 500,
       adType: "TV",
-      menu: { croissant: true, cookie: true, bagel: true, sandwich: true, latte: true, matchaLatte: true },
-      productPrices: { croissant: 10, cookie: 10, bagel: 10, sandwich: 10, latte: 10, matchaLatte: 10 },
-      quantities: { croissant: 10000, cookie: 10000, bagel: 10000, sandwich: 10000, latte: 10000, matchaLatte: 10000 },
+      menu: { croissant: true, cookie: true, bagel: true, sandwich: true, coffee: true, matcha: true },
+      productPrices: { croissant: 10, cookie: 10, bagel: 10, sandwich: 10, coffee: 10, matcha: 10 },
+      quantities: { croissant: 10000, cookie: 10000, bagel: 10000, sandwich: 10000, coffee: 10000, matcha: 10000 },
       chefBid: { skillLevel: 100, amount: 500 },
     });
     assert(result.data.submitted === true, "Max everything decision accepted");
@@ -765,9 +765,9 @@ async function suiteDataIntegrity() {
       gameId,
       staffCount: 1,
       adSpend: 0,
-      menu: { croissant: true, cookie: true, bagel: true, sandwich: true, latte: true, matchaLatte: true },
-      productPrices: { croissant: 0.01, cookie: 0.01, bagel: 0.01, sandwich: 0.01, latte: 0.01, matchaLatte: 0.01 },
-      quantities: { croissant: 1, cookie: 1, bagel: 1, sandwich: 1, latte: 1, matchaLatte: 1 },
+      menu: { croissant: true, cookie: true, bagel: true, sandwich: true, coffee: true, matcha: true },
+      productPrices: { croissant: 0.01, cookie: 0.01, bagel: 0.01, sandwich: 0.01, coffee: 0.01, matcha: 0.01 },
+      quantities: { croissant: 1, cookie: 1, bagel: 1, sandwich: 1, coffee: 1, matcha: 1 },
       chefBid: { skillLevel: 0, amount: 0 },
     });
     assert(result.data.submitted === true, "Tiny prices accepted");
@@ -789,7 +789,7 @@ async function suiteBudgetCostCalculation() {
       staffCount: 3,
       adSpend: 200,
       adType: "TV",
-      quantities: { croissant: 50, cookie: 50, bagel: 50, sandwich: 0, latte: 50, matchaLatte: 0 },
+      quantities: { croissant: 50, cookie: 50, bagel: 50, sandwich: 0, coffee: 50, matcha: 0 },
       chefBid: { skillLevel: 0, amount: 0 },
     }));
     assert(result.data.submitted === true, "Ad spend not double-charged");
@@ -804,7 +804,7 @@ async function suiteBudgetCostCalculation() {
       staffCount: 5,
       adSpend: 100,
       adType: "Billboard",
-      quantities: { croissant: 75, cookie: 75, bagel: 75, sandwich: 0, latte: 75, matchaLatte: 0 },
+      quantities: { croissant: 75, cookie: 75, bagel: 75, sandwich: 0, coffee: 75, matcha: 0 },
       chefBid: { skillLevel: 50, amount: 50 },
     }));
     assert(result.data.submitted === true, "Full cost calculation correct");
@@ -818,7 +818,7 @@ async function suiteBudgetCostCalculation() {
       staffCount: 5,
       adSpend: 100,
       adType: "Billboard",
-      quantities: { croissant: 75, cookie: 75, bagel: 75, sandwich: 0, latte: 75, matchaLatte: 0 },
+      quantities: { croissant: 75, cookie: 75, bagel: 75, sandwich: 0, coffee: 75, matcha: 0 },
       chefBid: { skillLevel: 50, amount: 50 },
     }), "failed-precondition");
   });
@@ -832,7 +832,7 @@ async function suiteBudgetCostCalculation() {
       staffCount: 1,
       adSpend: 0,
       adType: null,
-      quantities: { croissant: 0, cookie: 0, bagel: 0, sandwich: 0, latte: 0, matchaLatte: 0 },
+      quantities: { croissant: 0, cookie: 0, bagel: 0, sandwich: 0, coffee: 0, matcha: 0 },
       chefBid: { skillLevel: 0, amount: 0 },
     }));
     assert(result.data.submitted === true, "Minimum cost decision on tight budget");

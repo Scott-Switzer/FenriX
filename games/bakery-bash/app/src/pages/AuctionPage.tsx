@@ -1,12 +1,18 @@
 import { useState, useEffect, useCallback } from "react";
-import { httpsCallable, type FunctionsError } from "firebase/functions";
+import { doc, onSnapshot, type DocumentData } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 import { PageShell } from "../components/ui/PageShell";
 import { RoundHeader } from "../components/game/RoundHeader";
 import { useGame, useGameDispatch } from "../contexts/GameContext";
-import { functions } from "../lib/firebase";
+import { db, functions } from "../lib/firebase";
+import { humanizeFunctionError } from "../lib/errors";
 import {
   AD_TYPES,
+  ownerOfAdBids,
+  ownerOfChefBids,
   parseGamePhase,
+  roleOwnsAdBids,
+  roleOwnsChefBids,
   type AdType,
   type AuctionTab,
   type ChefGender,
@@ -65,18 +71,43 @@ const AD_CARDS: readonly AdCard[] = [
 const TAB_DURATION_SECONDS = 60;
 const POOL_SIZE = 6;
 
-// NOTE: This local pool is a cosmetic placeholder. The backend generates the
-// authoritative chef pool per round at `games/{gameId}/rounds/{round}/chefs`.
-// A follow-up (P1) is required to render that real pool so chef bids can be
-// submitted to `submitBids({ bidType: "chef" })` with matching chefIds.
+// Skill-tier roll probabilities for the cosmetic placeholder pool. The roll
+// is a `Math.random()` value in [0, 1); cutoffs determine which tier the
+// chef lands in. Thresholds scale with round so later rounds surface more
+// advanced chefs. The real pool is generated server-side (see
+// `generateChefPool` in backend/functions/modules/chef-system.js) using
+// different parameters; these constants only govern the local placeholder.
+const EARLY_ROUND_CUTOFF = 2;
+const MID_ROUND_CUTOFF = 4;
+const EARLY_LOW_MAX = 0.9;     // rounds 1–2: 90% low, 10% medium
+const MID_LOW_MAX = 0.5;       // rounds 3–4: 50% low,
+const MID_MEDIUM_MAX = 0.85;   //              35% medium, 15% high
+const LATE_LOW_MAX = 0.2;      // rounds 5+:  20% low,
+const LATE_MEDIUM_MAX = 0.6;   //              40% medium, 40% high
+
+// NOTE: This local pool is a cosmetic placeholder. The backend writes the
+// authoritative pool to `games/{gameId}/rounds/{round}.chefPool` (a field
+// on the round doc, not a subcollection). The AuctionPage effect below
+// subscribes to that doc and prefers the real pool when present; this
+// local generator is the fallback for when the doc hasn't materialized.
+// Schema difference: backend tiers are `novel`/`intermediate`/`advanced`
+// (mapped to `low`/`medium`/`high` client-side via `mapBackendSkill`).
 function rollSkill(round: number): SkillLevel {
   const roll = Math.random();
-  if (round <= 2) {
-    return roll < 0.9 ? "low" : "medium";
-  } else if (round <= 4) {
-    return roll < 0.5 ? "low" : roll < 0.85 ? "medium" : "high";
+  if (round <= EARLY_ROUND_CUTOFF) {
+    return roll < EARLY_LOW_MAX ? "low" : "medium";
+  } else if (round <= MID_ROUND_CUTOFF) {
+    return roll < MID_LOW_MAX
+      ? "low"
+      : roll < MID_MEDIUM_MAX
+      ? "medium"
+      : "high";
   }
-  return roll < 0.2 ? "low" : roll < 0.6 ? "medium" : "high";
+  return roll < LATE_LOW_MAX
+    ? "low"
+    : roll < LATE_MEDIUM_MAX
+    ? "medium"
+    : "high";
 }
 
 function generateChefPool(round: number): ChefListing[] {
@@ -119,12 +150,54 @@ function generateChefPool(round: number): ChefListing[] {
   return pool;
 }
 
-function humanizeFunctionError(err: unknown, fallback: string): string {
-  if (err && typeof err === "object" && "code" in err) {
-    const fnErr = err as FunctionsError;
-    if (fnErr.message) return fnErr.message;
-  }
-  return fallback;
+/**
+ * Shape of a chef as written to `games/{gameId}/rounds/{round}.chefPool`
+ * by the backend. Only the fields the UI renders or submits are declared
+ * here; the backend also attaches `specialties`, `minBidFloor`, etc.
+ * `gender` is written as the full string `"male"` / `"female"` server-side
+ * (see `backend/functions/modules/chef-system.js`) and mapped to the UI's
+ * `"m"` / `"f"` in `mapBackendChef`.
+ */
+interface BackendChef {
+  id: string;
+  nationality: unknown;
+  gender: unknown;
+  name?: string;
+  skillTier?: string;
+}
+
+const BACKEND_SKILL_MAP: Record<string, SkillLevel> = {
+  novel: "low",
+  intermediate: "medium",
+  advanced: "high",
+  base: "low",
+};
+
+function mapBackendSkill(tier: string | undefined): SkillLevel {
+  return (tier && BACKEND_SKILL_MAP[tier]) || "low";
+}
+
+function mapBackendGender(gen: unknown): ChefGender | null {
+  if (gen === "male" || gen === "m") return "m";
+  if (gen === "female" || gen === "f") return "f";
+  return null;
+}
+
+function mapBackendChef(chef: BackendChef): ChefListing | null {
+  const nat = chef.nationality;
+  const isValidNat =
+    nat === "american" || nat === "french" || nat === "italian" || nat === "japanese";
+  const gender = mapBackendGender(chef.gender);
+  if (!chef.id || !isValidNat || !gender) return null;
+  const skill = mapBackendSkill(chef.skillTier);
+  return {
+    id: chef.id,
+    nationality: nat,
+    gender,
+    name: chef.name || `${NATIONALITY_LABELS[nat]} Chef`,
+    skill,
+    multiplier: SKILL_CONFIG[skill].multiplier,
+  };
 }
 
 export function AuctionPage() {
@@ -136,13 +209,21 @@ export function AuctionPage() {
     pendingChefBids,
     adBidsSubmitted,
     chefBidsSubmitted,
+    role,
   } = useGame();
   const dispatch = useGameDispatch();
 
   const [activeTab, setActiveTabLocal] = useState<AuctionTab>("ads");
-  const [chefPool] = useState<ChefListing[]>(() =>
+  const [placeholderPool] = useState<ChefListing[]>(() =>
     generateChefPool(currentRound)
   );
+  // Backend pool (when present) takes priority over the cosmetic placeholder.
+  // `null` means "not yet loaded"; `[]` means "loaded, but empty."
+  const [backendPool, setBackendPool] = useState<ChefListing[] | null>(null);
+  // FE-20 follow-up — live top bids from `rounds/{round}.topBids` (BE-25).
+  // Shape: `{ad: {TV,Billboard,Radio,Newspaper: number}, chef: {[chefId]: number}}`.
+  const [topBidsAd, setTopBidsAd] = useState<Partial<Record<AdType, number>>>({});
+  const [topBidsChef, setTopBidsChef] = useState<Record<string, number>>({});
   const [remaining, setRemaining] = useState<number>(TAB_DURATION_SECONDS);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -165,6 +246,74 @@ export function AuctionPage() {
     if (isAdPhase) setActiveTab("ads");
     else if (isChefPhase) setActiveTab("chefs");
   }, [isAdPhase, isChefPhase, setActiveTab]);
+
+  // Subscribe to the authoritative chef pool for the current round. The
+  // backend writes `chefPool` as a field on `games/{gameId}/rounds/{round}`
+  // when it enters an auction phase. Until that doc materializes we render
+  // the local placeholder; once it does, we render real chef IDs so the
+  // `submitBids` callable accepts the bids.
+  useEffect(() => {
+    if (!gameId || !currentRound) {
+      setBackendPool(null);
+      return;
+    }
+    const roundRef = doc(db, "games", gameId, "rounds", `round_${currentRound}`);
+    const unsubscribe = onSnapshot(
+      roundRef,
+      (snap) => {
+        if (!snap.exists()) {
+          setBackendPool(null);
+          return;
+        }
+        const data = snap.data() as DocumentData;
+
+        // Top bids (BE-25). Defensively parse — backend writes ints but
+        // we tolerate missing keys during rollout.
+        const tb = (data.topBids ?? null) as DocumentData | null;
+        const tbAd = (tb?.ad ?? null) as DocumentData | null;
+        const nextAd: Partial<Record<AdType, number>> = {};
+        if (tbAd) {
+          (["TV", "Billboard", "Radio", "Newspaper"] as AdType[]).forEach(
+            (k) => {
+              const v = tbAd[k];
+              if (typeof v === "number" && v > 0) nextAd[k] = v;
+            },
+          );
+        }
+        setTopBidsAd(nextAd);
+        const tbChef = (tb?.chef ?? null) as DocumentData | null;
+        const nextChef: Record<string, number> = {};
+        if (tbChef && typeof tbChef === "object") {
+          for (const [id, v] of Object.entries(tbChef)) {
+            if (typeof v === "number" && v > 0) nextChef[id] = v;
+          }
+        }
+        setTopBidsChef(nextChef);
+
+        const raw = Array.isArray(data.chefPool) ? data.chefPool : null;
+        if (!raw) {
+          setBackendPool(null);
+          return;
+        }
+        const mapped = raw
+          .map((c) => mapBackendChef(c as BackendChef))
+          .filter((c): c is ChefListing => c !== null);
+        setBackendPool(mapped);
+      },
+      (err) => {
+        console.error("games/rounds listener error", {
+          gameId,
+          round: currentRound,
+          err,
+        });
+        setBackendPool(null);
+      },
+    );
+    return unsubscribe;
+  }, [gameId, currentRound]);
+
+  const chefPool = backendPool ?? placeholderPool;
+  const chefPoolIsReal = backendPool !== null;
 
   const setChefBid = useCallback(
     (id: string, value: number) => {
@@ -211,11 +360,20 @@ export function AuctionPage() {
         await submitBids({ gameId, bidType: "ad", adBids });
         dispatch({ type: "SET_AD_BIDS_SUBMITTED", payload: true });
       } else {
-        // P0 gap: client chef IDs are locally generated and do not match the
-        // backend's per-round chef pool. Submitting an empty array registers
-        // "no chef bids" so the submission still advances the lifecycle.
-        // Follow-up P1: wire this page to `games/{gameId}/rounds/{round}/chefs`
-        // and send real `{ chefId, amount }` entries.
+        // If the real chef pool from `rounds/{round}.chefPool` has loaded,
+        // send bids keyed by those real IDs. Until then, chef IDs in
+        // `pendingChefBids` are the cosmetic placeholders from
+        // `generateChefPool` and would fail backend validation, so we
+        // submit an empty array to advance the lifecycle without bidding.
+        const chefBids: Array<{ chefId: string; amount: number }> = [];
+        if (chefPoolIsReal) {
+          const poolIds = new Set(chefPool.map((c) => c.id));
+          for (const [chefId, amount] of Object.entries(pendingChefBids)) {
+            if (!poolIds.has(chefId)) continue;
+            if (typeof amount !== "number" || amount <= 0) continue;
+            chefBids.push({ chefId, amount });
+          }
+        }
         const submitBids = httpsCallable<
           {
             gameId: string;
@@ -224,7 +382,7 @@ export function AuctionPage() {
           },
           { gameId: string; playerId: string; bidType: string; submitted: boolean }
         >(functions, "submitBids");
-        await submitBids({ gameId, bidType: "chef", chefBids: [] });
+        await submitBids({ gameId, bidType: "chef", chefBids });
         dispatch({ type: "SET_CHEF_BIDS_SUBMITTED", payload: true });
       }
     } catch (err) {
@@ -234,7 +392,16 @@ export function AuctionPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [gameId, isAdPhase, isChefPhase, pendingAdBids, dispatch]);
+  }, [
+    gameId,
+    isAdPhase,
+    isChefPhase,
+    pendingAdBids,
+    pendingChefBids,
+    chefPool,
+    chefPoolIsReal,
+    dispatch,
+  ]);
 
   const isDev = !import.meta.env.PROD;
 
@@ -258,6 +425,32 @@ export function AuctionPage() {
 
   const alreadySubmitted =
     (isAdPhase && adBidsSubmitted) || (isChefPhase && chefBidsSubmitted);
+
+  // DEC-21 role gating: Advertising owns ad bids, Finance owns chef bids,
+  // Solo owns both. Other teammates still see + can edit the inputs (so
+  // they can advise the role-owner) but the submit button is disabled with
+  // an explicit owner tooltip.
+  const ownerLabel = isAdPhase
+    ? ownerOfAdBids()
+    : isChefPhase
+    ? ownerOfChefBids()
+    : null;
+  const canSubmitForPhase = isAdPhase
+    ? roleOwnsAdBids(role)
+    : isChefPhase
+    ? roleOwnsChefBids(role)
+    : true;
+  const submitTooltip =
+    !canSubmitForPhase && ownerLabel
+      ? `Your ${ownerLabel} teammate submits this decision.`
+      : undefined;
+  const submitLabel = !canSubmitForPhase && ownerLabel
+    ? `Your ${ownerLabel} teammate submits this decision`
+    : submitting
+    ? "Submitting…"
+    : alreadySubmitted
+    ? "Submitted — waiting for other players…"
+    : "Submit Bids";
 
   return (
     <PageShell className="game-page auction-page">
@@ -312,7 +505,11 @@ export function AuctionPage() {
                   </div>
                   <div className="auction-ad__top-bid">
                     <span className="auction-ad__top-bid-label">Top Bid</span>
-                    <span className="auction-ad__top-bid-value">--</span>
+                    <span className="auction-ad__top-bid-value">
+                      {typeof topBidsAd[ad.id] === "number"
+                        ? `$${topBidsAd[ad.id]!.toLocaleString()}`
+                        : "--"}
+                    </span>
                   </div>
                   <div className="auction-ad__bid">
                     <label className="auction-ad__bid-label">Your Bid</label>
@@ -363,7 +560,11 @@ export function AuctionPage() {
                     </div>
                     <div className="auction-chef__top-bid">
                       <span className="auction-chef__top-bid-label">Top Bid</span>
-                      <span className="auction-chef__top-bid-value">--</span>
+                      <span className="auction-chef__top-bid-value">
+                        {typeof topBidsChef[chef.id] === "number"
+                          ? `$${topBidsChef[chef.id]!.toLocaleString()}`
+                          : "--"}
+                      </span>
                     </div>
                     <div className="auction-chef__bid">
                       <label className="auction-chef__bid-label">
@@ -397,13 +598,15 @@ export function AuctionPage() {
       <button
         className="btn btn--primary auction-page__submit"
         onClick={handleSubmitBids}
-        disabled={submitting || alreadySubmitted || (!isAdPhase && !isChefPhase)}
+        disabled={
+          submitting ||
+          alreadySubmitted ||
+          (!isAdPhase && !isChefPhase) ||
+          !canSubmitForPhase
+        }
+        title={submitTooltip}
       >
-        {submitting
-          ? "Submitting…"
-          : alreadySubmitted
-          ? "Submitted — waiting for other players…"
-          : "Submit Bids"}
+        {submitLabel}
       </button>
     </PageShell>
   );

@@ -83,6 +83,10 @@ export function LandingPage() {
     setJoining(true);
 
     try {
+      // Role + team are assigned by the backend (per BACKEND.md / DEC-21):
+      // we only ship name + join code now. The post-join /team page picks
+      // up the assignment from the player doc and shows the team naming
+      // UI once the professor (or auto-assignment) finalizes membership.
       const joinGame = httpsCallable<
         { joinCode: string; displayName: string },
         JoinGameResponse
@@ -103,13 +107,18 @@ export function LandingPage() {
           player: {
             id: playerId,
             name: trimmedName,
+            // Default bakery label until the player chooses a team name on
+            // the /team page (which writes to the shared team doc).
             bakeryName: `${trimmedName}'s Bakery`,
             budget: 0,
             cumulativeRevenue: 0,
           },
         },
       });
-      navigate("/lobby");
+      // Hand off to the team-assignment + naming step. Game phase listener
+      // (mounted by GamePage) takes over routing once the professor starts
+      // the round.
+      navigate("/team");
     } catch (err) {
       setError(humanizeJoinError(err));
     } finally {
@@ -145,7 +154,7 @@ export function LandingPage() {
             <input
               type="text"
               className="form-field__input"
-              placeholder="e.g. ABC123"
+              placeholder="e.g. ABC234"
               value={gameCode}
               onChange={(e) => setGameCode(e.target.value.toUpperCase())}
               maxLength={6}
@@ -165,6 +174,10 @@ export function LandingPage() {
               ? "Signing you in…"
               : "Join Game"}
           </button>
+
+          <p className="landing-page__footnote">
+            Your role and team are assigned after you join.
+          </p>
         </form>
       </div>
     </PageShell>

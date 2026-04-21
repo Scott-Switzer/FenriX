@@ -3,6 +3,7 @@ import { doc, onSnapshot, type DocumentData } from "firebase/firestore";
 import { useGame } from "../contexts/GameContext";
 import { db } from "../lib/firebase";
 import { formatMoney } from "../lib/cost";
+import { readNumber } from "../lib/utils";
 import { PageShell } from "../components/ui/PageShell";
 
 /**
@@ -15,11 +16,13 @@ import { PageShell } from "../components/ui/PageShell";
  * `/leaderboard/current`; we follow the production code (and the updated
  * schema doc) here.
  *
- * Note on field names: the spec lists `cumulativeRevenue` and `budgetCurrent`
- * per ranking entry. The production simulation actually writes `revenueNet`
- * (per-round) and `budgetAfter` (cumulative). We render `revenueNet` as
- * "Revenue" and `budgetAfter` as "Budget", and gracefully fall back to the
- * spec field names if the backend ever realigns.
+ * Note on field names: the spec lists `cumulativeRevenue`. The production
+ * simulation writes `revenueNet` per round. We render `revenueNet` as
+ * "Revenue" and fall back to `cumulativeRevenue` if the backend realigns.
+ *
+ * Budget is intentionally NOT displayed on this player-facing page per
+ * FRONTEND.md Hard UI Rule #1 ("Budget is hidden during play"). The
+ * professor leaderboard is the only leaderboard allowed to show budget.
  */
 interface LeaderboardRanking {
   rank: number;
@@ -28,21 +31,12 @@ interface LeaderboardRanking {
   bakeryName?: string;
   revenueNet?: number;
   cumulativeRevenue?: number;
-  budgetAfter?: number;
-  budgetCurrent?: number;
 }
 
 interface LeaderboardDocument {
   round: number;
   rankings: LeaderboardRanking[];
   updatedAt: { toDate?: () => Date } | null;
-}
-
-function readNumber(...candidates: unknown[]): number | undefined {
-  for (const c of candidates) {
-    if (typeof c === "number" && Number.isFinite(c)) return c;
-  }
-  return undefined;
 }
 
 export function LeaderboardPage() {
@@ -79,7 +73,7 @@ export function LeaderboardPage() {
         setBoardError(null);
       },
       (err) => {
-        console.error("leaderboard/latest listener error:", err);
+        console.error("leaderboard/latest listener error", { gameId, err });
         setBoardError("Could not load the leaderboard.");
         setBoardReady(true);
       },

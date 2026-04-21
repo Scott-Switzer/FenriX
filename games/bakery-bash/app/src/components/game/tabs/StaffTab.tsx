@@ -187,7 +187,7 @@ export function StaffTab() {
 
       {overcrowded && (
         <p className="staff-tab__warning" role="alert">
-          ⚠ Kitchen is getting crowded — your head chef looks stressed.
+          ⚠ Too many cooks in the kitchen — your head chef looks stressed.
         </p>
       )}
 

@@ -239,6 +239,55 @@ export interface ChefListing {
   multiplier: number;
 }
 
+/** Real skill tier written by the backend in `rounds/{N}.chefPool`. */
+export type ChefSkillTier = "novel" | "intermediate" | "advanced";
+
+/**
+ * Backend shape of a chef in `rounds/round_{N}.chefPool`. Mirrors
+ * `generateChefPool` in `backend/functions/modules/chef-system.js`.
+ *
+ * IMPORTANT — `specialties` is part of the backend payload but is
+ * **forbidden** from reaching the rendered DOM (FRONTEND.md Hard UI Rule
+ * #3). Consumers MUST convert to {@link ChefCardInput} before passing to
+ * `<ChefCard>`; the cardʼs prop type deliberately omits specialties so a
+ * compile-time error catches accidental leakage.
+ */
+export interface ChefPoolEntry {
+  id: string;
+  name: string;
+  nationality: ChefNationality;
+  gender: ChefGender;
+  skillTier: ChefSkillTier;
+  /** Hidden — do not render. Kept on the type so we can read the backend doc. */
+  specialties: string[];
+  minBidFloor: number;
+}
+
+/**
+ * Strict subset of {@link ChefPoolEntry} that `<ChefCard>` accepts. Drop
+ * `specialties` + `minBidFloor` at the type boundary so the component
+ * physically cannot render them.
+ */
+export type ChefCardInput = Pick<
+  ChefPoolEntry,
+  "id" | "name" | "nationality" | "gender" | "skillTier"
+>;
+
+/**
+ * Helper: strip forbidden fields from a `ChefPoolEntry` before handing it
+ * to `<ChefCard>`. Use this in every call site so `specialties` never
+ * survives into the rendered tree.
+ */
+export function toChefCardInput(chef: ChefPoolEntry): ChefCardInput {
+  return {
+    id: chef.id,
+    name: chef.name,
+    nationality: chef.nationality,
+    gender: chef.gender,
+    skillTier: chef.skillTier,
+  };
+}
+
 export type AuctionTab = "chefs" | "ads";
 
 export interface MenuItem {
@@ -332,6 +381,87 @@ export interface RoundResult {
   chefDepartureNames?: string[];
   /** Station-based staff counts the player submitted for this round. */
   staffCounts?: StaffCounts;
+  /** Gross revenue (pre loan-shark repayment). */
+  revenueGross?: number;
+  /** Net revenue after loan-shark interest deducted. */
+  revenueNet?: number;
+  /** Principal borrowed this round; 0 means the loan shark stayed away. */
+  amountBorrowed?: number;
+  /** Interest paid on this round's borrow. */
+  interestCharged?: number;
+  /** Any station that hit sellout this round (`true` = ran out at least once). */
+  selloutAnywhere?: boolean;
+  /** Per-product unit-sold breakdown, used for the Results breakdown table. */
+  productBreakdown?: Partial<Record<ProductKey, number>>;
+  /** Ad surface the player won this round, with paid amount. */
+  adWon?: AdType | null;
+  adPaid?: number;
+}
+
+/**
+ * Player team role (DEC-21, April 19 design proposal).
+ *
+ * - `operations` owns the Decide-phase submit (quantities, sous chefs,
+ *   maintenance guys).
+ * - `advertising` owns the ad-auction submit.
+ * - `finance` owns the chef-auction submit + roster (layoff / continue).
+ * - `solo` is the fallback when a player joins without teammates: all three
+ *   buttons are enabled on their device. Also the default during the
+ *   transition window before BE-20 / BE-21 ship per-team schema + role
+ *   enforcement on the backend.
+ *
+ * Backend enforcement is BE-21 (open). Until that lands, the role here is
+ * UI-only — the Cloud Functions accept submissions from any team member.
+ */
+export type PlayerRole = "operations" | "advertising" | "finance" | "solo";
+
+export const PLAYER_ROLES: PlayerRole[] = [
+  "operations",
+  "advertising",
+  "finance",
+  "solo",
+];
+
+export const PLAYER_ROLE_LABELS: Record<PlayerRole, string> = {
+  operations: "Operations",
+  advertising: "Advertising",
+  finance: "Finance",
+  solo: "Solo (all roles)",
+};
+
+/** Phase-owning role mapping per DEC-21. `solo` always passes. */
+export function roleOwnsDecide(role: PlayerRole): boolean {
+  return role === "operations" || role === "solo";
+}
+export function roleOwnsAdBids(role: PlayerRole): boolean {
+  return role === "advertising" || role === "solo";
+}
+export function roleOwnsChefBids(role: PlayerRole): boolean {
+  return role === "finance" || role === "solo";
+}
+/**
+ * Roster (lay-off + continue) is owned by Operations per the backend
+ * contract. `backend/functions/index.js::layoffChef` and `continueFromRoster`
+ * both call `assertRoleAllowed(role, ['operations'])`. The April 19 design
+ * blurb read as "Finance owns … roster"; the shipped backend disagrees. If
+ * the backend realigns to Finance later, flip this helper to match.
+ */
+export function roleOwnsRoster(role: PlayerRole): boolean {
+  return role === "operations" || role === "solo";
+}
+
+/** Human-readable owner copy used in the disabled-button tooltip. */
+export function ownerOfDecide(): string {
+  return "Operations";
+}
+export function ownerOfAdBids(): string {
+  return "Advertising";
+}
+export function ownerOfChefBids(): string {
+  return "Finance";
+}
+export function ownerOfRoster(): string {
+  return "Operations";
 }
 
 export interface Player {
@@ -340,6 +470,10 @@ export interface Player {
   bakeryName: string;
   budget: number;
   cumulativeRevenue: number;
+  /** Optional team name (DEC-23). Falls back to displayName if absent. */
+  teamName?: string;
+  /** Player team role (DEC-21). Defaults to "solo" until role picker is set. */
+  role?: PlayerRole;
 }
 
 export interface GameState {
@@ -381,6 +515,35 @@ export interface GameState {
    * has read at least once. Cloud Functions own writes; the client reads only.
    */
   budgetCurrent: number | null;
+  /**
+   * The local player's team role (DEC-21). Assigned by the backend on team
+   * formation and mirrored from `/games/{gameId}/players/{uid}.role`.
+   * Defaults to "solo" so a single-browser playtest keeps every submit
+   * button enabled until backend role assignment ships (BE-20/BE-21).
+   */
+  role: PlayerRole;
+  /**
+   * The local player's team identifier (DEC-21). Mirrored from
+   * `/games/{gameId}/players/{uid}.teamId`. `null` while the backend has
+   * not yet assigned the player to a team — the /team page renders a
+   * "waiting for assignment" state in that case.
+   */
+  teamId: string | null;
+  /**
+   * Shared team name (DEC-23). Read from
+   * `/games/{gameId}/teams/{teamId}.name`. Editable by any teammate via
+   * the `updateTeamName` callable. `null` while the team has not been
+   * named yet — the leaderboard / lobby label falls back to the player's
+   * `displayName` in that case.
+   */
+  teamName: string | null;
+  /**
+   * Server-driven phase end Timestamp (epoch ms) mirrored from
+   * `/games/{gameId}.phaseEndsAt`. `null` while the game is paused or
+   * before the field has been written. `RoundHeader` derives the live
+   * countdown from `phaseEndsAt - Date.now()`.
+   */
+  phaseEndsAtMs: number | null;
 }
 
 /** Default maintenance bars (all 100%) used on game start / context reset. */
