@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { GameProvider } from "./contexts/GameContext";
 import { DevNav } from "./components/ui/DevNav";
+import { GamePhaseListener } from "./components/GamePhaseListener";
 import { LandingPage } from "./pages/LandingPage";
 import { TeamPage } from "./pages/TeamPage";
 import { LobbyPage } from "./pages/LobbyPage";
@@ -20,6 +21,7 @@ export default function App() {
       <GameProvider>
         <BrowserRouter>
           <DevNav />
+          <GamePhaseListener />
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/team" element={<TeamPage />} />

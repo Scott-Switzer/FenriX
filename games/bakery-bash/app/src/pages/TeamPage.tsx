@@ -180,18 +180,21 @@ export function TeamPage() {
     return unsubscribe;
   }, [gameId, teamId, dispatch]);
 
-  // Auto-route into /game once the professor starts the round. We watch
-  // the game doc directly because GamePage's phase listener isn't mounted
-  // on this route.
   const [gamePhase, setGamePhase] = useState<GamePhaseString | null>(null);
   useEffect(() => {
     if (!gameId) return;
     const gameRef = doc(db, "games", gameId);
-    const unsubscribe = onSnapshot(gameRef, (snap) => {
-      if (!snap.exists()) return;
-      const data = snap.data() as DocumentData;
-      if (typeof data.phase === "string") setGamePhase(data.phase);
-    });
+    const unsubscribe = onSnapshot(
+      gameRef,
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data() as DocumentData;
+        if (typeof data.phase === "string") setGamePhase(data.phase as GamePhaseString);
+      },
+      (err) => {
+        console.error("team game-doc listener error:", { gameId, err });
+      },
+    );
     return unsubscribe;
   }, [gameId]);
   useEffect(() => {

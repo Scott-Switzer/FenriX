@@ -7,6 +7,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useGame } from "../contexts/GameContext";
+import { useGamePhaseNav } from "../hooks/useGamePhaseNav";
 import { PageShell } from "../components/ui/PageShell";
 import { MarketEmailModal } from "../components/game/MarketEmailModal";
 import { parseGamePhase } from "../types/game";
@@ -34,6 +35,7 @@ interface MarketEmail {
 }
 
 export function EmailPhasePage() {
+  useGamePhaseNav();
   const { gameId, currentRound, phase } = useGame();
   const navigate = useNavigate();
 
