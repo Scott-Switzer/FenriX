@@ -14,7 +14,7 @@ const {
 
 const PROJECT_ID = "bakery-bash-54d12";
 const GAME_ID = "auth-flow-game";
-const JOIN_CODE = "AUTH01";
+const JOIN_CODE = "AUTH23";
 
 function requireEnv(name) {
   if (!process.env[name]) {
@@ -93,7 +93,7 @@ async function main() {
     displayName: "The Rolling Scone",
   });
 
-  if (firstJoin.data.uid !== uid || firstJoin.data.playerId !== uid) {
+  if (firstJoin.data.playerId !== uid) {
     throw new Error("joinGame did not return the authenticated user's uid.");
   }
 
@@ -115,11 +115,7 @@ async function main() {
     throw new Error("Player document uid does not match Auth uid.");
   }
 
-  if (
-    player.budgetCurrent !== 2000 ||
-    player.creditBalance !== 0 ||
-    player.cumulativeRevenue !== 0
-  ) {
+  if (player.budgetCurrent !== 2000 || player.cumulativeRevenue !== 0) {
     throw new Error("Player document was not initialized with expected state.");
   }
 
@@ -128,7 +124,7 @@ async function main() {
     displayName: "Crumb Club",
   });
 
-  if (secondJoin.data.uid !== uid) {
+  if (secondJoin.data.playerId !== uid) {
     throw new Error("Second join did not reuse the same Auth uid.");
   }
 

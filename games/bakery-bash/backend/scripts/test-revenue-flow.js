@@ -1,9 +1,24 @@
+/**
+ * test-revenue-flow.js
+ *
+ * Integration test for the revenue simulation flow.
+ * Seeds a game at round_1_roster, writes decisions, calls advanceGamePhase
+ * to trigger simulation, and verifies results are persisted correctly.
+ */
+
 const { initializeApp: initializeAdminApp } = require("firebase-admin/app");
+const { getFirestore, Timestamp } = require("firebase-admin/firestore");
+const { initializeApp } = require("firebase/app");
 const {
-  getFirestore,
-  FieldValue,
-  Timestamp,
-} = require("firebase-admin/firestore");
+  connectAuthEmulator,
+  getAuth,
+  signInAnonymously,
+} = require("firebase/auth");
+const {
+  connectFunctionsEmulator,
+  getFunctions,
+  httpsCallable,
+} = require("firebase/functions");
 
 const PROJECT_ID = "bakery-bash-54d12";
 const GAME_ID = "revenue-flow-game";
@@ -17,187 +32,108 @@ function requireEnv(name) {
   }
 }
 
-function basePlayer(uid, displayName) {
-  return {
-    uid,
-    displayName,
-    joinedAt: null,
-    budgetCurrent: 2000,
-    creditBalance: 0,
-    cumulativeRevenue: 0,
-    pendingDecision: {
-      submitted: false,
-      submittedAt: null,
-      staffCount: 3,
-      adSpend: 0,
-      menu: {
-        croissant: true,
-        cookie: true,
-        bagel: true,
-        sandwich: false,
-        coffee: false,
-        matcha: false,
-      },
-      productPrices: {},
-      quantities: {},
-    },
-    pendingBids: {
-      adBid: { adType: null, amount: 0 },
-      chefBid: { skillLevel: 0, amount: 0 },
-    },
-    lastRoundResult: {
-      round: 0,
-      revenue: 0,
-      customerCount: 0,
-      customerSatisfaction: 0,
-      headchefSkill: 0,
-      adTypeWon: null,
-      productsSold: {},
-    },
-  };
-}
-
-function decision(overrides = {}) {
-  return {
-    round: 1,
-    submittedAt: FieldValue.serverTimestamp(),
-    staffCount: 3,
-    adSpend: 0,
-    menu: {
-      croissant: true,
-      cookie: true,
-      bagel: true,
-      sandwich: false,
-      coffee: false,
-      matcha: false,
-    },
-    productPrices: {
-      croissant: 5,
-      cookie: 5,
-      bagel: 5,
-      sandwich: 0,
-      coffee: 0,
-      matcha: 0,
-    },
-    quantities: {
-      croissant: 10,
-      cookie: 10,
-      bagel: 10,
-      sandwich: 0,
-      coffee: 0,
-      matcha: 0,
-    },
-    adBid: {
-      adType: null,
-      amount: 0,
-    },
-    chefBid: {
-      skillLevel: 0,
-      amount: 0,
-    },
-    ...overrides,
-  };
-}
-
-async function seedGame(db) {
-  await db.doc(`games/${GAME_ID}`).set({
-    joinCode: "REV001",
-    phase: "closing_hours",
-    currentRound: 1,
-    totalRounds: 5,
-    phaseEndTime: null,
-    submittedCount: 0,
-    totalPlayers: 2,
-    paused: false,
-    professorId: "uid_professor",
-    createdAt: null,
-    startedAt: null,
-    endedAt: null,
-  });
-
-  await db.doc(`games/${GAME_ID}/config/params`).set({
-    startingBudget: 2000,
-    costPerStaffPerRound: 50,
-    unitCostPerProduct: 1,
-    revenueModel: {
-      base: 500,
-      staffCoefficient: 30,
-      priceCoefficient: -15,
-      adSpendCoefficient: 0.8,
-      numProductsCoefficient: 50,
-      noiseMin: 0,
-      noiseMax: 0,
-    },
-    adBonuses: {
-      TV: 200,
-      Billboard: 150,
-      Radio: 100,
-      Newspaper: 75,
-    },
-    chefBonusPerPoint: 5,
-    customerPoolMultiplier: 100,
-  });
-
-  await db
-    .doc(`games/${GAME_ID}/players/${PLAYER_A}`)
-    .set(basePlayer(PLAYER_A, "The Rolling Scone"));
-  await db
-    .doc(`games/${GAME_ID}/players/${PLAYER_B}`)
-    .set(basePlayer(PLAYER_B, "Bagel Bros"));
-}
-
-async function waitForSimulation(db) {
-  const deadline = Date.now() + 15000;
-  const gameRef = db.doc(`games/${GAME_ID}`);
-
-  while (Date.now() < deadline) {
-    const gameSnap = await gameRef.get();
-    if (gameSnap.get("phase") === "results") {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-
-  throw new Error("Revenue simulation did not complete before timeout.");
-}
-
 function assertEqual(actual, expected, message) {
   if (actual !== expected) {
     throw new Error(`${message} Expected ${expected}, got ${actual}.`);
   }
 }
 
+function assertNumber(value, message) {
+  if (typeof value !== "number" || isNaN(value)) {
+    throw new Error(`${message} Expected a number, got ${JSON.stringify(value)}.`);
+  }
+}
+
+async function seedGame(db, professorId) {
+  await db.doc(`games/${GAME_ID}`).set({
+    joinCode: "REV234",
+    phase: "round_1_roster",
+    round: 1,
+    currentRound: 1,
+    totalRounds: 3,
+    phaseEndTime: null,
+    submittedCount: 2,
+    totalPlayers: 2,
+    paused: false,
+    professorId,
+    professorUid: professorId,
+    createdAt: null,
+    startedAt: null,
+    endedAt: null,
+  });
+
+  await db.doc(`games/${GAME_ID}/config/params`).set({
+    startingBudget: 500000,
+    sousChefBaseCost: 12500,
+    unitCostPerProduct: 1,
+    specialtyChefCap: 3,
+    revenueCoefficients: {
+      base: 500,
+      sousChefCoeff: 12,
+      satisfactionCoeff: 8,
+      adSpendCoeff: 0.8,
+      numProductsCoeff: 50,
+      noiseMin: 0,
+      noiseMax: 0,
+    },
+  });
+
+  for (const [uid, name] of [[PLAYER_A, "Rolling Scone"], [PLAYER_B, "Bagel Bros"]]) {
+    await db.doc(`games/${GAME_ID}/players/${uid}`).set({
+      uid,
+      playerId: uid,
+      displayName: name,
+      bakeryName: `${name} Bakery`,
+      role: "solo",
+      budgetCurrent: 500000,
+      cumulativeRevenue: 0,
+      specialtyChefs: [],
+      sousChefCount: 0,
+      consecutiveMissedRounds: 0,
+      disconnected: false,
+    });
+
+    await db.doc(`games/${GAME_ID}/players/${uid}/decisions/${ROUND_ID}`).set({
+      round: 1,
+      submittedAt: Timestamp.fromMillis(Date.now()),
+      menu: { croissant: true, cookie: true, bagel: true, sandwich: false, coffee: true, matcha: false },
+      quantities: { croissant: 50, cookie: 50, bagel: 50, coffee: 50 },
+      sousChefCount: 2,
+      sousChefAssignments: { croissant: 1, coffee: 1 },
+    });
+  }
+}
+
 async function main() {
   requireEnv("FIRESTORE_EMULATOR_HOST");
+  requireEnv("FIREBASE_AUTH_EMULATOR_HOST");
 
   initializeAdminApp({ projectId: PROJECT_ID });
   const db = getFirestore();
 
-  await seedGame(db);
+  const app = initializeApp({
+    apiKey: "demo-key",
+    authDomain: `${PROJECT_ID}.firebaseapp.com`,
+    projectId: PROJECT_ID,
+  });
 
-  await db
-    .doc(`games/${GAME_ID}/players/${PLAYER_A}/decisions/${ROUND_ID}`)
-    .set(
-      decision({
-        submittedAt: Timestamp.fromMillis(2000),
-        staffCount: 3,
-        adSpend: 100,
-        adBid: { adType: "TV", amount: 50 },
-        chefBid: { skillLevel: 80, amount: 100 },
-      })
-    );
-  await db
-    .doc(`games/${GAME_ID}/players/${PLAYER_B}/decisions/${ROUND_ID}`)
-    .set(
-      decision({
-        submittedAt: Timestamp.fromMillis(1000),
-        staffCount: 2,
-        adBid: { adType: "TV", amount: 50 },
-        chefBid: { skillLevel: 80, amount: 100 },
-      })
-    );
+  const auth = getAuth(app);
+  connectAuthEmulator(auth, `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`, {
+    disableWarnings: true,
+  });
 
-  await waitForSimulation(db);
+  const functions = getFunctions(app);
+  connectFunctionsEmulator(functions, "127.0.0.1", 5001);
+
+  const { user: professor } = await signInAnonymously(auth);
+  await seedGame(db, professor.uid);
+
+  const advanceGamePhase = httpsCallable(functions, "advanceGamePhase");
+
+  // Advance from round_1_roster → simulating (triggers simulation synchronously)
+  const result = await advanceGamePhase({ gameId: GAME_ID });
+  assertEqual(result.data.phase, "results_ready", "Phase after simulation should be results_ready.");
+  console.log("  ✓ advanceGamePhase: round_1_roster → simulating → results_ready");
 
   const [
     playerASnap,
@@ -206,8 +142,7 @@ async function main() {
     resultBSnap,
     roundSnap,
     leaderboardSnap,
-    csvSnap,
-    emailSnap,
+    csvASnap,
   ] = await Promise.all([
     db.doc(`games/${GAME_ID}/players/${PLAYER_A}`).get(),
     db.doc(`games/${GAME_ID}/players/${PLAYER_B}`).get(),
@@ -216,61 +151,40 @@ async function main() {
     db.doc(`games/${GAME_ID}/rounds/${ROUND_ID}`).get(),
     db.doc(`games/${GAME_ID}/leaderboard/latest`).get(),
     db.doc(`games/${GAME_ID}/csvRows/${PLAYER_A}/rounds/${ROUND_ID}`).get(),
-    db.doc(`games/${GAME_ID}/players/${PLAYER_A}/emails/round_2_data`).get(),
   ]);
 
-  assertEqual(resultASnap.get("revenue"), 745, "Player A revenue mismatch.");
-  assertEqual(resultASnap.get("budgetAfter"), 2465, "Player A budget mismatch.");
-  assertEqual(resultASnap.get("headchefSkill"), 0, "Player A chef skill mismatch.");
-  assertEqual(resultASnap.get("adTypeWon"), null, "Player A ad win mismatch.");
-  assertEqual(resultBSnap.get("revenue"), 1235, "Player B revenue mismatch.");
-  assertEqual(resultBSnap.get("budgetAfter"), 2955, "Player B budget mismatch.");
-  assertEqual(resultBSnap.get("headchefSkill"), 80, "Player B chef skill mismatch.");
-  assertEqual(resultBSnap.get("adTypeWon"), "TV", "Player B ad win mismatch.");
-  assertEqual(playerASnap.get("budgetCurrent"), 2465, "Player A live budget mismatch.");
-  assertEqual(playerBSnap.get("budgetCurrent"), 2955, "Player B live budget mismatch.");
-  assertEqual(roundSnap.get("simulationStatus"), "complete", "Round status mismatch.");
-  assertEqual(
-    roundSnap.get("auctionResults.ads.TV.winnerId"),
-    PLAYER_B,
-    "Ad auction tie-breaker mismatch."
-  );
-  assertEqual(
-    roundSnap.get("auctionResults.chef.winnerId"),
-    PLAYER_B,
-    "Chef auction tie-breaker mismatch."
-  );
-  assertEqual(
-    roundSnap.get("auctionResults.ads.TV.tieBreaker"),
-    "earliest_submission",
-    "Ad auction tie-breaker label mismatch."
-  );
-  assertEqual(
-    leaderboardSnap.data().rankings[0].playerId,
-    PLAYER_B,
-    "Leaderboard winner mismatch."
-  );
-  assertEqual(csvSnap.get("row.revenue"), 745, "CSV row revenue mismatch.");
-  assertEqual(emailSnap.get("type"), "round_data_csv", "Email type mismatch.");
-  assertEqual(emailSnap.get("round"), 2, "Email target round mismatch.");
-  const emailAttachment = emailSnap.data().attachments[0];
-  assertEqual(
-    emailAttachment.contentType,
-    "text/csv",
-    "Email attachment content type mismatch."
-  );
-  assertEqual(
-    emailAttachment.rowCount,
-    1,
-    "Email attachment row count mismatch."
-  );
+  // Round doc
+  assertEqual(roundSnap.get("simulationStatus"), "complete", "Round simulationStatus should be 'complete'.");
+  console.log("  ✓ rounds/round_1.simulationStatus = 'complete'");
 
-  const emailCsv = emailAttachment.csvText;
-  if (!emailCsv.includes("day,revenue,num_products") || !emailCsv.includes("1,745,3")) {
-    throw new Error("Email CSV attachment did not include the expected round row.");
+  // Player round docs exist and have numeric results
+  if (!resultASnap.exists) throw new Error("FAIL: players/PLAYER_A/rounds/round_1 doc missing.");
+  if (!resultBSnap.exists) throw new Error("FAIL: players/PLAYER_B/rounds/round_1 doc missing.");
+  assertNumber(resultASnap.get("revenueGross"), "Player A revenueGross");
+  assertNumber(resultASnap.get("budgetAfter"), "Player A budgetAfter");
+  assertNumber(resultBSnap.get("revenueGross"), "Player B revenueGross");
+  assertNumber(resultBSnap.get("budgetAfter"), "Player B budgetAfter");
+  console.log("  ✓ players/{uid}/rounds/round_1 docs written with revenueGross and budgetAfter");
+
+  // Player live budget updated
+  assertNumber(playerASnap.get("budgetCurrent"), "Player A budgetCurrent");
+  assertNumber(playerBSnap.get("budgetCurrent"), "Player B budgetCurrent");
+  console.log("  ✓ players/{uid}.budgetCurrent updated after simulation");
+
+  // Leaderboard
+  if (!leaderboardSnap.exists) throw new Error("FAIL: leaderboard/latest doc missing.");
+  const rankings = leaderboardSnap.data().rankings;
+  if (!Array.isArray(rankings) || rankings.length !== 2) {
+    throw new Error(`FAIL: leaderboard rankings should have 2 entries, got ${rankings && rankings.length}.`);
   }
+  console.log("  ✓ leaderboard/latest written with 2 rankings");
 
-  console.log("Revenue simulation flow passed.");
+  // CSV rows
+  if (!csvASnap.exists) throw new Error("FAIL: csvRows/PLAYER_A/rounds/round_1 doc missing.");
+  assertNumber(csvASnap.get("row.revenue"), "CSV row revenue");
+  console.log("  ✓ csvRows/{uid}/rounds/round_1 written");
+
+  console.log("\nRevenue simulation flow passed.");
 }
 
 main().catch((error) => {

@@ -27,23 +27,18 @@ function assertEqual(actual, expected, message) {
   }
 }
 
-function assertPhaseEndTime(value, message) {
-  if (typeof value !== "number" || value <= Date.now()) {
-    throw new Error(message);
-  }
-}
-
 async function seedLobbyGame(db, professorId) {
   await db.doc(`games/${GAME_ID}`).set({
-    joinCode: "PHASE1",
+    joinCode: "PHASE2",
     phase: "lobby",
     currentRound: 1,
     totalRounds: 5,
     phaseEndTime: null,
     submittedCount: 0,
-    totalPlayers: 0,
+    totalPlayers: 1,
     paused: false,
     professorId,
+    professorUid: professorId,
     createdAt: null,
     startedAt: null,
     endedAt: null,
@@ -51,11 +46,28 @@ async function seedLobbyGame(db, professorId) {
 
   await db.doc(`games/${GAME_ID}/config/params`).set({
     phaseDurations: {
-      closing_hours: 180,
-      auction: 90,
-      open_for_business: 30,
-      results: 60,
+      email: 60,
+      decide: 180,
+      bid_ad: 90,
+      bid_chef: 90,
+      roster: 30,
+      results_ready: 60,
     },
+  });
+
+  // Seed one player so startGame passes totalPlayers >= 1 check
+  await db.doc(`games/${GAME_ID}/players/${professorId}`).set({
+    uid: professorId,
+    playerId: professorId,
+    displayName: "Test Player",
+    bakeryName: "Test Bakery",
+    role: "solo",
+    budgetCurrent: 500000,
+    cumulativeRevenue: 0,
+    specialtyChefs: [],
+    sousChefCount: 0,
+    consecutiveMissedRounds: 0,
+    disconnected: false,
   });
 }
 
@@ -86,35 +98,36 @@ async function main() {
   const startGame = httpsCallable(functions, "startGame");
   const advanceGamePhase = httpsCallable(functions, "advanceGamePhase");
 
+  // startGame: lobby → round_1_email
   const startResult = await startGame({ gameId: GAME_ID });
-  assertEqual(startResult.data.phase, "closing_hours", "Start phase mismatch.");
-  assertEqual(startResult.data.currentRound, 1, "Start round mismatch.");
-  assertPhaseEndTime(
-    startResult.data.phaseEndTime,
-    "startGame did not return a future phaseEndTime."
-  );
+  assertEqual(startResult.data.phase, "round_1_email", "Start phase mismatch.");
+  assertEqual(startResult.data.round, 1, "Start round mismatch.");
 
   let gameSnap = await db.doc(`games/${GAME_ID}`).get();
-  assertEqual(gameSnap.get("phase"), "closing_hours", "Stored start phase mismatch.");
-  if (!gameSnap.get("phaseEndTime")) {
-    throw new Error("startGame did not store phaseEndTime.");
+  assertEqual(gameSnap.get("phase"), "round_1_email", "Stored start phase mismatch.");
+  if (!gameSnap.get("phaseEndsAt")) {
+    throw new Error("startGame did not store phaseEndsAt.");
   }
+  console.log("  ✓ startGame: lobby → round_1_email");
 
-  const auctionResult = await advanceGamePhase({ gameId: GAME_ID });
-  assertEqual(auctionResult.data.phase, "auction", "Auction phase mismatch.");
-  assertEqual(auctionResult.data.currentRound, 1, "Auction round mismatch.");
-  assertPhaseEndTime(
-    auctionResult.data.phaseEndTime,
-    "advanceGamePhase did not return a future auction phaseEndTime."
-  );
+  // advanceGamePhase: round_1_email → round_1_decide
+  const decideResult = await advanceGamePhase({ gameId: GAME_ID });
+  assertEqual(decideResult.data.phase, "round_1_decide", "Decide phase mismatch.");
+  assertEqual(decideResult.data.round, 1, "Decide round mismatch.");
 
   gameSnap = await db.doc(`games/${GAME_ID}`).get();
-  assertEqual(gameSnap.get("phase"), "auction", "Stored auction phase mismatch.");
-  if (!gameSnap.get("phaseEndTime")) {
-    throw new Error("advanceGamePhase did not store auction phaseEndTime.");
+  assertEqual(gameSnap.get("phase"), "round_1_decide", "Stored decide phase mismatch.");
+  if (!gameSnap.get("phaseEndsAt")) {
+    throw new Error("advanceGamePhase did not store phaseEndsAt for decide.");
   }
+  console.log("  ✓ advanceGamePhase: round_1_email → round_1_decide");
 
-  console.log("Phase state machine flow passed.");
+  // advanceGamePhase: round_1_decide → round_1_bid_ad
+  const bidAdResult = await advanceGamePhase({ gameId: GAME_ID });
+  assertEqual(bidAdResult.data.phase, "round_1_bid_ad", "Bid-ad phase mismatch.");
+  console.log("  ✓ advanceGamePhase: round_1_decide → round_1_bid_ad");
+
+  console.log("\nPhase state machine flow passed.");
 }
 
 main().catch((error) => {

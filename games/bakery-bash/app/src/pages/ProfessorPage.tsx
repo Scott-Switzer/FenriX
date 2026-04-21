@@ -8,7 +8,7 @@ import {
   type Timestamp,
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
-import { useGame } from "../contexts/GameContext";
+import { useGame, useGameDispatch } from "../contexts/GameContext";
 import { useAuth } from "../contexts/AuthContext";
 import { db, functions } from "../lib/firebase";
 import { PageShell } from "../components/ui/PageShell";
@@ -70,7 +70,8 @@ const SUBMISSION_PHASES: Array<{ key: BasePhase; label: string }> = [
 ];
 
 export function ProfessorPage() {
-  const { gameId, currentRound, gameCode } = useGame();
+  const { gameId: contextGameId, currentRound, gameCode } = useGame();
+  const dispatch = useGameDispatch();
   const { user } = useAuth();
 
   const [phase, setPhase] = useState<string | null>(null);
@@ -84,6 +85,8 @@ export function ProfessorPage() {
   const [totalRounds, setTotalRounds] = useState<number>(5);
   const [createdGame, setCreatedGame] = useState<CreateGameResult | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
+
+  const gameId = contextGameId ?? createdGame?.gameId ?? null;
 
   // Roster + submissions monitor.
   const [roster, setRoster] = useState<ProfessorRosterEntry[]>([]);
@@ -298,6 +301,15 @@ export function ProfessorPage() {
       >(functions, "createGame");
       const res = await createGame({ totalRounds });
       setCreatedGame(res.data);
+      dispatch({
+        type: "JOIN_GAME",
+        payload: {
+          gameId: res.data.gameId,
+          playerId: user!.uid,
+          gameCode: res.data.joinCode,
+          player: { id: user!.uid, name: "Professor", bakeryName: "", budget: 0, cumulativeRevenue: 0 },
+        },
+      });
       setInfo(`Game created — join code ${res.data.joinCode}`);
     } catch (err) {
       setError(humanizeFunctionError(err, "Could not create a new game."));

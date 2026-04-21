@@ -21,6 +21,11 @@
 
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
+
+// Allow Firebase ID tokens (anonymous + real users) to invoke callables.
+// Without this, Cloud Run blocks requests at the IAM layer before they
+// reach the onCall handler, causing 401s instead of auth checks.
+const CALLABLE_OPTS = { invoker: 'public' };
 const { getApps, initializeApp } = require('firebase-admin/app');
 const {
   FieldValue,
@@ -476,7 +481,7 @@ async function resolveAndApplyChefAuction(gameRef, round, config) {
 // createGame
 // ===========================================================================
 
-exports.createGame = onCall(async (request) => {
+exports.createGame = onCall(CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request, 'Sign in before creating a game.');
   const data = request.data || {};
 
@@ -544,7 +549,7 @@ exports.createGame = onCall(async (request) => {
 // joinGame
 // ===========================================================================
 
-exports.joinGame = onCall(async (request) => {
+exports.joinGame = onCall(CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request, 'Sign in before joining a game.');
   const data = request.data || {};
 
@@ -697,7 +702,7 @@ exports.joinGame = onCall(async (request) => {
 // startGame
 // ===========================================================================
 
-exports.startGame = onCall(async (request) => {
+exports.startGame = onCall(CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request, 'Sign in before starting a game.');
   const gameId = cleanGameId((request.data || {}).gameId);
   const gameRef = gameDoc(gameId);
@@ -763,7 +768,7 @@ exports.startGame = onCall(async (request) => {
 // advanceGamePhase
 // ===========================================================================
 
-exports.advanceGamePhase = onCall(async (request) => {
+exports.advanceGamePhase = onCall(CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request, 'Sign in before advancing phases.');
   const gameId = cleanGameId((request.data || {}).gameId);
   const gameRef = gameDoc(gameId);
@@ -1254,7 +1259,7 @@ async function persistConclusion(gameRef, totalRounds, config) {
 // submitDecision
 // ===========================================================================
 
-exports.submitDecision = onCall(async (request) => {
+exports.submitDecision = onCall(CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request, 'Sign in before submitting decisions.');
   const data = request.data || {};
   const gameId = cleanGameId(data.gameId);
@@ -1290,7 +1295,17 @@ exports.submitDecision = onCall(async (request) => {
     const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
 
     // Validate using the decision-validation module (pure).
-    const validated = decisionValidation.validateDecision(data, currentRound, config);
+    // ValidationError is a plain JS error — convert to HttpsError so the
+    // Firebase Functions runtime surfaces the right code to the client.
+    let validated;
+    try {
+      validated = decisionValidation.validateDecision(data, currentRound, config);
+    } catch (vErr) {
+      if (ValidationError && vErr instanceof ValidationError) {
+        throw new HttpsError(vErr.code || 'invalid-argument', vErr.message);
+      }
+      throw vErr;
+    }
 
     roundId = `round_${currentRound}`;
     const decisionRef = playerRef.collection('decisions').doc(roundId);
@@ -1347,7 +1362,7 @@ exports.submitDecision = onCall(async (request) => {
 // submitBids
 // ===========================================================================
 
-exports.submitBids = onCall(async (request) => {
+exports.submitBids = onCall(CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request, 'Sign in before bidding.');
   const data = request.data || {};
   const gameId = cleanGameId(data.gameId);
@@ -1393,15 +1408,22 @@ exports.submitBids = onCall(async (request) => {
     const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
 
     let validated;
-    if (bidType === 'ad') {
-      validated = decisionValidation.validateAdBids(data);
-    } else {
-      // CRIT-07 fix: chefPool lives on rounds/{round} doc, NOT on game root.
-      const roundSnap = await transaction.get(
-        gameRef.collection('rounds').doc(`round_${round}`)
-      );
-      const chefPool = (roundSnap.exists && roundSnap.data().chefPool) || [];
-      validated = decisionValidation.validateChefBids(data, chefPool);
+    try {
+      if (bidType === 'ad') {
+        validated = decisionValidation.validateAdBids(data);
+      } else {
+        // CRIT-07 fix: chefPool lives on rounds/{round} doc, NOT on game root.
+        const roundSnap = await transaction.get(
+          gameRef.collection('rounds').doc(`round_${round}`)
+        );
+        const chefPool = (roundSnap.exists && roundSnap.data().chefPool) || [];
+        validated = decisionValidation.validateChefBids(data, chefPool);
+      }
+    } catch (vErr) {
+      if (ValidationError && vErr instanceof ValidationError) {
+        throw new HttpsError(vErr.code || 'invalid-argument', vErr.message);
+      }
+      throw vErr;
     }
     _submitBids_validated = validated;
 
@@ -1443,7 +1465,7 @@ exports.submitBids = onCall(async (request) => {
 // layoffChef
 // ===========================================================================
 
-exports.layoffChef = onCall(async (request) => {
+exports.layoffChef = onCall(CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request);
   const data = request.data || {};
   const gameId = cleanGameId(data.gameId);
@@ -1513,7 +1535,7 @@ exports.layoffChef = onCall(async (request) => {
 // continueFromRoster
 // ===========================================================================
 
-exports.continueFromRoster = onCall(async (request) => {
+exports.continueFromRoster = onCall(CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request);
   const data = request.data || {};
   const gameId = cleanGameId(data.gameId);
@@ -1606,14 +1628,14 @@ async function setPausedFlag(request, paused) {
   return { gameId, paused };
 }
 
-exports.pauseGame  = onCall(async (request) => setPausedFlag(request, true));
-exports.resumeGame = onCall(async (request) => setPausedFlag(request, false));
+exports.pauseGame  = onCall(CALLABLE_OPTS, async (request) => setPausedFlag(request, true));
+exports.resumeGame = onCall(CALLABLE_OPTS, async (request) => setPausedFlag(request, false));
 
 // ===========================================================================
 // endGame — force transition to game_over
 // ===========================================================================
 
-exports.endGame = onCall(async (request) => {
+exports.endGame = onCall(CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request);
   const gameId = cleanGameId((request.data || {}).gameId);
   const gameRef = gameDoc(gameId);
@@ -1671,7 +1693,7 @@ exports.endGame = onCall(async (request) => {
 // getConclusion — return cached conclusion
 // ===========================================================================
 
-exports.getConclusion = onCall(async (request) => {
+exports.getConclusion = onCall(CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request, 'Sign in to view game results.');
   const gameId = cleanGameId((request.data || {}).gameId);
   const gameRef = gameDoc(gameId);
@@ -1700,7 +1722,7 @@ exports.getConclusion = onCall(async (request) => {
 // exportPlayerCsv — player downloads their own round-by-round CSV
 // ===========================================================================
 
-exports.exportPlayerCsv = onCall(async (request) => {
+exports.exportPlayerCsv = onCall(CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request, 'Sign in to export your data.');
   const gameId = cleanGameId((request.data || {}).gameId);
   const gameRef = gameDoc(gameId);
@@ -1738,7 +1760,7 @@ exports.exportPlayerCsv = onCall(async (request) => {
 // exportProfessorCsv — professor downloads class-wide CSV with player names
 // ===========================================================================
 
-exports.exportProfessorCsv = onCall(async (request) => {
+exports.exportProfessorCsv = onCall(CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request, 'Sign in to export class data.');
   const gameId = cleanGameId((request.data || {}).gameId);
   const gameRef = gameDoc(gameId);
@@ -1865,7 +1887,7 @@ exports.onDecisionSubmitted = onDocumentCreated(
 // ---------------------------------------------------------------------------
 // updateTeamName — any team member may rename their team.
 // ---------------------------------------------------------------------------
-exports.updateTeamName = onCall(async (request) => {
+exports.updateTeamName = onCall(CALLABLE_OPTS, async (request) => {
   const auth = request.auth;
   if (!auth) throw new HttpsError('unauthenticated', 'Must be signed in.');
 
@@ -1911,7 +1933,7 @@ exports.updateTeamName = onCall(async (request) => {
 //   • Mirrors the same value onto players/{uid}.role so role-gated submits
 //     keep working without reading the teams collection.
 // ---------------------------------------------------------------------------
-exports.setTeamRole = onCall(async (request) => {
+exports.setTeamRole = onCall(CALLABLE_OPTS, async (request) => {
   const auth = request.auth;
   if (!auth) throw new HttpsError('unauthenticated', 'Must be signed in.');
 

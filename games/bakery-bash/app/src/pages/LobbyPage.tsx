@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
 import {
   collection,
+  doc,
   onSnapshot,
   type DocumentData,
   type Timestamp,
 } from "firebase/firestore";
-import { useGame } from "../contexts/GameContext";
+import { useNavigate, Link } from "react-router-dom";
+import { useGame, useGameDispatch } from "../contexts/GameContext";
 import { db } from "../lib/firebase";
 import { PageShell } from "../components/ui/PageShell";
-import { PLAYER_ROLE_LABELS } from "../types/game";
-import { Link } from "react-router-dom";
+import { PLAYER_ROLE_LABELS, parseGamePhase } from "../types/game";
 
 /**
  * Roster entry as published to `/games/{gameId}/roster/{playerId}` by the
@@ -26,6 +27,8 @@ interface RosterEntry {
 
 export function LobbyPage() {
   const { player, playerId, gameId, gameCode, role, teamId, teamName } = useGame();
+  const dispatch = useGameDispatch();
+  const navigate = useNavigate();
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [rosterError, setRosterError] = useState<string | null>(null);
   // Distinct from `roster.length === 0`: tells us whether the snapshot
@@ -78,6 +81,30 @@ export function LobbyPage() {
     );
     return unsubscribe;
   }, [gameId]);
+
+  // Listen to the game doc; navigate immediately when the professor starts.
+  useEffect(() => {
+    if (!gameId) return;
+    const gameRef = doc(db, "games", gameId);
+    return onSnapshot(gameRef, (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data() as DocumentData;
+      const p = data.phase;
+      const round = typeof data.currentRound === "number" ? data.currentRound : typeof data.round === "number" ? data.round : 0;
+      if (typeof p === "string") {
+        dispatch({ type: "SET_PHASE", payload: p });
+        if (round) dispatch({ type: "SET_ROUND", payload: round });
+        if (p !== "lobby") {
+          const base = parseGamePhase(p, round).base;
+          if (base === "bid_ad" || base === "bid_chef") navigate("/auction");
+          else if (base === "email") navigate("/game/email");
+          else if (base === "roster") navigate("/game/roster");
+          else if (base === "game_over") navigate("/game/conclusion");
+          else navigate("/game");
+        }
+      }
+    });
+  }, [gameId, dispatch, navigate]);
 
   // Fallback to the local context-only "you" row only while the listener is
   // genuinely still warming up. Once we've heard from Firestore (success or
