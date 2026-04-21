@@ -9,6 +9,10 @@ import { GamePage } from "./pages/GamePage";
 import { AuctionPage } from "./pages/AuctionPage";
 import { LeaderboardPage } from "./pages/LeaderboardPage";
 import { ProfessorPage } from "./pages/ProfessorPage";
+import { ProfessorLeaderboardPage } from "./pages/ProfessorLeaderboardPage";
+import { EmailPhasePage } from "./pages/EmailPhasePage";
+import { RosterPhasePage } from "./pages/RosterPhasePage";
+import { ConclusionPage } from "./pages/ConclusionPage";
 
 export default function App() {
   return (
@@ -21,10 +25,17 @@ export default function App() {
             <Route path="/team" element={<TeamPage />} />
             <Route path="/lobby" element={<LobbyPage />} />
             <Route path="/game" element={<GamePage />} />
+            <Route path="/game/email" element={<EmailPhasePage />} />
+            <Route path="/game/roster" element={<RosterPhasePage />} />
+            <Route path="/game/conclusion" element={<ConclusionPage />} />
             <Route path="/game/:phase" element={<GamePage />} />
             <Route path="/auction" element={<AuctionPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/professor" element={<ProfessorPage />} />
+            <Route
+              path="/professor/leaderboard"
+              element={<ProfessorLeaderboardPage />}
+            />
           </Routes>
         </BrowserRouter>
       </GameProvider>

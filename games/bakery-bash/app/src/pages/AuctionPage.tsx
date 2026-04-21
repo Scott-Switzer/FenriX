@@ -220,6 +220,10 @@ export function AuctionPage() {
   // Backend pool (when present) takes priority over the cosmetic placeholder.
   // `null` means "not yet loaded"; `[]` means "loaded, but empty."
   const [backendPool, setBackendPool] = useState<ChefListing[] | null>(null);
+  // FE-20 follow-up — live top bids from `rounds/{round}.topBids` (BE-25).
+  // Shape: `{ad: {TV,Billboard,Radio,Newspaper: number}, chef: {[chefId]: number}}`.
+  const [topBidsAd, setTopBidsAd] = useState<Partial<Record<AdType, number>>>({});
+  const [topBidsChef, setTopBidsChef] = useState<Record<string, number>>({});
   const [remaining, setRemaining] = useState<number>(TAB_DURATION_SECONDS);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -262,6 +266,30 @@ export function AuctionPage() {
           return;
         }
         const data = snap.data() as DocumentData;
+
+        // Top bids (BE-25). Defensively parse — backend writes ints but
+        // we tolerate missing keys during rollout.
+        const tb = (data.topBids ?? null) as DocumentData | null;
+        const tbAd = (tb?.ad ?? null) as DocumentData | null;
+        const nextAd: Partial<Record<AdType, number>> = {};
+        if (tbAd) {
+          (["TV", "Billboard", "Radio", "Newspaper"] as AdType[]).forEach(
+            (k) => {
+              const v = tbAd[k];
+              if (typeof v === "number" && v > 0) nextAd[k] = v;
+            },
+          );
+        }
+        setTopBidsAd(nextAd);
+        const tbChef = (tb?.chef ?? null) as DocumentData | null;
+        const nextChef: Record<string, number> = {};
+        if (tbChef && typeof tbChef === "object") {
+          for (const [id, v] of Object.entries(tbChef)) {
+            if (typeof v === "number" && v > 0) nextChef[id] = v;
+          }
+        }
+        setTopBidsChef(nextChef);
+
         const raw = Array.isArray(data.chefPool) ? data.chefPool : null;
         if (!raw) {
           setBackendPool(null);
@@ -477,7 +505,11 @@ export function AuctionPage() {
                   </div>
                   <div className="auction-ad__top-bid">
                     <span className="auction-ad__top-bid-label">Top Bid</span>
-                    <span className="auction-ad__top-bid-value">--</span>
+                    <span className="auction-ad__top-bid-value">
+                      {typeof topBidsAd[ad.id] === "number"
+                        ? `$${topBidsAd[ad.id]!.toLocaleString()}`
+                        : "--"}
+                    </span>
                   </div>
                   <div className="auction-ad__bid">
                     <label className="auction-ad__bid-label">Your Bid</label>
@@ -528,7 +560,11 @@ export function AuctionPage() {
                     </div>
                     <div className="auction-chef__top-bid">
                       <span className="auction-chef__top-bid-label">Top Bid</span>
-                      <span className="auction-chef__top-bid-value">--</span>
+                      <span className="auction-chef__top-bid-value">
+                        {typeof topBidsChef[chef.id] === "number"
+                          ? `$${topBidsChef[chef.id]!.toLocaleString()}`
+                          : "--"}
+                      </span>
                     </div>
                     <div className="auction-chef__bid">
                       <label className="auction-chef__bid-label">

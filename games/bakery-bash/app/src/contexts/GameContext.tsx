@@ -217,9 +217,19 @@ function gameReducer(state: GameState, action: GameAction): GameState {
 
     case "ADD_RESULT": {
       const result = action.payload;
+      // Dedupe by round — the player-doc snapshot fires multiple times per
+      // round (e.g. maintenance-bar updates, budget writes) and we don't
+      // want to append a duplicate `lastRoundResult` each time.
+      const existing = state.roundResults.findIndex(
+        (r) => r.round === result.round,
+      );
+      const nextResults =
+        existing >= 0
+          ? state.roundResults.map((r, i) => (i === existing ? result : r))
+          : [...state.roundResults, result];
       return {
         ...state,
-        roundResults: [...state.roundResults, result],
+        roundResults: nextResults,
         // Mirror maintenance bars / chef satisfaction from the result payload
         // when the backend includes them. Leave existing state in place if the
         // fields are absent (pre-BE-1..BE-10 rollout).
@@ -355,10 +365,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// Hooks colocated with the provider: splitting these across files would churn
+// ~13 callsites for no runtime benefit, so we silence react-refresh/
+// only-export-components here. HMR still works; only fast-refresh of this
+// single file degrades to full reload, which is fine for a context module.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useGame() {
   return useContext(GameContext);
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useGameDispatch() {
   return useContext(GameDispatchContext);
 }

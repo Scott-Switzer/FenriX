@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   collection,
   doc,
@@ -8,38 +9,38 @@ import {
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { useGame } from "../contexts/GameContext";
+import { useAuth } from "../contexts/AuthContext";
 import { db, functions } from "../lib/firebase";
 import { PageShell } from "../components/ui/PageShell";
 import { humanizeFunctionError } from "../lib/errors";
-import { parseGamePhase } from "../types/game";
+import { parseGamePhase, type BasePhase } from "../types/game";
 
 /**
- * Roster entry mirrored from `/games/{gameId}/roster/{uid}`. The roster
- * subcollection is the only client-readable view of joined players (PR #25).
+ * FE-15 — Professor control panel.
+ *
+ * Additions beyond the previous draft (April 19 update):
+ *   - **Create Game** flow that calls the `createGame` callable (BE-18)
+ *     and surfaces the returned `{gameId, joinCode}` with a
+ *     copy-to-clipboard link to the landing page.
+ *   - **Per-phase submission grid** from `/games/{gameId}/submissions/
+ *     round_{N}_{phase}` (BE-22). Requires the signed-in user to have
+ *     the `professor: true` custom claim; without it the read gets
+ *     permission-denied and the grid falls back to a plain roster.
+ *   - **Professor-ownership gating** — the landing-page ownership check
+ *     compares the signed-in uid to the game doc's `professorUid`. If
+ *     they don't match, we disable the action buttons.
+ *
+ * All four existing controls (`startGame`, `advanceGamePhase`,
+ * `pauseGame` / `resumeGame`, `endGame`) still go through callables;
+ * the backend re-verifies professor ownership on every call.
  */
+
 interface ProfessorRosterEntry {
   uid: string;
   displayName: string;
   bakeryName?: string;
   joinedAt?: Timestamp | null;
 }
-
-/**
- * Professor control panel.
- *
- * All four buttons call deployed Cloud Functions (`startGame`,
- * `advanceGamePhase`, `pauseGame`/`resumeGame`, `endGame`). Each callable
- * verifies the caller's `auth.uid` matches `professorUid`/`professorId` on
- * the game doc — no custom claims required, but the panel must be opened
- * by the same Firebase user that created/owns the game.
- *
- * Why callables (not direct Firestore writes): security rules deny client
- * writes to `/games/{gameId}` (`allow write: if false`). Going through the
- * callable is the only sanctioned path, and the backend wraps each
- * transition in a transaction with a precondition check (e.g. only `lobby`
- * games can be started, only the actively-playing game can be ended) that
- * a raw frontend write would bypass.
- */
 
 interface CallableResult {
   gameId: string;
@@ -48,21 +49,59 @@ interface CallableResult {
   paused?: boolean;
 }
 
+interface CreateGameResult {
+  gameId: string;
+  joinCode: string;
+}
+
+interface SubmissionEntry {
+  status: string;
+  submittedAt?: Timestamp | null;
+  displayName?: string;
+  role?: string | null;
+}
+
+/** Which phases of a round have a corresponding submissions doc. */
+const SUBMISSION_PHASES: Array<{ key: BasePhase; label: string }> = [
+  { key: "decide", label: "Decide" },
+  { key: "bid_ad", label: "Ad Bids" },
+  { key: "bid_chef", label: "Chef Bids" },
+  { key: "roster", label: "Roster" },
+];
+
 export function ProfessorPage() {
-  const { gameId, currentRound } = useGame();
+  const { gameId, currentRound, gameCode } = useGame();
+  const { user } = useAuth();
+
   const [phase, setPhase] = useState<string | null>(null);
   const [paused, setPaused] = useState<boolean>(false);
+  const [professorUid, setProfessorUid] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+
+  // Create-game form.
+  const [totalRounds, setTotalRounds] = useState<number>(5);
+  const [createdGame, setCreatedGame] = useState<CreateGameResult | null>(null);
+  const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
+
+  // Roster + submissions monitor.
   const [roster, setRoster] = useState<ProfessorRosterEntry[]>([]);
   const [rosterError, setRosterError] = useState<string | null>(null);
   const [rosterReady, setRosterReady] = useState(false);
+  const [submissions, setSubmissions] = useState<
+    Record<string, Record<string, SubmissionEntry>>
+  >({});
+  const [submissionsError, setSubmissionsError] = useState<string | null>(null);
 
-  // Mirror the game doc's phase + paused flag so button labels and
-  // disabled-states reflect live backend state.
+  // Mirror the game doc's phase + paused flag + owner uid.
   useEffect(() => {
-    if (!gameId) return;
+    if (!gameId) {
+      setPhase(null);
+      setPaused(false);
+      setProfessorUid(null);
+      return;
+    }
     const gameRef = doc(db, "games", gameId);
     const unsubscribe = onSnapshot(
       gameRef,
@@ -71,6 +110,13 @@ export function ProfessorPage() {
         const data = snap.data() as DocumentData;
         if (typeof data.phase === "string") setPhase(data.phase);
         setPaused(data.paused === true);
+        if (typeof data.professorUid === "string") {
+          setProfessorUid(data.professorUid);
+        } else if (typeof data.professorId === "string") {
+          setProfessorUid(data.professorId);
+        } else {
+          setProfessorUid(null);
+        }
       },
       (err) => {
         console.error("professor: games listener error", { gameId, err });
@@ -79,12 +125,7 @@ export function ProfessorPage() {
     return unsubscribe;
   }, [gameId]);
 
-  // Per-team monitoring (April 19 meeting): subscribe to the roster
-  // subcollection and render one row per joined player. The richer
-  // per-phase submission grid + drill-down (FE-15/FE-16) requires either
-  // BE-22 (mirror submission status to a public doc) or relaxed read
-  // rules on /players for professor UIDs — neither has shipped yet, so
-  // for MVP we render the roster + a footnote pointing at the gap.
+  // Roster subcollection (public-read per rules).
   useEffect(() => {
     if (!gameId) return;
     const rosterRef = collection(db, "games", gameId, "roster");
@@ -100,9 +141,7 @@ export function ProfessorPage() {
                 ? data.displayName
                 : "Player",
             bakeryName:
-              typeof data.bakeryName === "string"
-                ? data.bakeryName
-                : undefined,
+              typeof data.bakeryName === "string" ? data.bakeryName : undefined,
             joinedAt: (data.joinedAt as Timestamp | null) ?? null,
           };
         });
@@ -127,6 +166,75 @@ export function ProfessorPage() {
     return unsubscribe;
   }, [gameId]);
 
+  // BE-22 submissions mirror: subscribe to `round_{N}_{phase}` for every
+  // tracked phase in the current round. We attach listeners *all four*
+  // per round because a professor may want to see e.g. decide status
+  // while the phase is already bid_ad.
+  useEffect(() => {
+    if (!gameId || !currentRound) {
+      setSubmissions({});
+      return;
+    }
+    const unsubs: Array<() => void> = [];
+    SUBMISSION_PHASES.forEach(({ key }) => {
+      const docId = `round_${currentRound}_${key}`;
+      const submissionsRef = doc(
+        db,
+        "games",
+        gameId,
+        "submissions",
+        docId,
+      );
+      const unsubscribe = onSnapshot(
+        submissionsRef,
+        (snap) => {
+          setSubmissionsError(null);
+          if (!snap.exists()) {
+            setSubmissions((prev) => ({ ...prev, [key]: {} }));
+            return;
+          }
+          const data = snap.data() as DocumentData;
+          const byUid: Record<string, SubmissionEntry> = {};
+          for (const [uid, value] of Object.entries(data)) {
+            if (value && typeof value === "object") {
+              const entry = value as DocumentData;
+              byUid[uid] = {
+                status: String(entry.status ?? ""),
+                submittedAt: (entry.submittedAt as Timestamp) ?? null,
+                displayName:
+                  typeof entry.displayName === "string"
+                    ? entry.displayName
+                    : undefined,
+                role:
+                  typeof entry.role === "string"
+                    ? entry.role
+                    : entry.role ?? null,
+              };
+            }
+          }
+          setSubmissions((prev) => ({ ...prev, [key]: byUid }));
+        },
+        (err) => {
+          // BE-22 rules restrict this to users with `professor: true`
+          // custom claim. Missing the claim surfaces a permission-denied
+          // error; we show a one-liner telling the professor how to unlock.
+          if ((err as { code?: string })?.code === "permission-denied") {
+            setSubmissionsError(
+              "To see per-phase submission status, your account needs the " +
+                "professor custom claim (run `scripts/set-professor-claim.js`).",
+            );
+          }
+          setSubmissions((prev) => ({ ...prev, [key]: {} }));
+        },
+      );
+      unsubs.push(unsubscribe);
+    });
+    return () => {
+      unsubs.forEach((u) => u());
+    };
+  }, [gameId, currentRound]);
+
+  // ----- Callables -----
   const callCallable = useCallback(
     async (
       fnName: string,
@@ -179,27 +287,137 @@ export function ProfessorPage() {
     void callCallable("endGame", "end", "Game ended.");
   };
 
-  // Phase-aware enable rules: startGame is only valid in `lobby`; advance and
-  // pause/resume are only valid once the game is running; endGame is valid
-  // anywhere except `game_over`. The backend re-checks all of these, but
-  // disabling the button in the obvious-no cases avoids confusing toasts.
+  const onCreateGame = async () => {
+    setError(null);
+    setInfo(null);
+    setPendingAction("create");
+    try {
+      const createGame = httpsCallable<
+        { totalRounds?: number },
+        CreateGameResult
+      >(functions, "createGame");
+      const res = await createGame({ totalRounds });
+      setCreatedGame(res.data);
+      setInfo(`Game created — join code ${res.data.joinCode}`);
+    } catch (err) {
+      setError(humanizeFunctionError(err, "Could not create a new game."));
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const joinUrl = useMemo(() => {
+    const code = createdGame?.joinCode ?? gameCode;
+    if (!code) return null;
+    try {
+      const base = window.location.origin;
+      return `${base}/?code=${encodeURIComponent(code)}`;
+    } catch {
+      return null;
+    }
+  }, [createdGame, gameCode]);
+
+  const onCopyJoinLink = async () => {
+    if (!joinUrl) return;
+    try {
+      await navigator.clipboard.writeText(joinUrl);
+      setCopyState("copied");
+      window.setTimeout(() => setCopyState("idle"), 1500);
+    } catch {
+      setError("Could not copy to clipboard. Copy manually from the input.");
+    }
+  };
+
+  // ----- Derived state -----
   const inLobby = phase === "lobby";
   const inGameOver = phase === "game_over";
   const isRunning = phase !== null && !inLobby && !inGameOver;
   const busy = pendingAction !== null;
+  const isOwner = user !== null && professorUid !== null && user.uid === professorUid;
+  const ownerGate = gameId !== null && user !== null && !isOwner;
+  const controlsDisabled = ownerGate || busy;
 
   return (
     <PageShell className="professor-page">
       <h1 className="professor-page__title">Professor Control Panel</h1>
 
+      {/* Create a new game (BE-18). */}
+      <section className="professor-page__create">
+        <h2 className="professor-page__section-title">Create a new game</h2>
+        <div className="professor-page__create-form">
+          <label className="professor-page__field">
+            <span>Total rounds</span>
+            <input
+              type="number"
+              min={1}
+              max={10}
+              value={totalRounds}
+              onChange={(e) =>
+                setTotalRounds(Math.max(1, Math.min(10, Number(e.target.value) || 1)))
+              }
+            />
+          </label>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={busy || !user}
+            onClick={onCreateGame}
+            title={!user ? "Sign in first." : "Create a new game."}
+          >
+            {pendingAction === "create" ? "Creating…" : "Create Game"}
+          </button>
+        </div>
+
+        {createdGame && (
+          <div className="professor-page__join-card">
+            <div>
+              <span className="professor-page__join-label">Join code</span>
+              <span className="professor-page__join-code">
+                {createdGame.joinCode}
+              </span>
+            </div>
+            {joinUrl && (
+              <div className="professor-page__join-link-row">
+                <input
+                  className="professor-page__join-link"
+                  value={joinUrl}
+                  readOnly
+                  onFocus={(e) => e.currentTarget.select()}
+                />
+                <button
+                  type="button"
+                  className="btn btn--secondary"
+                  onClick={onCopyJoinLink}
+                >
+                  {copyState === "copied" ? "✓ Copied" : "Copy link"}
+                </button>
+              </div>
+            )}
+            <Link
+              to={`/?code=${encodeURIComponent(createdGame.joinCode)}`}
+              className="professor-page__join-open"
+            >
+              Open landing page →
+            </Link>
+          </div>
+        )}
+      </section>
+
+      {/* Live game controls. */}
       {gameId ? (
         <p className="professor-page__phase">
           Game phase: <strong>{phase ?? "loading…"}</strong>
           {paused && <span className="professor-page__paused"> · paused</span>}
+          {ownerGate && (
+            <span className="professor-page__not-owner">
+              {" "}
+              · You are not the professor for this game
+            </span>
+          )}
         </p>
       ) : (
         <p className="professor-page__note">
-          Join or create a game first to use these controls.
+          Create a game above, or join one to use these controls.
         </p>
       )}
 
@@ -207,7 +425,7 @@ export function ProfessorPage() {
         <button
           className="btn btn--primary"
           onClick={onStart}
-          disabled={!gameId || busy || !inLobby}
+          disabled={!gameId || controlsDisabled || !inLobby}
           title={
             inLobby
               ? "Start the game and move all players to round 1."
@@ -220,7 +438,7 @@ export function ProfessorPage() {
         <button
           className="btn btn--secondary"
           onClick={onAdvance}
-          disabled={!gameId || busy || !isRunning}
+          disabled={!gameId || controlsDisabled || !isRunning}
           title="Advance the current round to the next phase."
         >
           {pendingAction === "advance" ? "Advancing…" : "Advance Round"}
@@ -229,22 +447,22 @@ export function ProfessorPage() {
         <button
           className="btn btn--secondary"
           onClick={onPauseResume}
-          disabled={!gameId || busy || !isRunning}
+          disabled={!gameId || controlsDisabled || !isRunning}
           title={paused ? "Resume the game timer." : "Pause the game timer."}
         >
           {pendingAction === "pause"
             ? "Pausing…"
             : pendingAction === "resume"
-            ? "Resuming…"
-            : paused
-            ? "Resume Game"
-            : "Pause Game"}
+              ? "Resuming…"
+              : paused
+                ? "Resume Game"
+                : "Pause Game"}
         </button>
 
         <button
           className="btn btn--danger"
           onClick={onEnd}
-          disabled={!gameId || busy || inGameOver || phase === null}
+          disabled={!gameId || controlsDisabled || inGameOver || phase === null}
           title={
             phase === null
               ? "Loading game state…"
@@ -253,6 +471,13 @@ export function ProfessorPage() {
         >
           {pendingAction === "end" ? "Ending…" : "End Game"}
         </button>
+
+        <Link
+          to="/professor/leaderboard"
+          className="btn btn--ghost professor-page__leaderboard-link"
+        >
+          Leaderboard →
+        </Link>
       </div>
 
       {error && (
@@ -266,14 +491,17 @@ export function ProfessorPage() {
         </p>
       )}
 
-      {gameId && (
+      {/* Per-phase submission grid. */}
+      {gameId && roster.length > 0 && (
         <section className="professor-page__monitor">
           <h2 className="professor-page__monitor-title">
-            Players {rosterReady ? `(${roster.length})` : "(—)"}
+            Players ({roster.length})
             {currentRound > 0 && (
               <span className="professor-page__monitor-round">
                 · Round {currentRound}
-                {phase ? ` · ${parseGamePhase(phase, currentRound).base}` : ""}
+                {phase
+                  ? ` · ${parseGamePhase(phase, currentRound).base}`
+                  : ""}
               </span>
             )}
           </h2>
@@ -283,44 +511,60 @@ export function ProfessorPage() {
               {rosterError}
             </p>
           )}
-
-          {rosterReady && roster.length === 0 && !rosterError && (
-            <p className="professor-page__note">
-              No players have joined yet.
+          {submissionsError && (
+            <p className="professor-page__monitor-footnote">
+              {submissionsError}
             </p>
           )}
 
-          {roster.length > 0 && (
-            <table className="professor-monitor-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Player</th>
-                  <th>Bakery</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {roster.map((entry, i) => (
-                  <tr key={entry.uid}>
-                    <td>{i + 1}</td>
-                    <td>{entry.displayName}</td>
-                    <td>{entry.bakeryName ?? "—"}</td>
-                    <td title={entry.uid}>🟢 connected</td>
-                  </tr>
+          <table className="professor-monitor-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Player</th>
+                <th>Bakery</th>
+                {SUBMISSION_PHASES.map((p) => (
+                  <th key={p.key}>{p.label}</th>
                 ))}
-              </tbody>
-            </table>
-          )}
-
-          <p className="professor-page__monitor-footnote">
-            Per-phase submission status (✓ submitted / ⏳ pending) requires
-            backend BE-22 to mirror player submission state to a
-            professor-readable doc. Connection status is the most we can
-            surface today; the per-team progress grid will appear here once
-            BE-22 ships.
-          </p>
+              </tr>
+            </thead>
+            <tbody>
+              {roster.map((entry, i) => (
+                <tr key={entry.uid}>
+                  <td>{i + 1}</td>
+                  <td>{entry.displayName}</td>
+                  <td>{entry.bakeryName ?? "—"}</td>
+                  {SUBMISSION_PHASES.map((p) => {
+                    const sub = submissions[p.key]?.[entry.uid];
+                    const submitted = sub?.status === "submitted";
+                    return (
+                      <td
+                        key={p.key}
+                        className={
+                          "professor-monitor-table__cell" +
+                          (submitted
+                            ? " professor-monitor-table__cell--ok"
+                            : " professor-monitor-table__cell--pending")
+                        }
+                        title={
+                          submitted
+                            ? `Submitted${sub?.role ? ` as ${sub.role}` : ""}`
+                            : "Not yet submitted"
+                        }
+                      >
+                        {submitted ? "✓" : "⏳"}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </section>
+      )}
+
+      {gameId && rosterReady && roster.length === 0 && !rosterError && (
+        <p className="professor-page__note">No players have joined yet.</p>
       )}
     </PageShell>
   );

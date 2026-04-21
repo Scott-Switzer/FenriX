@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { BudgetSummary } from "./BudgetSummary";
 import { StaffTab } from "./tabs/StaffTab";
 import { StatusTab } from "./tabs/StatusTab";
 
@@ -10,6 +9,13 @@ import { StatusTab } from "./tabs/StatusTab";
  *    task assignments, escalating hire cost display.
  *  - **Status**: read-only health/cleanliness bars. Product quantities live
  *    on the main BakeryView (station grid), not here.
+ *
+ * Note (FE-07, April 19): the prior `<BudgetSummary>` panel was removed
+ * from the sidebar per the updated decide-phase spec ("no budget"). The
+ * component file is retained in case the spec flips again, but it is no
+ * longer mounted anywhere during play. Budget display is now restricted
+ * to `/game/conclusion` and the professor leaderboard only (Hard UI
+ * Rule #1, non-overridden).
  */
 const TABS = ["Hire", "Status"] as const;
 type Tab = (typeof TABS)[number];
@@ -21,7 +27,6 @@ export function GameSidebar() {
 
   return (
     <aside className="game-sidebar">
-      <BudgetSummary />
       <nav className="game-sidebar__tabs" role="tablist">
         {TABS.map((tab) => (
           <button

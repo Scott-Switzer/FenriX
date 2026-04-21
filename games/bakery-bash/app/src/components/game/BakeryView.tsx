@@ -25,14 +25,11 @@ const PRODUCT_DISPLAY: Record<
     price: 8.75,
     asset: "/assets/products/sandwich.svg",
   },
-  // Asset filenames still reflect the legacy product keys; product-key rename
-  // (latte → coffee, matcha-latte → matcha) in code is complete. Physical
-  // asset rename is tracked separately.
-  coffee: { name: "Coffee", price: 4.0, asset: "/assets/products/latte.svg" },
+  coffee: { name: "Coffee", price: 4.0, asset: "/assets/products/coffee.svg" },
   matcha: {
     name: "Matcha",
     price: 6.25,
-    asset: "/assets/products/matcha-latte.svg",
+    asset: "/assets/products/matcha.svg",
   },
 };
 

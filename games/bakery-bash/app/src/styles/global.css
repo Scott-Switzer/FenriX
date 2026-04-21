@@ -1932,6 +1932,234 @@ h3 { font-size: 0.7rem; }
   letter-spacing: 0.05em;
 }
 
+.professor-monitor-table__cell {
+  text-align: center;
+  font-size: 1rem;
+}
+
+.professor-monitor-table__cell--ok {
+  color: var(--mint);
+  font-weight: 700;
+}
+
+.professor-monitor-table__cell--pending {
+  color: var(--dark-roast);
+  opacity: 0.55;
+}
+
+/* FE-15 — Create-game panel + join-link card. */
+
+.professor-page__create {
+  background: var(--cream);
+  border: 2px solid var(--dough);
+  border-radius: 0.5rem;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.professor-page__section-title {
+  font-family: var(--font-pixel);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  margin: 0 0 0.65rem 0;
+  color: var(--dark-roast);
+}
+
+.professor-page__create-form {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.professor-page__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+}
+
+.professor-page__field input {
+  width: 5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--dough);
+  border-radius: 0.25rem;
+  font-family: var(--font-body);
+}
+
+.professor-page__join-card {
+  margin-top: 0.85rem;
+  padding: 0.75rem;
+  background: var(--dough);
+  border-radius: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.professor-page__join-label {
+  display: block;
+  font-family: var(--font-pixel);
+  font-size: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--dark-roast);
+  margin-bottom: 0.15rem;
+}
+
+.professor-page__join-code {
+  font-family: var(--font-pixel);
+  font-size: 1.25rem;
+  letter-spacing: 0.1em;
+  color: var(--dark-roast);
+}
+
+.professor-page__join-link-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.professor-page__join-link {
+  flex: 1;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--cream);
+  border-radius: 0.25rem;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  background: var(--cream);
+}
+
+.professor-page__join-open {
+  align-self: flex-start;
+  color: var(--espresso);
+  text-decoration: underline;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+}
+
+.professor-page__not-owner {
+  color: var(--berry);
+  font-weight: 600;
+}
+
+.professor-page__leaderboard-link {
+  margin-left: auto;
+}
+
+/* FE-16 — Professor leaderboard page. */
+
+.professor-leaderboard {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.professor-leaderboard__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.professor-leaderboard__title {
+  font-family: var(--font-display, var(--font-pixel));
+  font-size: 1.4rem;
+  margin: 0;
+  color: var(--dark-roast);
+}
+
+.professor-leaderboard__round {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  color: var(--espresso);
+  font-weight: 400;
+}
+
+.professor-leaderboard__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.professor-leaderboard__error {
+  color: var(--berry);
+  background: var(--cream);
+  border: 1px solid var(--berry);
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.25rem;
+}
+
+.professor-leaderboard__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.6rem;
+}
+
+.professor-leaderboard__stat {
+  background: var(--cream);
+  border: 2px solid var(--dough);
+  border-radius: 0.4rem;
+  padding: 0.65rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.professor-leaderboard__stat-label {
+  font-family: var(--font-pixel);
+  font-size: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--dark-roast);
+}
+
+.professor-leaderboard__stat-value {
+  font-family: var(--font-body);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--espresso);
+}
+
+.professor-leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  background: var(--cream);
+  border: 2px solid var(--dough);
+  border-radius: 0.4rem;
+  overflow: hidden;
+}
+
+.professor-leaderboard-table th,
+.professor-leaderboard-table td {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--dough);
+}
+
+.professor-leaderboard-table th {
+  font-family: var(--font-pixel);
+  font-size: 0.5rem;
+  text-transform: uppercase;
+  color: var(--dark-roast);
+  letter-spacing: 0.05em;
+  background: var(--dough);
+}
+
+.professor-leaderboard-table__empty {
+  text-align: center;
+  color: var(--dark-roast);
+  padding: 1rem;
+}
+
+.professor-leaderboard-table__deficit {
+  color: var(--berry);
+  font-weight: 700;
+}
+
 /* ─── Team page (DEC-21 + DEC-23) ────────────────────────── */
 
 .team-page {

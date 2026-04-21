@@ -66,7 +66,8 @@ function serializeRow(r: RoundResult): string {
   ].join(",");
 }
 
-function downloadResultsCsv(results: RoundResult[]) {
+// eslint-disable-next-line react-refresh/only-export-components
+export function downloadResultsCsv(results: RoundResult[]) {
   const header = CSV_COLUMNS.join(",");
   const rows = results.map(serializeRow);
   const blob = new Blob([header + "\n" + rows.join("\n")], {

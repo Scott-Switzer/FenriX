@@ -1,11 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { doc, onSnapshot, type DocumentData } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  onSnapshot,
+  type DocumentData,
+} from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { useGame, useGameDispatch } from "../contexts/GameContext";
 import { RoundHeader } from "../components/game/RoundHeader";
 import { BakeryView } from "../components/game/BakeryView";
 import { GameSidebar } from "../components/game/GameSidebar";
+import {
+  AdWinnerBanner,
+  type AdWinnerEntry,
+} from "../components/game/AdWinnerBanner";
+import { SubmissionLock } from "../components/game/SubmissionLock";
 import { PageShell } from "../components/ui/PageShell";
 import { SimulatePhase } from "./phases/SimulatePhase";
 import { ResultsPhase } from "./phases/ResultsPhase";
@@ -106,6 +116,20 @@ export function GamePage() {
   const navigate = useNavigate();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // FE-11 — previous round's ad winners, rendered at the top of Decide.
+  // The aggregate `rounds/round_{N}` doc writes
+  // `auctionResults.ads.{TV|Billboard|Radio|Newspaper}.{winnerId, winningBid}`
+  // (see firestore-schema.js). We resolve each `winnerId` to a bakery name
+  // via the public roster subcollection so the banner shows "Bakery — $X"
+  // rather than a raw uid. Rendering falls back to the empty state when
+  // any part of the chain is missing.
+  const [adWinners, setAdWinners] = useState<
+    Partial<Record<AdWinnerEntry["adType"], AdWinnerEntry>> | null
+  >(null);
+  const [rosterByUid, setRosterByUid] = useState<
+    Record<string, { displayName?: string; bakeryName?: string }>
+  >({});
 
   // --- Listener: /games/{gameId} — drives phase + round + phaseEndsAt. ---
   useEffect(() => {
@@ -230,6 +254,79 @@ export function GamePage() {
         } else if (data.teamId === null) {
           dispatch({ type: "SET_TEAM_ID", payload: null });
         }
+
+        // lastRoundResult → dispatch ADD_RESULT so ResultsPhase + the CSV
+        // download pick it up. Backend writes this on the player doc after
+        // each round's simulation (`games/{gameId}/players/{uid}.lastRoundResult`).
+        const lrr = data.lastRoundResult;
+        if (lrr && typeof lrr === "object" && typeof lrr.round === "number") {
+          // Revenue: prefer revenueNet, fall back to revenueGross, then legacy
+          // `revenue`. Backend writes the first two; old docs used the third.
+          const revenue =
+            typeof lrr.revenueNet === "number"
+              ? lrr.revenueNet
+              : typeof lrr.revenueGross === "number"
+                ? lrr.revenueGross
+                : typeof lrr.revenue === "number"
+                  ? lrr.revenue
+                  : 0;
+          dispatch({
+            type: "ADD_RESULT",
+            payload: {
+              round: lrr.round,
+              revenue,
+              revenueNet: lrr.revenueNet,
+              revenueGross: lrr.revenueGross,
+              amountBorrowed: lrr.amountBorrowed,
+              interestCharged: lrr.interestCharged,
+              selloutAnywhere: lrr.selloutAnywhere === true,
+              customerCount:
+                typeof lrr.customerCount === "number" ? lrr.customerCount : 0,
+              customerSatisfaction:
+                typeof lrr.aggregateSatisfactionPct === "number"
+                  ? Math.round(lrr.aggregateSatisfactionPct)
+                  : typeof lrr.customerSatisfaction === "number"
+                    ? lrr.customerSatisfaction
+                    : 0,
+              chefSatisfactionScore:
+                typeof lrr.chefSatisfactionScore === "number"
+                  ? lrr.chefSatisfactionScore
+                  : undefined,
+              chefSatisfactionScores:
+                lrr.chefSatisfactionScores &&
+                typeof lrr.chefSatisfactionScores === "object"
+                  ? (lrr.chefSatisfactionScores as Record<string, number>)
+                  : undefined,
+              chefDepartures: Array.isArray(lrr.chefDepartures)
+                ? (lrr.chefDepartures as string[])
+                : undefined,
+              chefDepartureNames: Array.isArray(lrr.chefDepartureNames)
+                ? (lrr.chefDepartureNames as string[])
+                : undefined,
+              productBreakdown:
+                lrr.productBreakdown && typeof lrr.productBreakdown === "object"
+                  ? lrr.productBreakdown
+                  : undefined,
+              adWon: lrr.adWon ?? null,
+              adPaid: typeof lrr.adPaid === "number" ? lrr.adPaid : undefined,
+              auctionResults: {
+                adWon: lrr.adWon ?? null,
+                chefWon:
+                  typeof lrr.chefWon === "string"
+                    ? lrr.chefWon
+                    : lrr.chefWon ?? null,
+              },
+              maintenanceBars:
+                lrr.maintenanceBars && typeof lrr.maintenanceBars === "object"
+                  ? lrr.maintenanceBars
+                  : undefined,
+              staffCounts:
+                lrr.staffCounts && typeof lrr.staffCounts === "object"
+                  ? lrr.staffCounts
+                  : undefined,
+            },
+          });
+        }
       },
       (err) => {
         console.error("games/players listener error", {
@@ -245,11 +342,86 @@ export function GamePage() {
   const parsed = parseGamePhase(phase, currentRound);
   const basePhase = parsed.base;
 
-  // Redirect into the dedicated auction page when backend says so. This is
+  // Subscribe to the roster so we can map `winnerId` → bakeryName/display.
+  // Rules allow everyone to read the roster subcollection, so this works
+  // without professor custom claims.
+  useEffect(() => {
+    if (!gameId) return;
+    const rosterRef = collection(db, "games", gameId, "roster");
+    const unsubscribe = onSnapshot(rosterRef, (snap) => {
+      const map: Record<
+        string,
+        { displayName?: string; bakeryName?: string }
+      > = {};
+      snap.docs.forEach((d) => {
+        const data = d.data() as DocumentData;
+        map[d.id] = {
+          displayName:
+            typeof data.displayName === "string" ? data.displayName : undefined,
+          bakeryName:
+            typeof data.bakeryName === "string" ? data.bakeryName : undefined,
+        };
+      });
+      setRosterByUid(map);
+    });
+    return unsubscribe;
+  }, [gameId]);
+
+  // FE-11 — read last round's ad winners for the banner (only shown on
+  // decide after round 1). Parses `auctionResults.ads.{adType}` out of
+  // the aggregate `rounds/round_{N-1}` doc (firestore-schema.js). The
+  // `winnerId` is resolved against the roster-derived name map above.
+  useEffect(() => {
+    if (!gameId || !currentRound || currentRound <= 1) {
+      setAdWinners(null);
+      return;
+    }
+    const prevRound = currentRound - 1;
+    const prevRoundRef = doc(db, "games", gameId, "rounds", `round_${prevRound}`);
+    const unsubscribe = onSnapshot(prevRoundRef, (snap) => {
+      if (!snap.exists()) {
+        setAdWinners(null);
+        return;
+      }
+      const data = snap.data() as DocumentData;
+      const auction = data.auctionResults as DocumentData | undefined;
+      const adsRaw = (auction?.ads ?? null) as DocumentData | null;
+      if (!adsRaw || typeof adsRaw !== "object") {
+        setAdWinners(null);
+        return;
+      }
+      const out: Partial<Record<AdWinnerEntry["adType"], AdWinnerEntry>> = {};
+      (["TV", "Billboard", "Radio", "Newspaper"] as const).forEach((t) => {
+        const entry = adsRaw[t];
+        if (!entry || typeof entry !== "object") return;
+        const winnerId =
+          typeof entry.winnerId === "string" ? entry.winnerId : null;
+        const winningBid =
+          typeof entry.winningBid === "number" ? entry.winningBid : undefined;
+        if (!winnerId || !winningBid) return; // no bids landed for this surface
+        out[t] = {
+          adType: t,
+          amount: winningBid,
+          bakeryName: rosterByUid[winnerId]?.bakeryName,
+          displayName: rosterByUid[winnerId]?.displayName,
+        };
+      });
+      setAdWinners(Object.keys(out).length > 0 ? out : null);
+    });
+    return unsubscribe;
+  }, [gameId, currentRound, rosterByUid]);
+
+  // Redirect into the dedicated phase page when backend says so. This is
   // phase-driven (not a manual navigation after submit).
   useEffect(() => {
     if (basePhase === "bid_ad" || basePhase === "bid_chef") {
       navigate("/auction");
+    } else if (basePhase === "email") {
+      navigate("/game/email");
+    } else if (basePhase === "roster") {
+      navigate("/game/roster");
+    } else if (basePhase === "game_over") {
+      navigate("/game/conclusion");
     }
   }, [basePhase, navigate]);
 
@@ -347,9 +519,32 @@ export function GamePage() {
     );
   }
 
+  // DEC-21: only the Operations role (or solo) may submit Decide.
+  const canSubmit = roleOwnsDecide(role);
+  const ownerLabel = ownerOfDecide();
+  const submitDisabled =
+    submitting || decisionSubmitted || !gameId || !canSubmit;
+  const submitLabel = !canSubmit
+    ? `Your ${ownerLabel} teammate submits`
+    : submitting
+      ? "Submitting…"
+      : decisionSubmitted
+        ? "✓ Submitted"
+        : "Submit Decisions";
+
   return (
     <PageShell className="game-page game-page--wide">
       <RoundHeader />
+
+      {/* FE-11 — previous-round ad winners banner (round 2+). */}
+      {currentRound && currentRound > 1 && (
+        <AdWinnerBanner
+          round={currentRound - 1}
+          winners={adWinners}
+          hideWhenEmpty={false}
+        />
+      )}
+
       <div className="game-page__dashboard">
         <BakeryView />
         <GameSidebar />
@@ -359,36 +554,31 @@ export function GamePage() {
           {submitError}
         </p>
       )}
-      {(() => {
-        // DEC-21: only the Operations role (or solo) may submit Decide.
-        // Other teammates still see and edit the form so they can advise,
-        // but the button is disabled with an explicit owner tooltip.
-        const canSubmit = roleOwnsDecide(role);
-        const ownerLabel = ownerOfDecide();
-        const disabled =
-          submitting || decisionSubmitted || !gameId || !canSubmit;
-        const label = !canSubmit
-          ? `Your ${ownerLabel} teammate submits this decision`
-          : submitting
-          ? "Submitting…"
-          : decisionSubmitted
-          ? "Submitted — waiting for other players…"
-          : "Submit Decisions";
-        return (
+
+      {/* FE-17 — timer + live submission counter + role-gated submit. */}
+      <SubmissionLock
+        phase="decide"
+        submitted={decisionSubmitted}
+        hint={
+          !canSubmit
+            ? `Your ${ownerLabel} teammate submits this decision.`
+            : undefined
+        }
+        action={
           <button
             className="btn btn--primary game-page__submit"
             onClick={handleSubmit}
-            disabled={disabled}
+            disabled={submitDisabled}
             title={
               !canSubmit
                 ? `Your ${ownerLabel} teammate submits this decision.`
                 : undefined
             }
           >
-            {label}
+            {submitLabel}
           </button>
-        );
-      })()}
+        }
+      />
     </PageShell>
   );
 }
