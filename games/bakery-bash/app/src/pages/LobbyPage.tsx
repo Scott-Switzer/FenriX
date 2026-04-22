@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
 import {
   collection,
+  doc,
   onSnapshot,
   type DocumentData,
   type Timestamp,
 } from "firebase/firestore";
+import { Link, useNavigate } from "react-router-dom";
 import { useGame } from "../contexts/GameContext";
+import type { GamePhaseString } from "../types/game";
 import { db } from "../lib/firebase";
 import { PageShell } from "../components/ui/PageShell";
 import { PLAYER_ROLE_LABELS } from "../types/game";
-import { Link } from "react-router-dom";
 
 /**
  * Roster entry as published to `/games/{gameId}/roster/{playerId}` by the
@@ -25,7 +27,30 @@ interface RosterEntry {
 }
 
 export function LobbyPage() {
-  const { player, playerId, gameId, gameCode, role, teamId, teamName } = useGame();
+  const { player, playerId, gameId, gameCode, role, teamId, teamName, phase } = useGame();
+  const navigate = useNavigate();
+
+  const [gamePhase, setGamePhase] = useState<GamePhaseString | null>(null);
+  useEffect(() => {
+    if (!gameId) return;
+    const gameRef = doc(db, "games", gameId);
+    return onSnapshot(
+      gameRef,
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data() as DocumentData;
+        if (typeof data.phase === "string") setGamePhase(data.phase as GamePhaseString);
+      },
+      (err) => {
+        console.error("lobby game-doc listener error:", { gameId, err });
+      },
+    );
+  }, [gameId]);
+  useEffect(() => {
+    const livePhase = gamePhase ?? phase;
+    if (livePhase && livePhase !== "lobby") navigate("/game");
+  }, [gamePhase, phase, navigate]);
+
   const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [rosterError, setRosterError] = useState<string | null>(null);
   // Distinct from `roster.length === 0`: tells us whether the snapshot
@@ -78,6 +103,7 @@ export function LobbyPage() {
     );
     return unsubscribe;
   }, [gameId]);
+
 
   // Fallback to the local context-only "you" row only while the listener is
   // genuinely still warming up. Once we've heard from Firestore (success or

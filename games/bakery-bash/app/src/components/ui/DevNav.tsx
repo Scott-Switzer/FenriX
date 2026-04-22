@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useGame, useGameDispatch } from "../../contexts/GameContext";
 import { parseGamePhase, type GamePhaseString } from "../../types/game";
+import { isDevModeEnabled, syncDevModeFromUrl } from "../../lib/devMode";
 
 /**
  * Dev-only shortcuts for jumping between phases. Phase strings use the
@@ -19,7 +21,22 @@ export function DevNav() {
   const { phase, auctionTab } = useGame();
   const dispatch = useGameDispatch();
 
-  if (import.meta.env.PROD) return null;
+  // Mirror the `?dev=1` / `?dev=0` URL param to localStorage on mount, then
+  // track the flag in state so toggling it elsewhere (e.g. the Professor
+  // page button) re-renders the nav without a page reload.
+  const [visible, setVisible] = useState<boolean>(() => syncDevModeFromUrl());
+
+  useEffect(() => {
+    const onChange = () => setVisible(isDevModeEnabled());
+    window.addEventListener("bakery-bash:dev-mode-change", onChange);
+    window.addEventListener("storage", onChange);
+    return () => {
+      window.removeEventListener("bakery-bash:dev-mode-change", onChange);
+      window.removeEventListener("storage", onChange);
+    };
+  }, []);
+
+  if (!visible) return null;
 
   const setPhase = (p: GamePhaseString) => {
     dispatch({ type: "SET_PHASE", payload: p });

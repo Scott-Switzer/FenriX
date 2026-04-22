@@ -4,6 +4,7 @@ import { httpsCallable } from "firebase/functions";
 import { PageShell } from "../components/ui/PageShell";
 import { RoundHeader } from "../components/game/RoundHeader";
 import { useGame, useGameDispatch } from "../contexts/GameContext";
+import { useGamePhaseNav } from "../hooks/useGamePhaseNav";
 import { db, functions } from "../lib/firebase";
 import { humanizeFunctionError } from "../lib/errors";
 import {
@@ -201,6 +202,7 @@ function mapBackendChef(chef: BackendChef): ChefListing | null {
 }
 
 export function AuctionPage() {
+  useGamePhaseNav();
   const {
     gameId,
     currentRound,

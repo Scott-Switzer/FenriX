@@ -33,7 +33,7 @@ function assert(condition, message) {
 
 async function seed(adminDb, uid1, uid2) {
   await adminDb.doc(`games/${GAME_ID}`).set({
-    joinCode: "TEAM01",
+    joinCode: "TEAM23",
     phase: "lobby",
     round: 0,
     currentRound: 0,

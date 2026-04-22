@@ -129,14 +129,14 @@ export function SubmissionLock({
       data-submitted={submitted ? "true" : "false"}
     >
       <div className="submission-lock__timer">
-        <span className="submission-lock__timer-label">Time left</span>
+        <span className="submission-lock__timer-label">Time left:</span>{" "}
         <span className="submission-lock__timer-value">
           {remainingMs === null ? "—" : formatMs(remainingMs)}
         </span>
       </div>
 
       <div className="submission-lock__counts">
-        <span className="submission-lock__counts-label">Submitted</span>
+        <span className="submission-lock__counts-label">Submitted:</span>{" "}
         <span className="submission-lock__counts-value">
           {submittedUids.length}
           {expected !== null && ` / ${expected}`}

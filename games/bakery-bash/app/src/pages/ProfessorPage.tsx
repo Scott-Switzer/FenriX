@@ -8,12 +8,13 @@ import {
   type Timestamp,
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
-import { useGame } from "../contexts/GameContext";
+import { useGame, useGameDispatch } from "../contexts/GameContext";
 import { useAuth } from "../contexts/AuthContext";
 import { db, functions } from "../lib/firebase";
 import { PageShell } from "../components/ui/PageShell";
 import { humanizeFunctionError } from "../lib/errors";
 import { parseGamePhase, type BasePhase } from "../types/game";
+import { isDevModeEnabled, setDevMode } from "../lib/devMode";
 
 /**
  * FE-15 — Professor control panel.
@@ -70,7 +71,8 @@ const SUBMISSION_PHASES: Array<{ key: BasePhase; label: string }> = [
 ];
 
 export function ProfessorPage() {
-  const { gameId, currentRound, gameCode } = useGame();
+  const { gameId: contextGameId, currentRound, gameCode } = useGame();
+  const dispatch = useGameDispatch();
   const { user } = useAuth();
 
   const [phase, setPhase] = useState<string | null>(null);
@@ -84,6 +86,32 @@ export function ProfessorPage() {
   const [totalRounds, setTotalRounds] = useState<number>(5);
   const [createdGame, setCreatedGame] = useState<CreateGameResult | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
+
+  const gameId = contextGameId ?? createdGame?.gameId ?? null;
+
+  // Dev-tools visibility — the DevNav is hidden from students by default.
+  // Professors can toggle it from this page so they (and our dev team) can
+  // jump between phases while debugging without exposing the controls to
+  // the classroom.
+  const [devModeOn, setDevModeOn] = useState<boolean>(() => isDevModeEnabled());
+  const toggleDevMode = () => {
+    const next = !devModeOn;
+    setDevMode(next);
+    setDevModeOn(next);
+  };
+
+  // Keep the button label in sync when dev mode is flipped elsewhere — another
+  // tab (`storage` event) or the same tab via `?dev=1` / `?dev=0` / the DevNav
+  // (`bakery-bash:dev-mode-change`). Mirrors the pattern in `DevNav.tsx`.
+  useEffect(() => {
+    const onChange = () => setDevModeOn(isDevModeEnabled());
+    window.addEventListener("bakery-bash:dev-mode-change", onChange);
+    window.addEventListener("storage", onChange);
+    return () => {
+      window.removeEventListener("bakery-bash:dev-mode-change", onChange);
+      window.removeEventListener("storage", onChange);
+    };
+  }, []);
 
   // Roster + submissions monitor.
   const [roster, setRoster] = useState<ProfessorRosterEntry[]>([]);
@@ -298,6 +326,15 @@ export function ProfessorPage() {
       >(functions, "createGame");
       const res = await createGame({ totalRounds });
       setCreatedGame(res.data);
+      dispatch({
+        type: "JOIN_GAME",
+        payload: {
+          gameId: res.data.gameId,
+          playerId: user!.uid,
+          gameCode: res.data.joinCode,
+          player: { id: user!.uid, name: "Professor", bakeryName: "", budget: 0, cumulativeRevenue: 0 },
+        },
+      });
       setInfo(`Game created — join code ${res.data.joinCode}`);
     } catch (err) {
       setError(humanizeFunctionError(err, "Could not create a new game."));
@@ -478,6 +515,19 @@ export function ProfessorPage() {
         >
           Leaderboard →
         </Link>
+
+        <button
+          type="button"
+          className="btn btn--ghost"
+          onClick={toggleDevMode}
+          title={
+            devModeOn
+              ? "Hide the phase-jump nav bar. Students should never see this."
+              : "Show a phase-jump nav bar at the bottom of the screen (for debugging). Students don't see this."
+          }
+        >
+          {devModeOn ? "Hide dev tools" : "Show dev tools"}
+        </button>
       </div>
 
       {error && (

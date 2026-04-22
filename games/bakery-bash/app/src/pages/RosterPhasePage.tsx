@@ -8,6 +8,7 @@ import {
 import { httpsCallable, type FunctionsError } from "firebase/functions";
 import { db, functions } from "../lib/firebase";
 import { useGame } from "../contexts/GameContext";
+import { useGamePhaseNav } from "../hooks/useGamePhaseNav";
 import { PageShell } from "../components/ui/PageShell";
 import { RoundHeader } from "../components/game/RoundHeader";
 import { ChefCard } from "../components/game/ChefCard";
@@ -75,6 +76,7 @@ function coerceChef(raw: DocumentData): RosterChef | null {
 const SPECIALTY_CAP = 3;
 
 export function RosterPhasePage() {
+  useGamePhaseNav();
   const { gameId, playerId, currentRound, phase, role } = useGame();
   const navigate = useNavigate();
 
