@@ -1175,6 +1175,50 @@ describe('decision-validation.js', () => {
       eq(e.code, 'invalid-argument');
     }
   });
+
+  // POST-01: validateProductPrices tests
+  it('accepts undefined → returns empty object', () => {
+    deepEq(validation.validateProductPrices(undefined), {});
+  });
+  it('accepts null → returns empty object', () => {
+    deepEq(validation.validateProductPrices(null), {});
+  });
+  it('accepts empty object', () => {
+    deepEq(validation.validateProductPrices({}), {});
+  });
+  it('rejects non-object', () => {
+    throws(() => validation.validateProductPrices('nope'), /must be an object/);
+    throws(() => validation.validateProductPrices(42),    /must be an object/);
+  });
+  it('rejects unknown product key', () => {
+    throws(() => validation.validateProductPrices({ latte: 4 }), /unknown product "latte"/);
+  });
+  it('rejects non-number / NaN / Infinity', () => {
+    throws(() => validation.validateProductPrices({ coffee: 'free' }), /must be a finite positive number/);
+    throws(() => validation.validateProductPrices({ coffee: NaN }),     /must be a finite positive number/);
+    throws(() => validation.validateProductPrices({ coffee: Infinity }),/must be a finite positive number/);
+  });
+  it('rejects negative and zero', () => {
+    throws(() => validation.validateProductPrices({ coffee: 0 }),  /must be a finite positive number/);
+    throws(() => validation.validateProductPrices({ coffee: -1 }), /must be a finite positive number/);
+  });
+  it('snaps to $0.25 grid', () => {
+    const out = validation.validateProductPrices({ coffee: 4.13 });
+    near(out.coffee, 4.25, 0.001);
+  });
+  it('clamps above ceiling to ceiling', () => {
+    const out = validation.validateProductPrices({ coffee: 100 });
+    near(out.coffee, 6.50, 0.001);
+  });
+  it('clamps below floor to floor', () => {
+    const out = validation.validateProductPrices({ coffee: 0.50 });
+    near(out.coffee, 2.00, 0.001);
+  });
+  it('passes through valid in-range values', () => {
+    const out = validation.validateProductPrices({ coffee: 4.00, matcha: 7.00 });
+    near(out.coffee, 4.00, 0.001);
+    near(out.matcha, 7.00, 0.001);
+  });
 });
 
 // ============================================================================
