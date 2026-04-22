@@ -290,12 +290,29 @@ export function toChefCardInput(chef: ChefPoolEntry): ChefCardInput {
 
 export type AuctionTab = "chefs" | "ads";
 
+// POST-01: per-product dynamic pricing
+export type PriceZone = 'floor' | 'competitive' | 'premium';
+export type ElasticityTier = 'high' | 'medium' | 'low';
+
+export interface ProductPriceConfig {
+  floor: number;
+  competitiveRangeLow: number;
+  competitiveRangeHigh: number;
+  premiumRangeLow: number;
+  premiumRangeHigh: number;
+  ceiling: number;
+  elasticityTier: ElasticityTier;
+}
+
 export interface MenuItem {
   id: MenuItemId;
   name: string;
   unlocked: boolean;
   basePrice: number;
   quantity: number;
+  priceFloor: number;
+  priceCeiling: number;
+  elasticityTier: ElasticityTier;
 }
 
 // ---------------------------------------------------------------------------
@@ -324,6 +341,8 @@ export interface PendingDecisionDraft {
   staffCounts: StaffCounts;
   /** One task per maintenance guy; length must equal `staffCounts.maintenanceGuys`. */
   maintenanceTasks: MaintenanceTask[];
+  /** POST-01: Finance-owned per-product prices. */
+  productPrices: Record<ProductKey, number>;
 }
 
 /** Shape passed as `adBids` to `submitBids({ bidType: "ad" })`. */
@@ -439,6 +458,9 @@ export function roleOwnsAdBids(role: PlayerRole): boolean {
 export function roleOwnsChefBids(role: PlayerRole): boolean {
   return role === "finance" || role === "solo";
 }
+export function roleOwnsPricing(role: PlayerRole): boolean {
+  return role === "finance" || role === "solo";
+}
 /**
  * Roster (lay-off + continue) is owned by Operations per the backend
  * contract. `backend/functions/index.js::layoffChef` and `continueFromRoster`
@@ -495,6 +517,8 @@ export interface GameState {
   config: GameConfigParams | null;
   /** Local flag — true after a successful `submitDecision` this round. */
   decisionSubmitted: boolean;
+  /** Local flag — true after a successful `submitPrices` this round (POST-01). */
+  pricesSubmitted: boolean;
   /** Local flag — true after a successful `submitBids` (ad) this round. */
   adBidsSubmitted: boolean;
   /** Local flag — true after a successful `submitBids` (chef) this round. */
@@ -544,6 +568,41 @@ export interface GameState {
    * countdown from `phaseEndsAt - Date.now()`.
    */
   phaseEndsAtMs: number | null;
+  /**
+   * Leaderboard rankings mirrored from
+   * `/games/{gameId}/leaderboard/latest.rankings` by `useGameListener`.
+   * Ordered by `cumulativeRevenue` descending (backend sorts).
+   */
+  leaderboard: LeaderboardRanking[];
+  /**
+   * User-facing error from the `useGameListener` leaderboard onSnapshot.
+   * `null` on a healthy listener. Set when the snapshot errors (permission
+   * denied, network failure, etc.) so `LeaderboardPage` can surface a
+   * banner instead of silently showing "Waiting for first round results…"
+   * forever.
+   */
+  leaderboardError: string | null;
+}
+
+/**
+ * One row of the live leaderboard. Source: `simulateRound` in
+ * `backend/functions/index.js` writes this to the `rankings` field of
+ * `/games/{gameId}/leaderboard/latest`.
+ *
+ * `lastRoundRevenue` and `rankChange` are written only after BE-7 lands;
+ * the UI must render gracefully when they are absent.
+ */
+export interface LeaderboardRanking {
+  rank: number;
+  playerId: string;
+  displayName: string;
+  bakeryName?: string;
+  revenueNet?: number;
+  cumulativeRevenue?: number;
+  /** Revenue earned this round only (post–loan-shark). */
+  lastRoundRevenue?: number;
+  /** Positive = moved up; negative = moved down; 0 = no change. */
+  rankChange?: number;
 }
 
 /** Default maintenance bars (all 100%) used on game start / context reset. */

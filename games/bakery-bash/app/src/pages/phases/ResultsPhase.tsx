@@ -1,7 +1,7 @@
 import { useGame } from "../../contexts/GameContext";
 import { LoanSharkCallout } from "../../components/game/LoanSharkCallout";
 import { downloadResultsCsv } from "../../components/game/RoundHeader";
-import type { ProductKey } from "../../types/game";
+import type { MaintenanceBars, ProductKey } from "../../types/game";
 
 /**
  * FE-12 — Results phase rework.
@@ -27,9 +27,31 @@ const PRODUCT_LABELS: Record<ProductKey, string> = {
   matcha: "Matchas",
 };
 
+/**
+ * FE-4 — end-of-round maintenance bar labels. Matches the labels used in
+ * `StatusTab`, minus the warning icon/tier lines since we're rendering a
+ * retrospective snapshot rather than a live health indicator.
+ */
+const MAINTENANCE_BAR_LABELS: Array<{
+  key: keyof MaintenanceBars;
+  label: string;
+}> = [
+  { key: "cleanliness", label: "Cleanliness" },
+  { key: "ovenHealth", label: "Oven" },
+  { key: "slicerHealth", label: "Meat Slicer" },
+  { key: "espressoHealth", label: "Espresso Machine" },
+];
+
 function formatMoney(n: number | null | undefined): string {
   if (typeof n !== "number" || Number.isNaN(n)) return "—";
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+function barColor(pct: number): string {
+  if (pct >= 85) return "var(--sage)";
+  if (pct >= 60) return "var(--lime)";
+  if (pct > 30) return "var(--honey)";
+  return "var(--berry)";
 }
 
 export function ResultsPhase() {
@@ -59,6 +81,20 @@ export function ResultsPhase() {
       : typeof latest?.revenue === "number"
         ? latest.revenue
         : null;
+
+  // FE-4 — auction outcomes. Backend writes `adWon` as a string or `null`
+  // on the player's lastRoundResult; `chefWon` mirrors the chef id they
+  // took home this round. We also accept the nested `auctionResults.*`
+  // shape written by some legacy simulation paths.
+  const adWon = latest?.adWon ?? latest?.auctionResults?.adWon ?? null;
+  const chefWon = latest?.auctionResults?.chefWon ?? null;
+  const adPaid = typeof latest?.adPaid === "number" ? latest.adPaid : null;
+
+  // FE-4 — end-of-round maintenance snapshot. Prefer the per-round
+  // snapshot on the result; fall back to live context state for the
+  // pre-BE-1..BE-10 rollout where results docs may not include it.
+  const endBars: MaintenanceBars | null =
+    latest?.maintenanceBars ?? null;
 
   return (
     <section className="results-phase">
@@ -114,6 +150,101 @@ export function ResultsPhase() {
                 />
               )}
           </div>
+
+          {/* FE-4 — auction outcomes row. Rendered between the KPI cards
+              and the product breakdown so players get the "what did I win
+              this round?" answer near the top. */}
+          <section
+            className="results-phase__auctions"
+            aria-label="Auction results"
+          >
+            <h3 className="results-phase__section-title">Auction Results</h3>
+            <ul className="results-phase__auction-list">
+              <li className="results-phase__auction-row">
+                <span className="results-phase__auction-label">Ad slot</span>
+                {adWon ? (
+                  <span className="results-phase__auction-value results-phase__auction-value--won">
+                    Won: {adWon}
+                    {typeof adPaid === "number" && adPaid > 0 && (
+                      <>
+                        {" "}
+                        <span className="results-phase__auction-sub">
+                          ({formatMoney(adPaid)})
+                        </span>
+                      </>
+                    )}
+                  </span>
+                ) : (
+                  <span className="results-phase__auction-value results-phase__auction-value--lost">
+                    No ad won this round
+                  </span>
+                )}
+              </li>
+              <li className="results-phase__auction-row">
+                <span className="results-phase__auction-label">Chef</span>
+                {chefWon ? (
+                  <span className="results-phase__auction-value results-phase__auction-value--won">
+                    Hired: {chefWon}
+                  </span>
+                ) : (
+                  <span className="results-phase__auction-value results-phase__auction-value--lost">
+                    Chef auction lost
+                  </span>
+                )}
+              </li>
+            </ul>
+          </section>
+
+          {/* FE-4 — maintenance bar snapshot at the end of this round.
+              Helps the player diagnose which bar drained them before they
+              plan next round's maintenance guys. Hidden for legacy
+              results docs that didn't include the snapshot. */}
+          {endBars && (
+            <section
+              className="results-phase__maintenance"
+              aria-label="Maintenance at end of round"
+            >
+              <h3 className="results-phase__section-title">
+                Kitchen Status — End of Round
+              </h3>
+              <ul className="results-phase__maintenance-list">
+                {MAINTENANCE_BAR_LABELS.map(({ key, label }) => {
+                  const rawValue = endBars[key];
+                  const value =
+                    typeof rawValue === "number" ? rawValue : 100;
+                  const clamped = Math.max(0, Math.min(100, value));
+                  const color = barColor(clamped);
+                  return (
+                    <li
+                      key={key}
+                      className="results-phase__maintenance-row"
+                    >
+                      <div className="results-phase__maintenance-header">
+                        <span className="results-phase__maintenance-label">
+                          {label}
+                        </span>
+                        <span
+                          className="results-phase__maintenance-pct"
+                          style={{ color }}
+                        >
+                          {Math.round(clamped)}%
+                        </span>
+                      </div>
+                      <div
+                        className="results-phase__maintenance-track"
+                        aria-hidden
+                      >
+                        <div
+                          className="results-phase__maintenance-fill"
+                          style={{ width: `${clamped}%`, background: color }}
+                        />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
 
           {productEntries.length > 0 && (
             <section className="results-phase__breakdown">

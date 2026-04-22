@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { doc, onSnapshot, type DocumentData } from "firebase/firestore";
 import { useGame, useGameDispatch } from "../contexts/GameContext";
+import { useGameListener } from "../hooks/useGameListener";
 import { db } from "../lib/firebase";
 import { parseGamePhase } from "../types/game";
 
@@ -24,10 +25,19 @@ const TOTAL_WINDOW_MS = (GRACE_SECONDS + FREEZE_SECONDS) * 1000; // 15 s
  *   15 s   → overlay clears; professor's auto-advance fires via ProfessorPage
  */
 export function GamePhaseListener() {
-  const { gameId, phaseEndsAtMs } = useGame();
+  const { gameId, playerId, phaseEndsAtMs } = useGame();
   const dispatch = useGameDispatch();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // FE-5 — centralize the app-wide Firestore listeners. Mounting this hook
+  // inside `GamePhaseListener` (which itself renders at the root of the
+  // router in `App.tsx`) means the listeners follow the lifecycle of the
+  // session — they attach when the game id is known and tear down on
+  // lobby/conclusion unmounts. `GamePage` still wires a few page-scoped
+  // listeners (roster → ad-winner banner, etc.) because those are only
+  // relevant during the decide phase.
+  useGameListener(gameId, playerId);
 
   const navigateRef = useRef(navigate);
   const pathnameRef = useRef(location.pathname);
@@ -47,6 +57,9 @@ export function GamePhaseListener() {
   const t2Ref = useRef<ReturnType<typeof setTimeout> | null>(null);
   const t3Ref = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Deferred phase-change navigation; cleared on unmount or when superseded
+  // by a fresh snapshot so we don't navigate the user after they've left.
+  const deferredNavRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep refs in sync after every render.
   useEffect(() => {
@@ -59,7 +72,7 @@ export function GamePhaseListener() {
   useEffect(() => {
     if (!gameId) return;
     const gameRef = doc(db, "games", gameId);
-    return onSnapshot(gameRef, (snap) => {
+    const unsubscribe = onSnapshot(gameRef, (snap) => {
       if (!snap.exists()) return;
       const data = snap.data() as DocumentData;
       const phase = data.phase;
@@ -100,10 +113,17 @@ export function GamePhaseListener() {
       const windowEnd = windowStart + TOTAL_WINDOW_MS;
       const inWindow = windowStart > 0 && now >= windowStart && now < windowEnd;
 
+      // A new snapshot supersedes any previously deferred navigation.
+      if (deferredNavRef.current) {
+        clearTimeout(deferredNavRef.current);
+        deferredNavRef.current = null;
+      }
+
       if (inWindow) {
         // Defer navigation until the freeze period ends.
         const remainingMs = windowEnd - now;
-        setTimeout(() => {
+        deferredNavRef.current = setTimeout(() => {
+          deferredNavRef.current = null;
           if (pathnameRef.current !== target) navigateRef.current(target);
         }, remainingMs);
       } else {
@@ -112,6 +132,13 @@ export function GamePhaseListener() {
     }, (err) => {
       console.error("games/{gameId} phase listener error:", { gameId, err });
     });
+    return () => {
+      unsubscribe();
+      if (deferredNavRef.current) {
+        clearTimeout(deferredNavRef.current);
+        deferredNavRef.current = null;
+      }
+    };
   }, [gameId, dispatch]);
 
   // ── Timer-expiry sequence ──────────────────────────────────────────────────

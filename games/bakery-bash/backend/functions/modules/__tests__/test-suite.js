@@ -75,6 +75,7 @@ function deepEq(actual, expected, msg = '') {
 // Load modules
 // ============================================================================
 const config = require('../config');
+const pricing = require('../pricing');
 const chefSys = require('../chef-system');
 const sat = require('../satisfaction');
 const custAlloc = require('../customer-allocation');
@@ -161,7 +162,174 @@ describe('config.js', () => {
 });
 
 // ============================================================================
-// 2. CHEF SYSTEM
+// 2. PRICING
+// ============================================================================
+describe('pricing.js — classifyZone', () => {
+  const { PRICE_ZONES } = require('../config');
+  const coffee = PRICE_ZONES.coffee; // floor=2, cLow=3, cHigh=4.5, pLow=5, pHigh=6, ceiling=6.5
+
+  it('floor inclusive lower bound', () => {
+    eq(pricing.classifyZone(2.00, coffee), 'floor');
+  });
+  it('just below competitiveRangeLow stays floor', () => {
+    eq(pricing.classifyZone(2.75, coffee), 'floor');
+  });
+  it('competitiveRangeLow inclusive lower bound', () => {
+    eq(pricing.classifyZone(3.00, coffee), 'competitive');
+  });
+  it('mid competitive', () => {
+    eq(pricing.classifyZone(4.00, coffee), 'competitive');
+  });
+  it('just below premiumRangeLow stays competitive', () => {
+    eq(pricing.classifyZone(4.75, coffee), 'competitive');
+  });
+  it('premiumRangeLow inclusive lower bound', () => {
+    eq(pricing.classifyZone(5.00, coffee), 'premium');
+  });
+  it('ceiling inclusive upper bound', () => {
+    eq(pricing.classifyZone(6.50, coffee), 'premium');
+  });
+});
+
+describe('pricing.js — calculatePriceDemandMultiplier', () => {
+  const { PRICE_ZONES } = require('../config');
+  const coffee = PRICE_ZONES.coffee;   // high elasticity (e=1.5), competitiveMid = (3+4.5)/2 = 3.75
+  const matcha = PRICE_ZONES.matcha;   // low elasticity (e=0.6), competitiveMid = (5.5+7)/2 = 6.25
+  const croissant = PRICE_ZONES.croissant; // medium elasticity (e=1.0)
+
+  it('coffee at floor $2.00 → 1.85 (floor bonus + elasticity bump)', () => {
+    near(pricing.calculatePriceDemandMultiplier(2.00, coffee), 1.85, 0.01);
+  });
+  it('coffee at $2.75 still in floor zone → 1.55', () => {
+    near(pricing.calculatePriceDemandMultiplier(2.75, coffee), 1.55, 0.01);
+  });
+  it('coffee at $3.00 (competitive) → 1.30 (step-down, no floor bonus)', () => {
+    near(pricing.calculatePriceDemandMultiplier(3.00, coffee), 1.30, 0.01);
+  });
+  it('coffee at competitiveMid $3.75 → 1.00', () => {
+    near(pricing.calculatePriceDemandMultiplier(3.75, coffee), 1.00, 0.01);
+  });
+  it('coffee at $4.50 → 0.70', () => {
+    near(pricing.calculatePriceDemandMultiplier(4.50, coffee), 0.70, 0.01);
+  });
+  it('coffee at $5.00 (premium) → 0.50', () => {
+    near(pricing.calculatePriceDemandMultiplier(5.00, coffee), 0.50, 0.01);
+  });
+  it('coffee at ceiling $6.50 → floored at 0.10', () => {
+    near(pricing.calculatePriceDemandMultiplier(6.50, coffee), 0.10, 0.01);
+  });
+  it('matcha at floor $3.50 → 1.414 (low elasticity so bump is smaller)', () => {
+    near(pricing.calculatePriceDemandMultiplier(3.50, matcha), 1.414, 0.01);
+  });
+  it('matcha at competitiveMid $6.25 → 1.00', () => {
+    near(pricing.calculatePriceDemandMultiplier(6.25, matcha), 1.00, 0.01);
+  });
+  it('matcha at ceiling $10.00 → 0.64 (low-elasticity premium still viable)', () => {
+    near(pricing.calculatePriceDemandMultiplier(10.00, matcha), 0.64, 0.01);
+  });
+  it('croissant at competitiveMid $4.75 → 1.00', () => {
+    near(pricing.calculatePriceDemandMultiplier(4.75, croissant), 1.00, 0.01);
+  });
+});
+
+describe('pricing.js — snapPriceToStep / clampPrice', () => {
+  const { PRICE_ZONES } = require('../config');
+  const coffee = PRICE_ZONES.coffee;
+
+  it('snapPriceToStep: exact $0.25 grid values unchanged', () => {
+    near(pricing.snapPriceToStep(4.00), 4.00, 0.0001);
+    near(pricing.snapPriceToStep(4.25), 4.25, 0.0001);
+  });
+  it('snapPriceToStep: rounds to nearest $0.25', () => {
+    near(pricing.snapPriceToStep(4.12), 4.00, 0.0001);
+    near(pricing.snapPriceToStep(4.13), 4.25, 0.0001);
+    near(pricing.snapPriceToStep(4.37), 4.25, 0.0001);
+    near(pricing.snapPriceToStep(4.38), 4.50, 0.0001);
+  });
+  it('snapPriceToStep: negative / zero pass through (clamp later)', () => {
+    near(pricing.snapPriceToStep(0), 0, 0.0001);
+    near(pricing.snapPriceToStep(-0.13), -0.25, 0.0001);
+  });
+  it('clampPrice: below floor → floor', () => {
+    near(pricing.clampPrice(1.00, coffee), 2.00, 0.0001);
+  });
+  it('clampPrice: above ceiling → ceiling', () => {
+    near(pricing.clampPrice(10.00, coffee), 6.50, 0.0001);
+  });
+  it('clampPrice: in range unchanged', () => {
+    near(pricing.clampPrice(4.00, coffee), 4.00, 0.0001);
+  });
+  it('clampPrice: exactly at floor unchanged', () => {
+    near(pricing.clampPrice(2.00, coffee), 2.00, 0.0001);
+  });
+  it('clampPrice: exactly at ceiling unchanged', () => {
+    near(pricing.clampPrice(6.50, coffee), 6.50, 0.0001);
+  });
+});
+
+describe('pricing.js — resolvePriceForSim (carry-over)', () => {
+  const { PRICE_ZONES, PRODUCT_CATALOG } = require('../config');
+  const coffeeCfg = PRICE_ZONES.coffee;
+  const coffeeBase = PRODUCT_CATALOG.coffee.fixedPrice; // 4.00
+
+  it('uses current round price when present', () => {
+    const price = pricing.resolvePriceForSim({
+      product: 'coffee',
+      submittedThisRound: 3.50,
+      priorSubmissions: [4.00, 4.25],
+      productCfg: coffeeCfg,
+      catalogBasePrice: coffeeBase,
+    });
+    near(price, 3.50, 0.001);
+  });
+
+  it('falls back to most recent prior when current is missing', () => {
+    const price = pricing.resolvePriceForSim({
+      product: 'coffee',
+      submittedThisRound: undefined,
+      priorSubmissions: [4.00, 4.25],
+      productCfg: coffeeCfg,
+      catalogBasePrice: coffeeBase,
+    });
+    near(price, 4.25, 0.001); // last element = most recent prior
+  });
+
+  it('falls back to catalog base when no submissions exist', () => {
+    const price = pricing.resolvePriceForSim({
+      product: 'coffee',
+      submittedThisRound: undefined,
+      priorSubmissions: [],
+      productCfg: coffeeCfg,
+      catalogBasePrice: coffeeBase,
+    });
+    near(price, 4.00, 0.001);
+  });
+
+  it('skips null/undefined entries in prior submissions', () => {
+    const price = pricing.resolvePriceForSim({
+      product: 'coffee',
+      submittedThisRound: undefined,
+      priorSubmissions: [4.00, undefined, null, 4.25, undefined],
+      productCfg: coffeeCfg,
+      catalogBasePrice: coffeeBase,
+    });
+    near(price, 4.25, 0.001);
+  });
+
+  it('always returns a snapped + clamped number', () => {
+    const price = pricing.resolvePriceForSim({
+      product: 'coffee',
+      submittedThisRound: 10.13,       // above ceiling (6.50) and off-grid
+      priorSubmissions: [],
+      productCfg: coffeeCfg,
+      catalogBasePrice: coffeeBase,
+    });
+    near(price, 6.50, 0.001); // clamped to ceiling; already on grid
+  });
+});
+
+// ============================================================================
+// 3. CHEF SYSTEM
 // ============================================================================
 describe('chef-system.js', () => {
   const cfg = config.mergeConfig({});
@@ -482,6 +650,62 @@ describe('customer-allocation.js', () => {
   });
 });
 
+describe('customer-allocation.js — price weight (POST-01)', () => {
+  it('pool stays conserved when two players have identical satisfaction but opposite prices', () => {
+    const allPlayersState = [
+      {
+        playerId: 'A',
+        perProductSatisfaction: { coffee: 80 },
+        returningCustomers: 0,
+        sousChefCount: 0,
+        numProductsOffered: 1,
+        aggregateSatisfactionPct: 80,
+        footTrafficMultiplier: 1.0,
+      },
+      {
+        playerId: 'B',
+        perProductSatisfaction: { coffee: 80 },
+        returningCustomers: 0,
+        sousChefCount: 0,
+        numProductsOffered: 1,
+        aggregateSatisfactionPct: 80,
+        footTrafficMultiplier: 1.0,
+      },
+    ];
+    const roundPreferences = { modifiers: { coffee: 1.0 } };
+    const perPlayerPrices = {
+      A: { coffee: 2.00 },
+      B: { coffee: 6.50 },
+    };
+
+    const result = custAlloc.allocateAllCustomers(
+      allPlayersState,
+      roundPreferences,
+      undefined,
+      perPlayerPrices,
+    );
+
+    const a = result.get('A');
+    const b = result.get('B');
+    const total = a.totalCustomers + b.totalCustomers;
+    const poolSize = config.PRODUCT_CATALOG.coffee.baseDemand;
+    ok(total >= poolSize - 3 && total <= poolSize + 1, `pool conserved (total ${total}, pool ${poolSize})`);
+    ok(a.totalCustomers > b.totalCustomers * 5, `A (floor) captures vastly more than B (ceiling); got A=${a.totalCustomers}, B=${b.totalCustomers}`);
+  });
+
+  it('legacy path (no perPlayerPrices) yields equal split for equal satisfaction', () => {
+    const allPlayersState = [
+      { playerId: 'A', perProductSatisfaction: { coffee: 80 }, returningCustomers: 0, sousChefCount: 0, numProductsOffered: 1, aggregateSatisfactionPct: 80, footTrafficMultiplier: 1.0 },
+      { playerId: 'B', perProductSatisfaction: { coffee: 80 }, returningCustomers: 0, sousChefCount: 0, numProductsOffered: 1, aggregateSatisfactionPct: 80, footTrafficMultiplier: 1.0 },
+    ];
+    const roundPreferences = { modifiers: { coffee: 1.0 } };
+    const result = custAlloc.allocateAllCustomers(allPlayersState, roundPreferences);
+    const a = result.get('A');
+    const b = result.get('B');
+    near(a.totalCustomers, b.totalCustomers, 2, 'equal split without price');
+  });
+});
+
 // ============================================================================
 // 5. REVENUE
 // ============================================================================
@@ -560,6 +784,40 @@ describe('revenue.js', () => {
     near(revenue._sousChefHireCost(1, 12500), 12500, 0.01);
     near(revenue._sousChefHireCost(2, 12500), 31250, 0.01);
     near(revenue._sousChefHireCost(4, 12500), 96875, 0.01);
+  });
+});
+
+describe('revenue.js — perPlayerPrices override (POST-01)', () => {
+  it('calculateProductRevenue uses submitted prices instead of catalog fixedPrice', () => {
+    const qtySold = { coffee: 10, croissant: 20 };
+    const prices  = { coffee: 5.00, croissant: 6.00 };   // above catalog defaults
+    const { totalProductRevenue, breakdown } = revenue.calculateProductRevenue(qtySold, undefined, prices);
+    eq(totalProductRevenue, 10 * 5.00 + 20 * 6.00); // 170
+    eq(breakdown.coffee.price, 5.00);
+    eq(breakdown.croissant.price, 6.00);
+  });
+
+  it('calculateProductRevenue falls back to catalog fixedPrice when a product is missing from prices', () => {
+    const qtySold = { coffee: 10, croissant: 20 };
+    const prices  = { coffee: 5.00 };                    // croissant missing
+    const { totalProductRevenue } = revenue.calculateProductRevenue(qtySold, undefined, prices);
+    // coffee @ 5.00 + croissant @ catalog 4.75
+    near(totalProductRevenue, 10 * 5.00 + 20 * 4.75, 0.01);
+  });
+
+  it('calculateProductRevenue is unchanged when no prices arg supplied (legacy path)', () => {
+    const qtySold = { coffee: 10, croissant: 20 };
+    const { totalProductRevenue } = revenue.calculateProductRevenue(qtySold);
+    // catalog: coffee 4.00, croissant 4.75
+    near(totalProductRevenue, 10 * 4.00 + 20 * 4.75, 0.01);
+  });
+
+  it('ignores NaN / Infinity override and falls back to catalog', () => {
+    const qtySold = { coffee: 10, croissant: 20 };
+    const prices  = { coffee: NaN, croissant: Infinity };
+    const { totalProductRevenue } = revenue.calculateProductRevenue(qtySold, undefined, prices);
+    // both fall back to catalog: coffee $4, croissant $4.75
+    near(totalProductRevenue, 10 * 4.00 + 20 * 4.75, 0.01);
   });
 });
 
@@ -848,6 +1106,77 @@ describe('csv-export.js', () => {
 });
 
 // ============================================================================
+// 9b. CSV-EXPORT — PRICE COLUMNS (POST-01)
+// ============================================================================
+describe('csv-export.js — price columns (POST-01)', () => {
+  const { PRODUCT_KEYS } = require('../config');
+
+  it('CSV_COLUMNS includes price_<product> for each product positioned after qty_stocked block', () => {
+    const cols = csvExport.CSV_COLUMNS.map((c) => c.key);
+    for (const p of PRODUCT_KEYS) {
+      ok(cols.includes(`price_${p}`), `CSV_COLUMNS missing price_${p}`);
+    }
+    // Price block is after qty_stocked block and before qty_sold / satisfaction blocks
+    const lastQtyStockedIdx = Math.max(...PRODUCT_KEYS.map((p) => cols.indexOf(`${p}_qty_stocked`)));
+    const firstPriceIdx = Math.min(...PRODUCT_KEYS.map((p) => cols.indexOf(`price_${p}`)));
+    const firstQtySoldIdx = Math.min(...PRODUCT_KEYS.map((p) => cols.indexOf(`${p}_qty_sold`)));
+    ok(firstPriceIdx > lastQtyStockedIdx, `price block starts after qty_stocked block (lastQty=${lastQtyStockedIdx}, firstPrice=${firstPriceIdx})`);
+    ok(firstPriceIdx < firstQtySoldIdx, `price block before qty_sold block (firstPrice=${firstPriceIdx}, firstQtySold=${firstQtySoldIdx})`);
+  });
+
+  it('buildCsvRow populates price_<product> from roundResult.productPrices', () => {
+    const roundResult = {
+      round: 1,
+      decision: {
+        menu: { croissant: true, cookie: true, bagel: true, sandwich: false, coffee: true, matcha: false },
+        quantities: { croissant: 10, cookie: 10, bagel: 10, sandwich: 0, coffee: 10, matcha: 0 },
+        sousChefCount: 0,
+      },
+      specialtyChefs: [],
+      productPrices: { croissant: 4.75, cookie: 2.50, bagel: 3.00, sandwich: 8.75, coffee: 5.25, matcha: 6.25 },
+      perProductSatisfaction: {},
+      customerCount: 0,
+      revenueGross: 0,
+      amountBorrowed: 0,
+      interestCharged: 0,
+      aggregateSatisfactionPct: 0,
+      chefSatisfactionScore: 0,
+    };
+    const row = csvExport.buildCsvRow(roundResult);
+    eq(row.price_coffee, 5.25);
+    eq(row.price_croissant, 4.75);
+    eq(row.price_cookie, 2.50);
+    eq(row.price_bagel, 3.00);
+    // Off-menu products (sandwich, matcha) should be null (consistent with existing qty/satisfaction null-when-off-menu pattern)
+    eq(row.price_sandwich, null);
+    eq(row.price_matcha, null);
+  });
+
+  it('buildCsvRow renders price as null when productPrices is missing entirely', () => {
+    const roundResult = {
+      round: 1,
+      decision: {
+        menu: { croissant: true, cookie: true, bagel: true, sandwich: false, coffee: false, matcha: false },
+        quantities: { croissant: 10, cookie: 10, bagel: 10, sandwich: 0, coffee: 0, matcha: 0 },
+        sousChefCount: 0,
+      },
+      specialtyChefs: [],
+      // no productPrices field at all
+      perProductSatisfaction: {},
+      customerCount: 0,
+      revenueGross: 0,
+      amountBorrowed: 0,
+      interestCharged: 0,
+      aggregateSatisfactionPct: 0,
+      chefSatisfactionScore: 0,
+    };
+    const row = csvExport.buildCsvRow(roundResult);
+    eq(row.price_coffee, null);
+    eq(row.price_croissant, null);
+  });
+});
+
+// ============================================================================
 // 10. CONCLUSION
 // ============================================================================
 describe('conclusion.js', () => {
@@ -1006,6 +1335,58 @@ describe('decision-validation.js', () => {
       ok(e instanceof validation.ValidationError);
       eq(e.code, 'invalid-argument');
     }
+  });
+
+  // POST-01: validateProductPrices tests
+  it('accepts undefined → returns empty object', () => {
+    deepEq(validation.validateProductPrices(undefined), {});
+  });
+  it('accepts null → returns empty object', () => {
+    deepEq(validation.validateProductPrices(null), {});
+  });
+  it('accepts empty object', () => {
+    deepEq(validation.validateProductPrices({}), {});
+  });
+  it('rejects non-object', () => {
+    throws(() => validation.validateProductPrices('nope'), /must be an object/);
+    throws(() => validation.validateProductPrices(42),    /must be an object/);
+  });
+  it('rejects unknown product key', () => {
+    throws(() => validation.validateProductPrices({ latte: 4 }), /unknown product "latte"/);
+  });
+  it('rejects non-number / NaN / Infinity', () => {
+    throws(() => validation.validateProductPrices({ coffee: 'free' }), /must be a finite positive number/);
+    throws(() => validation.validateProductPrices({ coffee: NaN }),     /must be a finite positive number/);
+    throws(() => validation.validateProductPrices({ coffee: Infinity }),/must be a finite positive number/);
+  });
+  it('rejects negative and zero', () => {
+    throws(() => validation.validateProductPrices({ coffee: 0 }),  /must be a finite positive number/);
+    throws(() => validation.validateProductPrices({ coffee: -1 }), /must be a finite positive number/);
+  });
+  it('snaps to $0.25 grid', () => {
+    const out = validation.validateProductPrices({ coffee: 4.13 });
+    near(out.coffee, 4.25, 0.001);
+  });
+  it('clamps above ceiling to ceiling', () => {
+    const out = validation.validateProductPrices({ coffee: 100 });
+    near(out.coffee, 6.50, 0.001);
+  });
+  it('clamps below floor to floor', () => {
+    const out = validation.validateProductPrices({ coffee: 0.50 });
+    near(out.coffee, 2.00, 0.001);
+  });
+  it('passes through valid in-range values', () => {
+    const out = validation.validateProductPrices({ coffee: 4.00, matcha: 7.00 });
+    near(out.coffee, 4.00, 0.001);
+    near(out.matcha, 7.00, 0.001);
+  });
+  it('rejects booleans (no silent coercion)', () => {
+    throws(() => validation.validateProductPrices({ coffee: true }),  /must be a finite positive number/);
+    throws(() => validation.validateProductPrices({ coffee: false }), /must be a finite positive number/);
+  });
+  it('rejects arrays and objects (no silent coercion)', () => {
+    throws(() => validation.validateProductPrices({ coffee: [5] }),   /must be a finite positive number/);
+    throws(() => validation.validateProductPrices({ coffee: { n: 5 } }), /must be a finite positive number/);
   });
 });
 
@@ -1598,6 +1979,139 @@ describe('Stress Tests', () => {
       
       budget = r.budgetAfter;
       returning = r.returningCustomersEarned;
+    }
+  });
+});
+
+// ============================================================================
+// simulation.js — productPrices wiring (POST-01)
+// ============================================================================
+describe('simulation.js — productPrices wiring (POST-01)', () => {
+  it('uses each player\'s submitted productPrices for revenue', () => {
+    const players = [
+      {
+        playerId: 'A',
+        displayName: 'Alice',
+        decision: {
+          menu:       { coffee: true, croissant: true, bagel: true, cookie: true, sandwich: false, matcha: false },
+          quantities: { coffee: 50, croissant: 40, bagel: 30, cookie: 20, sandwich: 0, matcha: 0 },
+          sousChefCount: 0,
+          sousChefAssignments: {},
+          productPrices: { coffee: 5.00 }, // above catalog default of $4.00
+        },
+        specialtyChefs: [],
+        budgetCurrent: 500000,
+        returningCustomersPending: 0,
+        priorSubmittedPrices: [],
+        auctionResults: {},
+      },
+    ];
+    const roundPreferences = { modifiers: { coffee: 1.0, croissant: 1.0, bagel: 1.0, cookie: 1.0, sandwich: 1.0, matcha: 1.0 } };
+
+    const results = simulation.runSimulation(players, roundPreferences, {});
+    const rowA = results.find((r) => r.playerId === 'A');
+    ok(rowA, 'player A result exists');
+    ok(rowA.revenueBreakdown, 'revenueBreakdown present');
+    ok(rowA.revenueBreakdown.coffee, 'coffee breakdown present');
+    eq(rowA.revenueBreakdown.coffee.price, 5.00);
+    ok(rowA.productPrices, 'productPrices present');
+    eq(rowA.productPrices.coffee, 5.00);
+  });
+
+  it('uses carry-over from priorSubmittedPrices when current productPrices missing', () => {
+    const players = [
+      {
+        playerId: 'A',
+        displayName: 'Alice',
+        decision: {
+          menu:       { coffee: true, croissant: true, bagel: true, cookie: true, sandwich: false, matcha: false },
+          quantities: { coffee: 10, croissant: 0, bagel: 0, cookie: 0, sandwich: 0, matcha: 0 },
+          sousChefCount: 0,
+          sousChefAssignments: {},
+          // no productPrices this round — should carry over from priors
+        },
+        specialtyChefs: [],
+        budgetCurrent: 500000,
+        returningCustomersPending: 0,
+        priorSubmittedPrices: [{ coffee: 4.50 }, { coffee: 3.75 }], // most recent last
+        auctionResults: {},
+      },
+    ];
+    const roundPreferences = { modifiers: { coffee: 1.0, croissant: 1.0, bagel: 1.0, cookie: 1.0, sandwich: 1.0, matcha: 1.0 } };
+
+    const results = simulation.runSimulation(players, roundPreferences, {});
+    const rowA = results.find((r) => r.playerId === 'A');
+    eq(rowA.revenueBreakdown.coffee.price, 3.75);
+    eq(rowA.productPrices.coffee, 3.75);
+  });
+});
+
+// ============================================================================
+// 15. DYNAMIC PRICING — floor vs ceiling smoke test (POST-01 Task 21)
+// ============================================================================
+describe('simulation.js — floor vs ceiling smoke test (POST-01)', () => {
+  const cfg = config.mergeConfig({});
+  const { PRICE_ZONES } = config;
+
+  const MENU = { croissant: true, cookie: true, bagel: true, sandwich: false, coffee: true, matcha: false };
+  const QTY  = { croissant: 60, cookie: 60, bagel: 60, sandwich: 0, coffee: 60, matcha: 0 };
+
+  const makePlayer = (id, prices) => ({
+    playerId: id,
+    displayName: id,
+    bakeryName: `${id} Bakery`,
+    budgetCurrent: 500000,
+    specialtyChefs: [],
+    returningCustomersPending: 0,
+    priorSubmittedPrices: [],
+    decision: {
+      menu: MENU,
+      quantities: QTY,
+      sousChefCount: 0,
+      sousChefAssignments: {},
+      productPrices: prices,
+    },
+    auctionResults: { adWon: null, adBidPaid: 0, chefBidPaid: 0 },
+  });
+
+  const floorPrices = {
+    croissant: PRICE_ZONES.croissant.floor,
+    cookie:    PRICE_ZONES.cookie.floor,
+    bagel:     PRICE_ZONES.bagel.floor,
+    coffee:    PRICE_ZONES.coffee.floor,
+  };
+  const ceilingPrices = {
+    croissant: PRICE_ZONES.croissant.ceiling,
+    cookie:    PRICE_ZONES.cookie.ceiling,
+    bagel:     PRICE_ZONES.bagel.ceiling,
+    coffee:    PRICE_ZONES.coffee.ceiling,
+  };
+
+  const roundPreferences = { modifiers: { croissant: 1.0, cookie: 1.0, bagel: 1.0, sandwich: 1.0, coffee: 1.0, matcha: 1.0 } };
+  const players = [makePlayer('floor_player', floorPrices), makePlayer('ceiling_player', ceilingPrices)];
+  const results = simulation.runSimulation(players, roundPreferences, cfg);
+  const floorR   = results.find((r) => r.playerId === 'floor_player');
+  const ceilingR = results.find((r) => r.playerId === 'ceiling_player');
+
+  it('floor player captures >60% of combined customers', () => {
+    const total = floorR.customerCount + ceilingR.customerCount;
+    ok(total > 0, 'combined customer count > 0');
+    const share = floorR.customerCount / total;
+    ok(share > 0.60, `floor share was ${(share * 100).toFixed(1)}% — expected > 60%`);
+  });
+
+  it('ceiling player captures <20% of combined customers (spec Testing §1)', () => {
+    const total = floorR.customerCount + ceilingR.customerCount;
+    ok(ceilingR.customerCount / total < 0.20,
+      `ceiling share was ${(ceilingR.customerCount / total * 100).toFixed(1)}% — expected < 20%`);
+  });
+
+  it('floor player revenue per customer is lower than ceiling player', () => {
+    if (floorR.customerCount > 0 && ceilingR.customerCount > 0) {
+      const floorRpc  = floorR.revenueGross  / floorR.customerCount;
+      const ceilRpc   = ceilingR.revenueGross / ceilingR.customerCount;
+      ok(floorRpc < ceilRpc,
+        `floor $/cust ${floorRpc.toFixed(2)} should be < ceiling $/cust ${ceilRpc.toFixed(2)}`);
     }
   });
 });

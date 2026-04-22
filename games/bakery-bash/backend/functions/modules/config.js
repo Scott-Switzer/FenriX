@@ -31,6 +31,45 @@ const BASE_MENU      = ['croissant', 'cookie', 'bagel'];
 const OPTIONAL_MENU  = ['sandwich', 'coffee', 'matcha'];
 
 // ---------------------------------------------------------------------------
+// POST-01: Per-product dynamic pricing configuration
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-product price zones. Values from GAME_DESIGN_PROPOSAL.md "Price Points
+ * Per Product". A player-submitted price is clamped to [floor, ceiling] and
+ * classified into one of three zones:
+ *   Floor:       floor <= price < competitiveRangeLow
+ *   Competitive: competitiveRangeLow <= price < premiumRangeLow
+ *   Premium:     premiumRangeLow <= price <= ceiling
+ */
+const PRICE_ZONES = {
+  coffee:    { floor: 2.00, competitiveRangeLow: 3.00, competitiveRangeHigh: 4.50,
+               premiumRangeLow: 5.00, premiumRangeHigh: 6.00, ceiling: 6.50,  elasticityTier: 'high'   },
+  croissant: { floor: 2.50, competitiveRangeLow: 4.00, competitiveRangeHigh: 5.50,
+               premiumRangeLow: 6.00, premiumRangeHigh: 7.00, ceiling: 8.00,  elasticityTier: 'medium' },
+  bagel:     { floor: 1.50, competitiveRangeLow: 2.50, competitiveRangeHigh: 3.50,
+               premiumRangeLow: 4.00, premiumRangeHigh: 5.00, ceiling: 5.50,  elasticityTier: 'high'   },
+  cookie:    { floor: 1.00, competitiveRangeLow: 2.00, competitiveRangeHigh: 3.00,
+               premiumRangeLow: 3.50, premiumRangeHigh: 4.50, ceiling: 5.00,  elasticityTier: 'high'   },
+  sandwich:  { floor: 5.00, competitiveRangeLow: 7.50, competitiveRangeHigh: 10.00,
+               premiumRangeLow: 10.50, premiumRangeHigh: 12.50, ceiling: 14.00, elasticityTier: 'medium' },
+  matcha:    { floor: 3.50, competitiveRangeLow: 5.50, competitiveRangeHigh: 7.00,
+               premiumRangeLow: 7.50, premiumRangeHigh: 9.00, ceiling: 10.00, elasticityTier: 'low'    },
+};
+
+/** Point-elasticity coefficient by product tier. */
+const ELASTICITY_COEFFICIENTS = { high: 1.5, medium: 1.0, low: 0.6 };
+
+/** Grid size for player-submitted prices. */
+const PRICE_STEP = 0.25;
+
+/** Discrete demand bump when a product's price is in the Floor zone. */
+const FLOOR_BONUS = 0.15;
+
+/** Lower bound on the per-player demand multiplier — keeps allocation share non-zero. */
+const MULTIPLIER_FLOOR = 0.1;
+
+// ---------------------------------------------------------------------------
 // Advertising
 // ---------------------------------------------------------------------------
 
@@ -311,6 +350,11 @@ module.exports = {
   PRODUCT_KEYS,
   BASE_MENU,
   OPTIONAL_MENU,
+  PRICE_ZONES,
+  ELASTICITY_COEFFICIENTS,
+  PRICE_STEP,
+  FLOOR_BONUS,
+  MULTIPLIER_FLOOR,
   AD_TYPES,
   CHEF_NATIONALITIES,
   CHEF_MULTIPLIERS,

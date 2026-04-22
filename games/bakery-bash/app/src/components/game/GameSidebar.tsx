@@ -22,7 +22,17 @@ type Tab = (typeof TABS)[number];
 const tabId = (tab: Tab) => `game-sidebar-tab-${tab.toLowerCase()}`;
 const panelId = (tab: Tab) => `game-sidebar-panel-${tab.toLowerCase()}`;
 
-export function GameSidebar() {
+/**
+ * FE-9 — `readOnly` is threaded into `StaffTab` so the steppers and
+ * maintenance dropdowns lock once the player submits. The Status tab is
+ * always read-only by nature (health bars, no inputs) so it ignores the
+ * prop.
+ */
+export interface GameSidebarProps {
+  readOnly?: boolean;
+}
+
+export function GameSidebar({ readOnly = false }: GameSidebarProps) {
   const [activeTab, setActiveTab] = useState<Tab>("Hire");
 
   return (
@@ -52,7 +62,7 @@ export function GameSidebar() {
         role="tabpanel"
         aria-labelledby={tabId(activeTab)}
       >
-        {activeTab === "Hire" && <StaffTab />}
+        {activeTab === "Hire" && <StaffTab readOnly={readOnly} />}
         {activeTab === "Status" && <StatusTab />}
       </div>
     </aside>

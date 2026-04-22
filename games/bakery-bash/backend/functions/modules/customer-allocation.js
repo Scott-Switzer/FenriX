@@ -17,6 +17,7 @@
 
 const config = require('./config');
 const satisfaction = require('./satisfaction');
+const { calculatePriceDemandMultiplier } = require('./pricing');
 
 /**
  * Calculate the total customer (demand) pool for each product in a round.
@@ -60,16 +61,17 @@ function calculateBaseTrafficPool(allPlayersPerProductSatisfaction, roundPrefere
  *   2. Seed each player with their returning-customer count for the product.
  *   3. Split the remaining demand pool (demandPool - seededReturning) across
  *      eligible players proportionally to that player's satisfaction pct for
- *      this product.
+ *      this product, weighted by priceDemandMultiplier if prices are provided.
  *
  * @param {string} product - product key.
  * @param {number} demandPool - total customers wanting this product this round.
  * @param {Array<{playerId: string, perProductSatisfaction: Object<string,number>}>} allPlayersSatisfaction
  * @param {Map<string, number>} returningCustomers - playerId → returning count
  *        (for this product, already apportioned by caller).
+ * @param {Object<string, Object<string, number>>} perPlayerPrices - playerId → { product: price }. Optional.
  * @returns {Map<string, number>} playerId → allocated customer count for product.
  */
-function allocateCustomersPerProduct(product, demandPool, allPlayersSatisfaction, returningCustomers) {
+function allocateCustomersPerProduct(product, demandPool, allPlayersSatisfaction, returningCustomers, perPlayerPrices) {
   const result = new Map();
 
   // Only players offering the product compete for it.
@@ -100,21 +102,30 @@ function allocateCustomersPerProduct(product, demandPool, allPlayersSatisfaction
     return 0;
   };
 
-  // Sum of satisfaction weights across eligible players.
-  const totalSat = eligible.reduce(
-    (acc, p) => acc + getSat(p.perProductSatisfaction[product]),
-    0
-  );
+  // Weight = satisfaction × priceDemandMultiplier (POST-01)
+  const priceCfg = config.PRICE_ZONES && config.PRICE_ZONES[product];
 
-  if (totalSat <= 0) {
-    // No differentiating satisfaction → split evenly among eligible.
+  const getWeight = (p) => {
+    const sat = getSat(p.perProductSatisfaction[product]);
+    if (sat <= 0) return 0;
+    const price = perPlayerPrices
+      && perPlayerPrices[p.playerId]
+      && perPlayerPrices[p.playerId][product];
+    if (typeof price !== 'number' || !Number.isFinite(price) || !priceCfg) return sat;
+    return sat * calculatePriceDemandMultiplier(price, priceCfg);
+  };
+
+  const totalWeight = eligible.reduce((acc, p) => acc + getWeight(p), 0);
+
+  if (totalWeight <= 0) {
+    // No differentiating signal → split evenly among eligible.
     const even = competitivePool / eligible.length;
     for (const p of eligible) {
       result.set(p.playerId, (result.get(p.playerId) || 0) + even);
     }
   } else {
     for (const p of eligible) {
-      const share = getSat(p.perProductSatisfaction[product]) / totalSat;
+      const share = getWeight(p) / totalWeight;
       const add = competitivePool * share;
       result.set(p.playerId, (result.get(p.playerId) || 0) + add);
     }
@@ -140,13 +151,14 @@ function allocateCustomersPerProduct(product, demandPool, allPlayersSatisfaction
  * }>} allPlayersState - array of per-player state objects.
  * @param {Object<string,number>} roundPreferences - product → demand modifier.
  * @param {Object} cfg - game config.
+ * @param {Object<string, Object<string, number>>} perPlayerPrices - playerId → { product: price }. Optional (POST-01).
  * @returns {Map<string, {
  *   totalCustomers: number,
  *   perProductCustomers: Object<string, number>,
  *   footTrafficModifier: number
  * }>} playerId → allocation result.
  */
-function allocateAllCustomers(allPlayersState, roundPreferences, cfg = config) {
+function allocateAllCustomers(allPlayersState, roundPreferences, cfg = config, perPlayerPrices) {
   // Step A: market demand per product.
   const pools = calculateBaseTrafficPool(null, roundPreferences, cfg);
 
@@ -191,7 +203,8 @@ function allocateAllCustomers(allPlayersState, roundPreferences, cfg = config) {
       product,
       pools[product],
       allPlayersState,
-      returningForProduct
+      returningForProduct,
+      perPlayerPrices
     );
   }
 

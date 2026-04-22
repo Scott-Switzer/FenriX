@@ -268,6 +268,7 @@ export function ProfessorPage() {
       fnName: string,
       label: string,
       onSuccessMessage: string,
+      extraData?: Record<string, unknown>,
     ): Promise<void> => {
       if (!gameId) {
         setError("No active game to control.");
@@ -277,11 +278,11 @@ export function ProfessorPage() {
       setInfo(null);
       setPendingAction(label);
       try {
-        const callable = httpsCallable<{ gameId: string }, CallableResult>(
-          functions,
-          fnName,
-        );
-        await callable({ gameId });
+        const callable = httpsCallable<
+          { gameId: string } & Record<string, unknown>,
+          CallableResult
+        >(functions, fnName);
+        await callable({ gameId, ...(extraData ?? {}) });
         setInfo(onSuccessMessage);
       } catch (err) {
         setError(
@@ -303,18 +304,25 @@ export function ProfessorPage() {
   useEffect(() => { callCallableRef.current = callCallable; });
 
   // Auto-advance 15 s after phase timer expires (5 s grace + 10 s freeze).
-  // Only re-runs when phaseEndsAtMs or gameId changes — not on every render.
-  // Skips if the timer was already expired before this effect mounted.
+  // Re-runs when phase, phaseEndsAtMs, or gameId changes. Passes
+  // expectedFromPhase so the backend's CRIT-02 guard rejects double-advances
+  // when multiple professor tabs (or remounts) each fire their own timer.
   useEffect(() => {
-    if (!phaseEndsAtMs || !gameId) return;
+    if (!phaseEndsAtMs || !gameId || !phase) return;
     const msUntilExpiry = phaseEndsAtMs - Date.now();
     if (msUntilExpiry < -30_000) return;
     const delay = Math.max(0, msUntilExpiry) + 15_000;
+    const expectedFromPhase = phase;
     const t = setTimeout(() => {
-      void callCallableRef.current("advanceGamePhase", "auto-advance", "Phase auto-advanced.");
+      void callCallableRef.current(
+        "advanceGamePhase",
+        "auto-advance",
+        "Phase auto-advanced.",
+        { expectedFromPhase },
+      );
     }, delay);
     return () => clearTimeout(t);
-  }, [phaseEndsAtMs, gameId]);
+  }, [phaseEndsAtMs, gameId, phase]);
 
   const onStart = () => callCallable("startGame", "start", "Game started.");
   const onAdvance = () =>
@@ -332,6 +340,29 @@ export function ProfessorPage() {
       return;
     }
     void callCallable("endGame", "end", "Game ended.");
+  };
+
+  /**
+   * FE-6 — Reset the active game so it can be replayed from the lobby.
+   * Calls the `resetGame` Firebase callable (BE-6). If the callable has
+   * not been deployed yet (pre-BE-6 rollout), the error path surfaces a
+   * friendly note instead of a generic Firebase error code. We retain
+   * the `createdGame` banner and the local `gameId` so the professor
+   * can confirm the reset succeeded before creating a fresh session.
+   */
+  const onReset = () => {
+    if (
+      !window.confirm(
+        "This will delete all round data and reset all players. Are you sure?",
+      )
+    ) {
+      return;
+    }
+    void callCallable(
+      "resetGame",
+      "reset",
+      "Game reset — all round data cleared and players returned to lobby.",
+    );
   };
 
   const onCreateGame = async () => {
@@ -526,6 +557,15 @@ export function ProfessorPage() {
           }
         >
           {pendingAction === "end" ? "Ending…" : "End Game"}
+        </button>
+
+        <button
+          className="btn btn--danger"
+          onClick={onReset}
+          disabled={!gameId || controlsDisabled}
+          title="Clear all round data and send players back to the lobby (BE-6)."
+        >
+          {pendingAction === "reset" ? "Resetting…" : "Reset Game"}
         </button>
 
         <Link

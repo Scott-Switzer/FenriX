@@ -97,19 +97,24 @@ function gaussianNoise(min, max, seed) {
 }
 
 /**
- * Calculate revenue from product sales using fixed prices from PRODUCT_CATALOG.
+ * Calculate revenue from product sales.
  *
  * @param {Object<string, number>} perProductQtySold - product → units sold.
- * @param {Object} cfg - optionally overrides PRODUCT_CATALOG via cfg.PRODUCT_CATALOG.
+ * @param {Object} [cfg=config] - optionally overrides PRODUCT_CATALOG via cfg.PRODUCT_CATALOG.
+ * @param {Object<string, number>} [perPlayerPrices] - optional POST-01 override;
+ *   when supplied, overrides catalog.fixedPrice for each product listed.
  * @returns {{ totalProductRevenue: number, breakdown: Object }}
  */
-function calculateProductRevenue(perProductQtySold, cfg = config) {
+function calculateProductRevenue(perProductQtySold, cfg = config, perPlayerPrices) {
   const catalog = (cfg && cfg.PRODUCT_CATALOG) || PRODUCT_CATALOG;
   const breakdown = {};
   let total = 0;
-  for (const product of Object.keys(perProductQtySold || {})) {
-    const qty = _num(perProductQtySold[product]);
-    const price = (catalog[product] && catalog[product].fixedPrice) || 0;
+  for (const [product, qty] of Object.entries(perProductQtySold || {})) {
+    const catalogPrice = (catalog[product] && catalog[product].fixedPrice) || 0;
+    const override = perPlayerPrices && Number.isFinite(perPlayerPrices[product])
+      ? perPlayerPrices[product]
+      : null;
+    const price = override != null ? override : catalogPrice;
     const revenue = qty * price;
     breakdown[product] = { qtySold: qty, price, revenue };
     total += revenue;
