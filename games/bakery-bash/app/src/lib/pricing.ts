@@ -17,6 +17,20 @@ const ELASTICITY_COEFFICIENTS: Record<ElasticityTier, number> = {
   low: 0.6,
 };
 
+/**
+ * Catalog base prices — mirror `PRODUCT_CATALOG[*].fixedPrice` on the backend.
+ * Used as the Round-1 default for `productPrices`. Rounds 2–5 default to the
+ * previous round's submission (carry-over handled server-side too).
+ */
+export const DEFAULT_PRICES: Record<ProductKey, number> = {
+  croissant: 4.75,
+  cookie: 2.50,
+  bagel: 3.00,
+  sandwich: 8.75,
+  coffee: 4.00,
+  matcha: 6.25,
+};
+
 /** Duplicated from backend PRICE_ZONES so UI can render bounds without a round-trip. */
 export const PRICE_ZONES: Record<ProductKey, ProductPriceConfig> = {
   coffee:    { floor: 2.00, competitiveRangeLow: 3.00, competitiveRangeHigh: 4.50, premiumRangeLow: 5.00, premiumRangeHigh: 6.00, ceiling: 6.50,  elasticityTier: 'high'   },

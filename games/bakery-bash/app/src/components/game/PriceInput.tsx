@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ProductPriceConfig, PriceZone } from '../../types/game';
 import { classifyZone, clampPrice, snapPriceToStep } from '../../lib/pricing';
 
@@ -18,6 +18,14 @@ const ZONE_LABEL: Record<PriceZone, string> = {
 export function PriceInput({ value, onChange, cfg, disabled }: Props) {
   const [raw, setRaw] = useState(value.toFixed(2));
   const zone = classifyZone(value, cfg);
+
+  // Resync the visible input whenever the controlled value changes externally:
+  // round transitions, carry-over prefill from the player doc, or a parent
+  // reset. Without this, the input keeps whatever the user typed while the
+  // underlying `value` silently diverges.
+  useEffect(() => {
+    setRaw(value.toFixed(2));
+  }, [value]);
 
   const commit = (next: number) => {
     const snapped = clampPrice(snapPriceToStep(next), cfg);

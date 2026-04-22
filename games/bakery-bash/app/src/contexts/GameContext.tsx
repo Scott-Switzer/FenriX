@@ -28,6 +28,7 @@ import {
   type RoundResult,
   type StaffCounts,
 } from "../types/game";
+import { DEFAULT_PRICES } from "../lib/pricing";
 
 function buildDefaultDecisionDraft(): PendingDecisionDraft {
   const menu = PRODUCT_KEYS.reduce((acc, p) => {
@@ -42,8 +43,11 @@ function buildDefaultDecisionDraft(): PendingDecisionDraft {
     acc[p] = 0;
     return acc;
   }, {} as Record<ProductKey, number>);
+  // POST-01: seed with catalog base prices so the PriceInput renders in the
+  // Competitive zone and the nudge/minus button works out of the box. Rounds
+  // 2–5 are updated from prior submissions by the player-doc listener.
   const productPrices = PRODUCT_KEYS.reduce((acc, p) => {
-    acc[p] = 0;
+    acc[p] = DEFAULT_PRICES[p];
     return acc;
   }, {} as Record<ProductKey, number>);
 
@@ -86,6 +90,7 @@ const initialState: GameState = {
   pendingChefBids: DEFAULT_PENDING_CHEF_BIDS,
   config: null,
   decisionSubmitted: false,
+  pricesSubmitted: false,
   adBidsSubmitted: false,
   chefBidsSubmitted: false,
   maintenanceBars: { ...DEFAULT_MAINTENANCE_BARS },
@@ -147,6 +152,7 @@ type GameAction =
     }
   | { type: "RESET_PENDING" }
   | { type: "SET_DECISION_SUBMITTED"; payload: boolean }
+  | { type: "SET_PRICES_SUBMITTED"; payload: boolean }
   | { type: "SET_AD_BIDS_SUBMITTED"; payload: boolean }
   | { type: "SET_CHEF_BIDS_SUBMITTED"; payload: boolean }
   | { type: "SET_MAINTENANCE_BARS"; payload: MaintenanceBars }
@@ -207,6 +213,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         pendingAdBids: buildDefaultAdBidsDraft(),
         pendingChefBids: {},
         decisionSubmitted: false,
+        pricesSubmitted: false,
         adBidsSubmitted: false,
         chefBidsSubmitted: false,
       };
@@ -328,12 +335,16 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         pendingAdBids: buildDefaultAdBidsDraft(),
         pendingChefBids: {},
         decisionSubmitted: false,
+        pricesSubmitted: false,
         adBidsSubmitted: false,
         chefBidsSubmitted: false,
       };
 
     case "SET_DECISION_SUBMITTED":
       return { ...state, decisionSubmitted: action.payload };
+
+    case "SET_PRICES_SUBMITTED":
+      return { ...state, pricesSubmitted: action.payload };
 
     case "SET_AD_BIDS_SUBMITTED":
       return { ...state, adBidsSubmitted: action.payload };

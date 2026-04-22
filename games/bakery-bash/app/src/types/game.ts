@@ -517,6 +517,8 @@ export interface GameState {
   config: GameConfigParams | null;
   /** Local flag — true after a successful `submitDecision` this round. */
   decisionSubmitted: boolean;
+  /** Local flag — true after a successful `submitPrices` this round (POST-01). */
+  pricesSubmitted: boolean;
   /** Local flag — true after a successful `submitBids` (ad) this round. */
   adBidsSubmitted: boolean;
   /** Local flag — true after a successful `submitBids` (chef) this round. */

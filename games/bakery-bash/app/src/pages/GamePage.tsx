@@ -111,13 +111,13 @@ export function GamePage() {
     currentRound,
     pendingDecision,
     decisionSubmitted,
+    pricesSubmitted,
     role,
   } = useGame();
   const dispatch = useGameDispatch();
   const navigate = useNavigate();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [pricesSubmitted, setPricesSubmitted] = useState(false);
   const [submittingPrices, setSubmittingPrices] = useState(false);
 
   // FE-11 — previous round's ad winners, rendered at the top of Decide.
@@ -526,7 +526,7 @@ export function GamePage() {
         { submitted: boolean }
       >(functions, "submitPrices");
       await callable({ gameId, productPrices: pendingDecision.productPrices });
-      setPricesSubmitted(true);
+      dispatch({ type: "SET_PRICES_SUBMITTED", payload: true });
     } catch (err) {
       setSubmitError(
         humanizeFunctionError(err, "Could not submit prices. Please try again."),
@@ -534,7 +534,7 @@ export function GamePage() {
     } finally {
       setSubmittingPrices(false);
     }
-  }, [gameId, basePhase, pendingDecision.productPrices]);
+  }, [gameId, basePhase, pendingDecision.productPrices, dispatch]);
 
   const isDecisionPhase = basePhase === "decide";
   const isSimulating = basePhase === "simulating";
