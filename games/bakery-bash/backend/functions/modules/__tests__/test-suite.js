@@ -75,6 +75,7 @@ function deepEq(actual, expected, msg = '') {
 // Load modules
 // ============================================================================
 const config = require('../config');
+const pricing = require('../pricing');
 const chefSys = require('../chef-system');
 const sat = require('../satisfaction');
 const custAlloc = require('../customer-allocation');
@@ -161,7 +162,37 @@ describe('config.js', () => {
 });
 
 // ============================================================================
-// 2. CHEF SYSTEM
+// 2. PRICING
+// ============================================================================
+describe('pricing.js — classifyZone', () => {
+  const { PRICE_ZONES } = require('../config');
+  const coffee = PRICE_ZONES.coffee; // floor=2, cLow=3, cHigh=4.5, pLow=5, pHigh=6, ceiling=6.5
+
+  it('floor inclusive lower bound', () => {
+    eq(pricing.classifyZone(2.00, coffee), 'floor');
+  });
+  it('just below competitiveRangeLow stays floor', () => {
+    eq(pricing.classifyZone(2.75, coffee), 'floor');
+  });
+  it('competitiveRangeLow inclusive lower bound', () => {
+    eq(pricing.classifyZone(3.00, coffee), 'competitive');
+  });
+  it('mid competitive', () => {
+    eq(pricing.classifyZone(4.00, coffee), 'competitive');
+  });
+  it('just below premiumRangeLow stays competitive', () => {
+    eq(pricing.classifyZone(4.75, coffee), 'competitive');
+  });
+  it('premiumRangeLow inclusive lower bound', () => {
+    eq(pricing.classifyZone(5.00, coffee), 'premium');
+  });
+  it('ceiling inclusive upper bound', () => {
+    eq(pricing.classifyZone(6.50, coffee), 'premium');
+  });
+});
+
+// ============================================================================
+// 3. CHEF SYSTEM
 // ============================================================================
 describe('chef-system.js', () => {
   const cfg = config.mergeConfig({});
