@@ -67,12 +67,12 @@ const CSV_COLUMNS = [
   { key: 'coffee_qty_stocked',    header: 'coffee_qty_stocked',    type: 'int' },
   { key: 'matcha_qty_stocked',    header: 'matcha_qty_stocked',    type: 'int' },
 
-  { key: 'croissant_price', header: 'croissant_price', type: 'float' },
-  { key: 'cookie_price',    header: 'cookie_price',    type: 'float' },
-  { key: 'bagel_price',     header: 'bagel_price',     type: 'float' },
-  { key: 'sandwich_price',  header: 'sandwich_price',  type: 'float' },
-  { key: 'coffee_price',    header: 'coffee_price',    type: 'float' },
-  { key: 'matcha_price',    header: 'matcha_price',    type: 'float' },
+  { key: 'price_croissant', header: 'price_croissant', type: 'float' },
+  { key: 'price_cookie',    header: 'price_cookie',    type: 'float' },
+  { key: 'price_bagel',     header: 'price_bagel',     type: 'float' },
+  { key: 'price_sandwich',  header: 'price_sandwich',  type: 'float' },
+  { key: 'price_coffee',    header: 'price_coffee',    type: 'float' },
+  { key: 'price_matcha',    header: 'price_matcha',    type: 'float' },
 
   // --- Outputs ---
   { key: 'revenue',                  header: 'revenue',                  type: 'float' },
@@ -244,7 +244,7 @@ function buildCsvRow(roundResult) {
   for (const p of CSV_PRODUCT_ORDER) {
     const onMenu = !!menu[p];
     const price = productPrices[p];
-    row[`${p}_price`] = (onMenu && Number.isFinite(price)) ? price : null;
+    row[`price_${p}`] = (onMenu && Number.isFinite(price)) ? price : null;
   }
 
   // Outputs

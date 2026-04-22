@@ -44,8 +44,11 @@ function buildDefaultDecisionDraft(): PendingDecisionDraft {
     return acc;
   }, {} as Record<ProductKey, number>);
   // POST-01: seed with catalog base prices so the PriceInput renders in the
-  // Competitive zone and the nudge/minus button works out of the box. Rounds
-  // 2–5 are updated from prior submissions by the player-doc listener.
+  // Competitive zone and the nudge/minus button works out of the box for a
+  // fresh session. SET_ROUND preserves whatever prices are currently in
+  // state (backend carry-over semantics); the player-doc listener in
+  // `GamePage.tsx` additionally hydrates from `pendingDecision.productPrices`
+  // whenever Firestore reports a change.
   const productPrices = PRODUCT_KEYS.reduce((acc, p) => {
     acc[p] = DEFAULT_PRICES[p];
     return acc;
@@ -206,10 +209,16 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     case "SET_ROUND": {
       if (state.currentRound === action.payload) return state;
       // New round → reset any local per-round drafts/submission flags.
+      // POST-01: preserve `productPrices` across rounds to match the
+      // backend's price carry-over (resolvePriceForSim). Without this,
+      // Finance's nudged prices flash back to catalog defaults on round
+      // transition before the player-doc listener re-hydrates them.
+      const nextDecisionDraft = buildDefaultDecisionDraft();
+      nextDecisionDraft.productPrices = { ...state.pendingDecision.productPrices };
       return {
         ...state,
         currentRound: action.payload,
-        pendingDecision: buildDefaultDecisionDraft(),
+        pendingDecision: nextDecisionDraft,
         pendingAdBids: buildDefaultAdBidsDraft(),
         pendingChefBids: {},
         decisionSubmitted: false,

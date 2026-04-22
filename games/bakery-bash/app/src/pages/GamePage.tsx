@@ -22,6 +22,7 @@ import { ResultsPhase } from "./phases/ResultsPhase";
 import { db, functions } from "../lib/firebase";
 import { humanizeFunctionError } from "../lib/errors";
 import {
+  PRODUCT_KEYS,
   PRODUCT_STATION,
   parseGamePhase,
   ownerOfDecide,
@@ -256,6 +257,29 @@ export function GamePage() {
           dispatch({ type: "SET_TEAM_ID", payload: data.teamId });
         } else if (data.teamId === null) {
           dispatch({ type: "SET_TEAM_ID", payload: null });
+        }
+
+        // POST-01: hydrate `pendingDecision.productPrices` so Finance sees
+        // their last submitted prices (backend carry-over) on round 2+ instead
+        // of the catalog defaults. `submitPrices` writes via dot-path, so the
+        // field is present on the player doc across rounds.
+        const pending = data.pendingDecision;
+        if (pending && typeof pending === "object" && pending.productPrices &&
+            typeof pending.productPrices === "object") {
+          const incoming = pending.productPrices as Record<string, unknown>;
+          const hydratedPrices: Partial<Record<ProductKey, number>> = {};
+          for (const key of PRODUCT_KEYS) {
+            const v = incoming[key];
+            if (typeof v === "number" && Number.isFinite(v)) {
+              hydratedPrices[key] = v;
+            }
+          }
+          if (Object.keys(hydratedPrices).length > 0) {
+            dispatch({
+              type: "UPDATE_PENDING_DECISION",
+              payload: { productPrices: hydratedPrices },
+            });
+          }
         }
 
         // lastRoundResult → dispatch ADD_RESULT so ResultsPhase + the CSV

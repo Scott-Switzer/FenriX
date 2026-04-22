@@ -463,6 +463,9 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
       interestCharged,
       aggregateSatisfactionPct: postSelloutAggregate,
       chefSatisfactionScore: pp.chefSatisfactionScore,
+      // POST-01: per-product resolved prices (snapped, clamped, carry-over)
+      // flow into the `price_<product>` CSV columns via csv-export.js.
+      productPrices: resolvedPricesPerPlayer[p.playerId] || {},
       // For professor export
       playerId: p.playerId,
       displayName: p.displayName,

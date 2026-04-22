@@ -1111,20 +1111,20 @@ describe('csv-export.js', () => {
 describe('csv-export.js — price columns (POST-01)', () => {
   const { PRODUCT_KEYS } = require('../config');
 
-  it('CSV_COLUMNS includes <product>_price for each product positioned after qty_stocked block', () => {
+  it('CSV_COLUMNS includes price_<product> for each product positioned after qty_stocked block', () => {
     const cols = csvExport.CSV_COLUMNS.map((c) => c.key);
     for (const p of PRODUCT_KEYS) {
-      ok(cols.includes(`${p}_price`), `CSV_COLUMNS missing ${p}_price`);
+      ok(cols.includes(`price_${p}`), `CSV_COLUMNS missing price_${p}`);
     }
     // Price block is after qty_stocked block and before qty_sold / satisfaction blocks
     const lastQtyStockedIdx = Math.max(...PRODUCT_KEYS.map((p) => cols.indexOf(`${p}_qty_stocked`)));
-    const firstPriceIdx = Math.min(...PRODUCT_KEYS.map((p) => cols.indexOf(`${p}_price`)));
+    const firstPriceIdx = Math.min(...PRODUCT_KEYS.map((p) => cols.indexOf(`price_${p}`)));
     const firstQtySoldIdx = Math.min(...PRODUCT_KEYS.map((p) => cols.indexOf(`${p}_qty_sold`)));
     ok(firstPriceIdx > lastQtyStockedIdx, `price block starts after qty_stocked block (lastQty=${lastQtyStockedIdx}, firstPrice=${firstPriceIdx})`);
     ok(firstPriceIdx < firstQtySoldIdx, `price block before qty_sold block (firstPrice=${firstPriceIdx}, firstQtySold=${firstQtySoldIdx})`);
   });
 
-  it('buildCsvRow populates <product>_price from roundResult.productPrices', () => {
+  it('buildCsvRow populates price_<product> from roundResult.productPrices', () => {
     const roundResult = {
       round: 1,
       decision: {
@@ -1143,13 +1143,13 @@ describe('csv-export.js — price columns (POST-01)', () => {
       chefSatisfactionScore: 0,
     };
     const row = csvExport.buildCsvRow(roundResult);
-    eq(row.coffee_price, 5.25);
-    eq(row.croissant_price, 4.75);
-    eq(row.cookie_price, 2.50);
-    eq(row.bagel_price, 3.00);
+    eq(row.price_coffee, 5.25);
+    eq(row.price_croissant, 4.75);
+    eq(row.price_cookie, 2.50);
+    eq(row.price_bagel, 3.00);
     // Off-menu products (sandwich, matcha) should be null (consistent with existing qty/satisfaction null-when-off-menu pattern)
-    eq(row.sandwich_price, null);
-    eq(row.matcha_price, null);
+    eq(row.price_sandwich, null);
+    eq(row.price_matcha, null);
   });
 
   it('buildCsvRow renders price as null when productPrices is missing entirely', () => {
@@ -1171,8 +1171,8 @@ describe('csv-export.js — price columns (POST-01)', () => {
       chefSatisfactionScore: 0,
     };
     const row = csvExport.buildCsvRow(roundResult);
-    eq(row.coffee_price, null);
-    eq(row.croissant_price, null);
+    eq(row.price_coffee, null);
+    eq(row.price_croissant, null);
   });
 });
 
