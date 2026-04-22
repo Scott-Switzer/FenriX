@@ -1219,6 +1219,14 @@ describe('decision-validation.js', () => {
     near(out.coffee, 4.00, 0.001);
     near(out.matcha, 7.00, 0.001);
   });
+  it('rejects booleans (no silent coercion)', () => {
+    throws(() => validation.validateProductPrices({ coffee: true }),  /must be a finite positive number/);
+    throws(() => validation.validateProductPrices({ coffee: false }), /must be a finite positive number/);
+  });
+  it('rejects arrays and objects (no silent coercion)', () => {
+    throws(() => validation.validateProductPrices({ coffee: [5] }),   /must be a finite positive number/);
+    throws(() => validation.validateProductPrices({ coffee: { n: 5 } }), /must be a finite positive number/);
+  });
 });
 
 // ============================================================================

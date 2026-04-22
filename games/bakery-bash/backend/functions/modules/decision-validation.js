@@ -345,11 +345,10 @@ function validateProductPrices(raw) {
     if (!PRICE_ZONES[key]) {
       fail('invalid-argument', `productPrices has unknown product "${key}"`);
     }
-    const n = Number(val);
-    if (!Number.isFinite(n) || n <= 0) {
+    if (typeof val !== 'number' || !Number.isFinite(val) || val <= 0) {
       fail('invalid-argument', `productPrices.${key} must be a finite positive number (got ${val})`);
     }
-    out[key] = clampPrice(snapPriceToStep(n), PRICE_ZONES[key]);
+    out[key] = clampPrice(snapPriceToStep(val), PRICE_ZONES[key]);
   }
   return out;
 }
