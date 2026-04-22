@@ -61,8 +61,11 @@ export function LeaderboardPage() {
   // `useGameListener` dispatches an empty array when the leaderboard doc
   // is absent, so we can't distinguish "listener not mounted yet" from
   // "game has no results yet" without the gameId check. Before the game
-  // is joined we render the empty state directly.
-  const waitingForFirstRound = gameId !== null && rankings.length === 0;
+  // is joined we render the empty state directly. Suppress the waiting
+  // row when a listener error is visible, otherwise the page shows two
+  // conflicting signals (error banner + "waiting" empty-state).
+  const waitingForFirstRound =
+    gameId !== null && rankings.length === 0 && !leaderboardError;
 
   return (
     <PageShell className="leaderboard-page">
