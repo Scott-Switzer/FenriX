@@ -3040,3 +3040,204 @@ h3 { font-size: 0.7rem; }
     display: none;
   }
 }
+
+/* ─── Round Briefing (FE-06 email phase hero) ────────────── */
+
+.page-shell.round-briefing {
+  justify-content: center;
+  align-items: center;
+  padding: 1.5rem;
+}
+
+.round-briefing__stage {
+  position: relative;
+  width: 100%;
+  max-width: 720px;
+  min-height: min(75dvh, 640px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.round-briefing__panel {
+  position: relative;
+  z-index: 2;
+  background: var(--cream);
+  border: var(--border);
+  box-shadow: var(--shadow-pixel);
+  padding: 2rem 3rem 2.25rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.1rem;
+  min-width: min(92%, 500px);
+}
+
+/* Honey-colored pixel rosette tucked into each corner. */
+.round-briefing__panel::before,
+.round-briefing__panel::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: var(--honey);
+  border: 2px solid var(--outline);
+}
+.round-briefing__panel::before { top: -8px; left: -8px; }
+.round-briefing__panel::after  { bottom: -8px; right: -8px; }
+
+.round-briefing__eyebrow {
+  font-family: var(--font-pixel);
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--caramel);
+  text-shadow: 2px 2px 0 var(--dough);
+}
+
+.round-briefing__round {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  line-height: 1;
+}
+
+.round-briefing__round-word {
+  font-family: var(--font-pixel);
+  font-size: 1.6rem;
+  color: var(--espresso);
+  text-shadow: 3px 3px 0 var(--honey);
+  letter-spacing: 0.08em;
+}
+
+.round-briefing__round-number {
+  position: relative;
+  font-family: var(--font-pixel);
+  font-size: 7.5rem;
+  color: var(--caramel);
+  text-shadow: 6px 6px 0 var(--espresso);
+  line-height: 1;
+  padding: 0.35rem 1rem 0.55rem;
+  animation: round-briefing-pulse 1.6s ease-in-out infinite;
+  background: var(--honey);
+  border: var(--border);
+  box-shadow: var(--shadow-pixel);
+  min-width: 1.6em;
+}
+
+.round-briefing__tagline {
+  font-family: var(--font-pixel);
+  font-size: 0.55rem;
+  color: var(--dark-roast);
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+  margin-top: 0.25rem;
+}
+
+/* ── Floating bakery sprites ── */
+
+.round-briefing__float {
+  position: absolute;
+  width: 84px;
+  height: 84px;
+  image-rendering: pixelated;
+  filter: drop-shadow(3px 3px 0 var(--dough));
+  z-index: 1;
+  pointer-events: none;
+  animation-duration: 3.6s;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+}
+
+.round-briefing__float--croissant {
+  top: 6%;
+  left: 4%;
+  transform: rotate(-12deg);
+  animation-name: round-briefing-bob-a;
+}
+
+.round-briefing__float--coffee {
+  top: 10%;
+  right: 6%;
+  transform: rotate(8deg);
+  animation-name: round-briefing-bob-b;
+  animation-duration: 4.2s;
+}
+
+.round-briefing__float--bagel {
+  bottom: 12%;
+  left: 8%;
+  transform: rotate(6deg);
+  width: 76px;
+  height: 76px;
+  animation-name: round-briefing-bob-b;
+  animation-duration: 3.2s;
+}
+
+.round-briefing__float--cookie {
+  bottom: 6%;
+  right: 10%;
+  transform: rotate(-6deg);
+  width: 72px;
+  height: 72px;
+  animation-name: round-briefing-bob-a;
+  animation-duration: 4.6s;
+}
+
+.round-briefing__float--matcha {
+  top: 48%;
+  left: 0;
+  transform: rotate(-4deg) translateY(-50%);
+  width: 66px;
+  height: 66px;
+  animation-name: round-briefing-bob-b;
+  animation-duration: 5s;
+}
+
+.round-briefing__float--sandwich {
+  top: 44%;
+  right: 0;
+  transform: rotate(10deg) translateY(-50%);
+  width: 70px;
+  height: 70px;
+  animation-name: round-briefing-bob-a;
+  animation-duration: 4.4s;
+}
+
+@keyframes round-briefing-pulse {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes round-briefing-bob-a {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -10px; }
+}
+
+@keyframes round-briefing-bob-b {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .round-briefing__round-number,
+  .round-briefing__float {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .round-briefing__panel {
+    padding: 1.5rem 1.25rem;
+  }
+  .round-briefing__round-word { font-size: 1.1rem; }
+  .round-briefing__round-number { font-size: 4.75rem; }
+  .round-briefing__float { width: 56px; height: 56px; }
+  .round-briefing__float--bagel,
+  .round-briefing__float--cookie,
+  .round-briefing__float--matcha,
+  .round-briefing__float--sandwich { width: 50px; height: 50px; }
+}
