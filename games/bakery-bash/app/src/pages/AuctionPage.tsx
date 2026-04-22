@@ -428,6 +428,14 @@ export function AuctionPage() {
   const alreadySubmitted =
     (isAdPhase && adBidsSubmitted) || (isChefPhase && chefBidsSubmitted);
 
+  // FE-9 — the bid inputs become read-only once the player's team has
+  // locked in bids for the current phase, or the game has moved past the
+  // auction phase entirely. Unlike Decide, "locked" here is phase-scoped:
+  // the Ads tab stays editable during the ad phase even after chefs lock
+  // (and vice-versa). Out-of-phase is always read-only.
+  const inAuctionPhase = isAdPhase || isChefPhase;
+  const bidsReadOnly = !inAuctionPhase || alreadySubmitted;
+
   // DEC-21 role gating: Advertising owns ad bids, Finance owns chef bids,
   // Solo owns both. Other teammates still see + can edit the inputs (so
   // they can advise the role-owner) but the submit button is disabled with
@@ -484,6 +492,14 @@ export function AuctionPage() {
         >
           {timerDisplay}
         </div>
+        {alreadySubmitted && (
+          <span
+            className="tab__badge tab__badge--submitted auction-page__locked-badge"
+            role="status"
+          >
+            Bids Locked
+          </span>
+        )}
       </div>
 
       <div className="auction-page__content">
@@ -521,6 +537,8 @@ export function AuctionPage() {
                       placeholder="$0"
                       min={0}
                       value={pendingAdBids[ad.id] ?? 0}
+                      disabled={bidsReadOnly}
+                      readOnly={bidsReadOnly}
                       onChange={(e) =>
                         setAdBid(ad.id, parseInt(e.target.value, 10) || 0)
                       }
@@ -578,6 +596,8 @@ export function AuctionPage() {
                         placeholder="$0"
                         min={0}
                         value={pendingChefBids[chef.id] ?? ""}
+                        disabled={bidsReadOnly}
+                        readOnly={bidsReadOnly}
                         onChange={(e) =>
                           setChefBid(chef.id, parseInt(e.target.value) || 0)
                         }

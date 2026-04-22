@@ -1,105 +1,87 @@
-import { useEffect, useState } from "react";
-import { doc, onSnapshot, type DocumentData } from "firebase/firestore";
 import { useGame } from "../contexts/GameContext";
-import { db } from "../lib/firebase";
 import { formatMoney } from "../lib/cost";
 import { readNumber } from "../lib/utils";
 import { PageShell } from "../components/ui/PageShell";
 
 /**
- * Per-player ranking row as written by `simulateRound` to
- * `/games/{gameId}/leaderboard/latest`. Authoritative shape lives in
- * `backend/functions/index.js` (search for `gameRef.collection('leaderboard')`).
+ * FE-7 — Leaderboard page.
  *
- * Note on canonical path: PR #25 settled the long-standing `current` vs
- * `latest` ambiguity in favor of `latest`. The P1 task spec still references
- * `/leaderboard/current`; we follow the production code (and the updated
- * schema doc) here.
+ * The leaderboard data is mirrored into `GameContext.leaderboard` by the
+ * app-wide `useGameListener` hook (FE-5). Cloud Functions overwrite
+ * `/games/{gameId}/leaderboard/latest` at the end of each round; we
+ * render straight from the context-backed server-sorted ordering — no
+ * local re-sort.
  *
- * Note on field names: the spec lists `cumulativeRevenue`. The production
- * simulation writes `revenueNet` per round. We render `revenueNet` as
- * "Revenue" and fall back to `cumulativeRevenue` if the backend realigns.
+ * Columns:
+ *   - Rank             (from backend `rank`)
+ *   - Bakery           (`bakeryName` || `displayName`)
+ *   - Revenue (Round)  (`lastRoundRevenue`) — FE-7 new column
+ *   - Revenue (Total)  (`revenueNet` → `cumulativeRevenue`)
+ *   - Δ                (`rankChange` indicator) — FE-7 new column
  *
- * Budget is intentionally NOT displayed on this player-facing page per
- * FRONTEND.md Hard UI Rule #1 ("Budget is hidden during play"). The
- * professor leaderboard is the only leaderboard allowed to show budget.
+ * Both the per-round revenue and rank-change columns render `—` when the
+ * backend hasn't shipped BE-7 yet, so the page degrades gracefully during
+ * the rollout window.
+ *
+ * Budget is intentionally NOT displayed here per FRONTEND.md Hard UI Rule
+ * #1 ("Budget is hidden during play").
  */
-interface LeaderboardRanking {
-  rank: number;
-  playerId: string;
-  displayName: string;
-  bakeryName?: string;
-  revenueNet?: number;
-  cumulativeRevenue?: number;
-}
 
-interface LeaderboardDocument {
-  round: number;
-  rankings: LeaderboardRanking[];
-  updatedAt: { toDate?: () => Date } | null;
+function rankChangeLabel(change: number): {
+  text: string;
+  className: string;
+  ariaLabel: string;
+} {
+  if (change > 0) {
+    return {
+      text: `▲ +${change}`,
+      className: "leaderboard-table__delta leaderboard-table__delta--up",
+      ariaLabel: `Up ${change}`,
+    };
+  }
+  if (change < 0) {
+    return {
+      text: `▼ ${change}`,
+      className: "leaderboard-table__delta leaderboard-table__delta--down",
+      ariaLabel: `Down ${Math.abs(change)}`,
+    };
+  }
+  return {
+    text: "—",
+    className: "leaderboard-table__delta leaderboard-table__delta--flat",
+    ariaLabel: "No change",
+  };
 }
 
 export function LeaderboardPage() {
-  const { gameId, playerId } = useGame();
-  const [board, setBoard] = useState<LeaderboardDocument | null>(null);
-  const [boardError, setBoardError] = useState<string | null>(null);
-  const [boardReady, setBoardReady] = useState(false);
+  const { gameId, playerId, leaderboard, leaderboardError, currentRound } =
+    useGame();
+  const rankings = leaderboard;
 
-  // ── Subscribe to /games/{gameId}/leaderboard/latest ──
-  // Cloud Functions overwrite this document at the end of each round. We
-  // distinguish "doc absent" (waiting for first round) from "listener not
-  // initialized" via the `boardReady` flag so the empty state doesn't flash
-  // on first paint.
-  useEffect(() => {
-    if (!gameId) return;
-    const lbRef = doc(db, "games", gameId, "leaderboard", "latest");
-    const unsubscribe = onSnapshot(
-      lbRef,
-      (snap) => {
-        setBoardReady(true);
-        if (!snap.exists()) {
-          setBoard(null);
-          return;
-        }
-        const data = snap.data() as DocumentData;
-        const rankings = Array.isArray(data.rankings)
-          ? (data.rankings as LeaderboardRanking[])
-          : [];
-        setBoard({
-          round: typeof data.round === "number" ? data.round : 0,
-          rankings,
-          updatedAt: data.updatedAt ?? null,
-        });
-        setBoardError(null);
-      },
-      (err) => {
-        console.error("leaderboard/latest listener error", { gameId, err });
-        setBoardError("Could not load the leaderboard.");
-        setBoardReady(true);
-      },
-    );
-    return unsubscribe;
-  }, [gameId]);
-
-  const rankings = board?.rankings ?? [];
-  // Suppress the "waiting for first round" empty-state when the listener
-  // errored — the error banner already explains why the table is empty, and
-  // showing both at once is contradictory.
+  // `useGameListener` dispatches an empty array when the leaderboard doc
+  // is absent, so we can't distinguish "listener not mounted yet" from
+  // "game has no results yet" without the gameId check. Before the game
+  // is joined we render the empty state directly. Suppress the waiting
+  // row when a listener error is visible, otherwise the page shows two
+  // conflicting signals (error banner + "waiting" empty-state).
   const waitingForFirstRound =
-    boardReady && !boardError && rankings.length === 0;
+    gameId !== null && rankings.length === 0 && !leaderboardError;
 
   return (
     <PageShell className="leaderboard-page">
       <h1 className="leaderboard-page__title">
         Leaderboard
-        {board?.round ? (
-          <span className="leaderboard-page__round"> · Round {board.round}</span>
-        ) : null}
+        {currentRound > 0 && (
+          <span className="leaderboard-page__round">
+            {" "}
+            · Round {currentRound}
+          </span>
+        )}
       </h1>
 
-      {boardError && (
+      {leaderboardError && (
         <p className="leaderboard-page__error" role="alert">
-          {boardError}
+          {leaderboardError}
         </p>
       )}
 
@@ -108,29 +90,39 @@ export function LeaderboardPage() {
           <tr>
             <th>Rank</th>
             <th>Bakery</th>
-            <th>Revenue</th>
+            <th>Revenue (Round)</th>
+            <th>Revenue (Total)</th>
+            <th aria-label="Rank change">Δ</th>
           </tr>
         </thead>
         <tbody>
-          {!boardReady ? (
+          {!gameId ? (
             <tr>
-              <td colSpan={3} className="leaderboard-table__empty">
-                Loading leaderboard…
+              <td colSpan={5} className="leaderboard-table__empty">
+                Join a game to see the leaderboard.
               </td>
             </tr>
           ) : waitingForFirstRound ? (
             <tr>
-              <td colSpan={3} className="leaderboard-table__empty">
+              <td colSpan={5} className="leaderboard-table__empty">
                 Waiting for first round results…
               </td>
             </tr>
           ) : (
             rankings.map((entry) => {
               const isYou = entry.playerId === playerId;
-              const revenue = readNumber(
+              const roundRevenue =
+                typeof entry.lastRoundRevenue === "number"
+                  ? entry.lastRoundRevenue
+                  : null;
+              const totalRevenue = readNumber(
                 entry.revenueNet,
                 entry.cumulativeRevenue,
               );
+              const change =
+                typeof entry.rankChange === "number" ? entry.rankChange : null;
+              const delta =
+                change === null ? null : rankChangeLabel(change);
               return (
                 <tr
                   key={entry.playerId}
@@ -143,7 +135,24 @@ export function LeaderboardPage() {
                       <span className="leaderboard-table__you-tag"> (you)</span>
                     )}
                   </td>
-                  <td>{formatMoney(revenue)}</td>
+                  <td>
+                    {roundRevenue === null ? "—" : formatMoney(roundRevenue)}
+                  </td>
+                  <td>{formatMoney(totalRevenue)}</td>
+                  <td>
+                    {delta ? (
+                      <span
+                        className={delta.className}
+                        aria-label={delta.ariaLabel}
+                      >
+                        {delta.text}
+                      </span>
+                    ) : (
+                      <span className="leaderboard-table__delta leaderboard-table__delta--flat">
+                        —
+                      </span>
+                    )}
+                  </td>
                 </tr>
               );
             })

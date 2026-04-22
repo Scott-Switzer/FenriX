@@ -78,9 +78,9 @@ h3 { font-size: 0.7rem; }
 /* ─── Page Shell ─────────────────────────────────────────── */
 
 .page-shell {
-  max-width: 900px;
+  max-width: min(1400px, 100%);
   margin: 0 auto;
-  padding: 2rem 1.5rem;
+  padding: 2rem 2rem;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -1247,7 +1247,7 @@ h3 { font-size: 0.7rem; }
 /* ─── Auction Page ───────────────────────────────────────── */
 
 .auction-page {
-  max-width: 860px;
+  width: 100%;
 }
 
 .auction-page__header {
@@ -2669,5 +2669,348 @@ h3 { font-size: 0.7rem; }
   }
   .submission-lock__action .btn {
     width: 100%;
+  }
+}
+
+/* ----------------------------------------------------------------------
+ * FE-9 — read-only submitted badge + read-only tile affordances.
+ * Shared across StaffTab, BakeryView, and AuctionPage.
+ * -------------------------------------------------------------------- */
+.tab__badge {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-family: var(--font-pixel, sans-serif);
+  font-size: 0.55rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.tab__badge--submitted {
+  background: var(--sage, #8fbf83);
+  color: var(--espresso, #2a1a12);
+}
+
+.staff-tab__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.staff-tab--readonly .staff-tab__stepper-btn {
+  /* Belt-and-braces — steppers short-circuit on the JS side too. */
+  pointer-events: none;
+}
+
+.staff-tab__stepper-value--static,
+.product-tile__step-value--static,
+.staff-tab__task-static {
+  font-family: var(--font-pixel, sans-serif);
+  font-size: 0.7rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 4px;
+}
+
+.product-tile--readonly .product-tile__stepper--readonly {
+  justify-content: center;
+  border: 1px dashed rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  padding: 0.25rem 0.5rem;
+}
+
+.product-tile__muted {
+  font-family: var(--font-body, sans-serif);
+  font-size: 0.8rem;
+  color: var(--dark-roast, #5a3e2e);
+  font-style: italic;
+  padding: 0.4rem 0.25rem;
+}
+
+.bakery-view__badge {
+  margin-left: 0.6rem;
+}
+
+.auction-page__locked-badge {
+  margin-left: 0.75rem;
+}
+
+/* ----------------------------------------------------------------------
+ * FE-4 — Results phase: auction outcomes + end-of-round maintenance.
+ * -------------------------------------------------------------------- */
+.results-phase__section-title {
+  font-family: var(--font-pixel, sans-serif);
+  font-size: 0.9rem;
+  margin: 1rem 0 0.5rem;
+  color: var(--espresso, #2a1a12);
+}
+
+.results-phase__auctions,
+.results-phase__maintenance {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 8px;
+}
+
+.results-phase__auction-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 1rem;
+}
+
+@media (max-width: 600px) {
+  .results-phase__auction-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+.results-phase__auction-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.results-phase__auction-label {
+  font-family: var(--font-pixel, sans-serif);
+  font-size: 0.55rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dark-roast, #5a3e2e);
+}
+
+.results-phase__auction-value {
+  font-family: var(--font-body, sans-serif);
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.results-phase__auction-value--won {
+  color: var(--sage, #8fbf83);
+}
+
+.results-phase__auction-value--lost {
+  color: var(--dark-roast, #5a3e2e);
+  font-style: italic;
+  font-weight: 500;
+}
+
+.results-phase__auction-sub {
+  font-weight: 400;
+  color: var(--dark-roast, #5a3e2e);
+  font-size: 0.85rem;
+}
+
+.results-phase__maintenance-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.results-phase__maintenance-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.results-phase__maintenance-label {
+  font-family: var(--font-body, sans-serif);
+  font-size: 0.85rem;
+}
+
+.results-phase__maintenance-pct {
+  font-family: var(--font-pixel, sans-serif);
+  font-size: 0.7rem;
+}
+
+.results-phase__maintenance-track {
+  width: 100%;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 0.15rem;
+}
+
+.results-phase__maintenance-fill {
+  height: 100%;
+  transition: width 320ms ease-out;
+}
+
+/* ----------------------------------------------------------------------
+ * FE-7 — leaderboard rank-change indicators.
+ * -------------------------------------------------------------------- */
+.leaderboard-table__delta {
+  font-family: var(--font-pixel, sans-serif);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+}
+
+.leaderboard-table__delta--up {
+  color: var(--sage, #5a8f4f);
+}
+
+.leaderboard-table__delta--down {
+  color: var(--berry, #b04c4c);
+}
+
+.leaderboard-table__delta--flat {
+  color: var(--dark-roast, #5a3e2e);
+  opacity: 0.7;
+}
+
+/* ----------------------------------------------------------------------
+ * Kitchen Roster — label + status on one row, color-coded by slot type.
+ * -------------------------------------------------------------------- */
+.roster-phase-page__header {
+  margin-bottom: 1rem;
+}
+
+.roster-phase-page__slots {
+  display: grid;
+  gap: 0.6rem;
+  margin: 1rem 0 1.25rem;
+}
+
+.roster-phase-page__slot {
+  display: grid;
+  grid-template-columns: minmax(11rem, 14rem) 1fr;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.7rem 0.9rem;
+  background: var(--color-surface);
+  border: var(--border-light);
+  border-left-width: 5px;
+  border-radius: 6px;
+}
+
+.roster-phase-page__slot--base {
+  border-left-color: var(--caramel);
+  background: rgba(196, 135, 59, 0.08);
+}
+
+.roster-phase-page__slot--specialty {
+  border-left-color: var(--sage);
+}
+
+.roster-phase-page__slot--specialty:nth-of-type(odd) {
+  background: rgba(122, 158, 126, 0.06);
+}
+
+.roster-phase-page__slot--overflow {
+  border-left-color: var(--berry);
+  background: rgba(181, 75, 108, 0.1);
+}
+
+.roster-phase-page__slot-label {
+  font-family: var(--font-pixel, monospace);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.roster-phase-page__slot-label::after {
+  content: "—";
+  color: var(--color-text-muted);
+  opacity: 0.55;
+  font-weight: normal;
+  margin-left: auto;
+}
+
+.roster-phase-page__slot--base .roster-phase-page__slot-label {
+  color: var(--caramel);
+}
+
+.roster-phase-page__slot--specialty .roster-phase-page__slot-label {
+  color: var(--sage);
+}
+
+.roster-phase-page__slot--overflow .roster-phase-page__slot-label {
+  color: var(--berry);
+}
+
+.roster-phase-page__base-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.roster-phase-page__base-portrait {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.roster-phase-page__base-name {
+  font-family: var(--font-pixel, monospace);
+  font-size: 0.8rem;
+  color: var(--color-text);
+}
+
+.roster-phase-page__base-hint {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  opacity: 0.75;
+}
+
+.roster-phase-page__base-hint::before {
+  content: "· ";
+  opacity: 0.6;
+}
+
+.roster-phase-page__empty {
+  font-family: var(--font-pixel, monospace);
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  opacity: 0.55;
+  font-style: italic;
+}
+
+.roster-phase-page__role-gate,
+.roster-phase-page__overflow-warning,
+.roster-phase-page__info,
+.roster-phase-page__error {
+  font-size: 0.8rem;
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  border: var(--border-light);
+}
+
+.roster-phase-page__overflow-warning {
+  background: rgba(181, 75, 108, 0.1);
+  border-left: 4px solid var(--berry);
+  color: var(--berry);
+}
+
+.roster-phase-page__error {
+  background: rgba(181, 75, 108, 0.12);
+  border-left: 4px solid var(--berry);
+  color: var(--berry);
+}
+
+.roster-phase-page__info {
+  background: rgba(196, 135, 59, 0.1);
+  border-left: 4px solid var(--caramel);
+}
+
+@media (max-width: 640px) {
+  .roster-phase-page__slot {
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+  }
+  .roster-phase-page__slot-label::after {
+    display: none;
   }
 }

@@ -568,6 +568,41 @@ export interface GameState {
    * countdown from `phaseEndsAt - Date.now()`.
    */
   phaseEndsAtMs: number | null;
+  /**
+   * Leaderboard rankings mirrored from
+   * `/games/{gameId}/leaderboard/latest.rankings` by `useGameListener`.
+   * Ordered by `cumulativeRevenue` descending (backend sorts).
+   */
+  leaderboard: LeaderboardRanking[];
+  /**
+   * User-facing error from the `useGameListener` leaderboard onSnapshot.
+   * `null` on a healthy listener. Set when the snapshot errors (permission
+   * denied, network failure, etc.) so `LeaderboardPage` can surface a
+   * banner instead of silently showing "Waiting for first round results…"
+   * forever.
+   */
+  leaderboardError: string | null;
+}
+
+/**
+ * One row of the live leaderboard. Source: `simulateRound` in
+ * `backend/functions/index.js` writes this to the `rankings` field of
+ * `/games/{gameId}/leaderboard/latest`.
+ *
+ * `lastRoundRevenue` and `rankChange` are written only after BE-7 lands;
+ * the UI must render gracefully when they are absent.
+ */
+export interface LeaderboardRanking {
+  rank: number;
+  playerId: string;
+  displayName: string;
+  bakeryName?: string;
+  revenueNet?: number;
+  cumulativeRevenue?: number;
+  /** Revenue earned this round only (post–loan-shark). */
+  lastRoundRevenue?: number;
+  /** Positive = moved up; negative = moved down; 0 = no change. */
+  rankChange?: number;
 }
 
 /** Default maintenance bars (all 100%) used on game start / context reset. */

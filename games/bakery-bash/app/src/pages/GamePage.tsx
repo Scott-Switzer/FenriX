@@ -618,9 +618,14 @@ export function GamePage() {
         />
       )}
 
+      {/* FE-9 — lock the menu + Hire tab once the player has submitted.
+          We intentionally *don't* tie this to `!isDecisionPhase` alone
+          because GamePage itself swaps to the results view as soon as
+          `basePhase` leaves "decide"; within this branch only the
+          `decisionSubmitted` flag can flip inputs to read-only. */}
       <div className="game-page__dashboard">
-        <BakeryView />
-        <GameSidebar />
+        <BakeryView readOnly={decisionSubmitted} />
+        <GameSidebar readOnly={decisionSubmitted} />
       </div>
       {submitError && (
         <p className="game-page__submit-error" role="alert">

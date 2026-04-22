@@ -315,6 +315,29 @@ export function ProfessorPage() {
     void callCallable("endGame", "end", "Game ended.");
   };
 
+  /**
+   * FE-6 — Reset the active game so it can be replayed from the lobby.
+   * Calls the `resetGame` Firebase callable (BE-6). If the callable has
+   * not been deployed yet (pre-BE-6 rollout), the error path surfaces a
+   * friendly note instead of a generic Firebase error code. We retain
+   * the `createdGame` banner and the local `gameId` so the professor
+   * can confirm the reset succeeded before creating a fresh session.
+   */
+  const onReset = () => {
+    if (
+      !window.confirm(
+        "This will delete all round data and reset all players. Are you sure?",
+      )
+    ) {
+      return;
+    }
+    void callCallable(
+      "resetGame",
+      "reset",
+      "Game reset — all round data cleared and players returned to lobby.",
+    );
+  };
+
   const onCreateGame = async () => {
     setError(null);
     setInfo(null);
@@ -507,6 +530,15 @@ export function ProfessorPage() {
           }
         >
           {pendingAction === "end" ? "Ending…" : "End Game"}
+        </button>
+
+        <button
+          className="btn btn--danger"
+          onClick={onReset}
+          disabled={!gameId || controlsDisabled}
+          title="Clear all round data and send players back to the lobby (BE-6)."
+        >
+          {pendingAction === "reset" ? "Resetting…" : "Reset Game"}
         </button>
 
         <Link
