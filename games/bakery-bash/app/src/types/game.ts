@@ -550,6 +550,14 @@ export interface GameState {
    * Ordered by `cumulativeRevenue` descending (backend sorts).
    */
   leaderboard: LeaderboardRanking[];
+  /**
+   * User-facing error from the `useGameListener` leaderboard onSnapshot.
+   * `null` on a healthy listener. Set when the snapshot errors (permission
+   * denied, network failure, etc.) so `LeaderboardPage` can surface a
+   * banner instead of silently showing "Waiting for first round results…"
+   * forever.
+   */
+  leaderboardError: string | null;
 }
 
 /**

@@ -54,7 +54,8 @@ function rankChangeLabel(change: number): {
 }
 
 export function LeaderboardPage() {
-  const { gameId, playerId, leaderboard, currentRound } = useGame();
+  const { gameId, playerId, leaderboard, leaderboardError, currentRound } =
+    useGame();
   const rankings = leaderboard;
 
   // `useGameListener` dispatches an empty array when the leaderboard doc
@@ -74,6 +75,12 @@ export function LeaderboardPage() {
           </span>
         )}
       </h1>
+
+      {leaderboardError && (
+        <p className="leaderboard-page__error" role="alert">
+          {leaderboardError}
+        </p>
+      )}
 
       <table className="leaderboard-table">
         <thead>

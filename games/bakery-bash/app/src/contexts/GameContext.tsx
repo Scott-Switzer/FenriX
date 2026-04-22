@@ -96,6 +96,7 @@ const initialState: GameState = {
   teamName: null,
   phaseEndsAtMs: null,
   leaderboard: [],
+  leaderboardError: null,
 };
 
 type GameAction =
@@ -148,6 +149,7 @@ type GameAction =
   | { type: "SET_CHEF_SATISFACTION"; payload: Record<string, number> }
   | { type: "SET_BUDGET"; payload: number | null }
   | { type: "SET_LEADERBOARD"; payload: LeaderboardRanking[] }
+  | { type: "SET_LEADERBOARD_ERROR"; payload: string | null }
   | { type: "RESET" };
 
 function gameReducer(state: GameState, action: GameAction): GameState {
@@ -346,7 +348,13 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     }
 
     case "SET_LEADERBOARD":
-      return { ...state, leaderboard: action.payload };
+      // A successful snapshot clears any previous listener error.
+      return { ...state, leaderboard: action.payload, leaderboardError: null };
+
+    case "SET_LEADERBOARD_ERROR":
+      return state.leaderboardError === action.payload
+        ? state
+        : { ...state, leaderboardError: action.payload };
 
     case "RESET":
       return initialState;

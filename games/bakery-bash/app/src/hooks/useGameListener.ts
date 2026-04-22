@@ -317,6 +317,14 @@ export function useGameListener(gameId: string | null, playerId?: string | null)
           gameId,
           err,
         });
+        // Surface the failure so `LeaderboardPage` can render a visible
+        // banner instead of the indefinite "Waiting for first round
+        // results…" row (PR #42 review).
+        dispatch({
+          type: "SET_LEADERBOARD_ERROR",
+          payload:
+            err.message ?? "Could not load the leaderboard. Please refresh.",
+        });
       },
     );
     return unsubscribe;
