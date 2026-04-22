@@ -94,20 +94,26 @@ export function RosterPhasePage() {
   useEffect(() => {
     if (!gameId || !playerId) return;
     const playerRef = doc(db, "games", gameId, "players", playerId);
-    const unsubscribe = onSnapshot(playerRef, (snap) => {
-      if (!snap.exists()) return;
-      const data = snap.data() as DocumentData;
-      const raw = Array.isArray(data.specialtyChefs) ? data.specialtyChefs : [];
-      setSpecialtyChefs(raw.map(coerceChef).filter((c): c is RosterChef => c !== null));
-      setPendingRosterAction(data.pendingRosterAction === true);
-      setRosterCompleted(data.rosterCompleted === true);
-    });
+    const unsubscribe = onSnapshot(
+      playerRef,
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data() as DocumentData;
+        const raw = Array.isArray(data.specialtyChefs) ? data.specialtyChefs : [];
+        setSpecialtyChefs(raw.map(coerceChef).filter((c): c is RosterChef => c !== null));
+        setPendingRosterAction(data.pendingRosterAction === true);
+        setRosterCompleted(data.rosterCompleted === true);
+      },
+      (err) => {
+        console.error("roster player-doc listener error:", { gameId, playerId, err });
+      },
+    );
     return unsubscribe;
   }, [gameId, playerId]);
 
   // Auto-route as phase changes. Roster → simulating/results_ready → /game.
   useEffect(() => {
-    if (!phase) return;
+    if (!gameId || !phase) return;
     const parsed = parseGamePhase(phase, currentRound);
     if (parsed.base === "decide") navigate("/game/decide");
     else if (parsed.base === "email") navigate("/game/email");

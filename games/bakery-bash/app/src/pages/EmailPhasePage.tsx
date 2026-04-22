@@ -76,7 +76,7 @@ export function EmailPhasePage() {
 
   // Auto-route to decide when the professor advances.
   useEffect(() => {
-    if (!phase) return;
+    if (!gameId || !phase) return;
     const parsed = parseGamePhase(phase, currentRound);
     if (parsed.base === "decide") navigate("/game/decide");
     else if (

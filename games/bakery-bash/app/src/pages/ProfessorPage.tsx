@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   collection,
@@ -71,7 +71,7 @@ const SUBMISSION_PHASES: Array<{ key: BasePhase; label: string }> = [
 ];
 
 export function ProfessorPage() {
-  const { gameId: contextGameId, currentRound, gameCode } = useGame();
+  const { gameId: contextGameId, currentRound, gameCode, phaseEndsAtMs } = useGame();
   const dispatch = useGameDispatch();
   const { user } = useAuth();
 
@@ -113,7 +113,6 @@ export function ProfessorPage() {
     };
   }, []);
 
->>>>>>> main
   // Roster + submissions monitor.
   const [roster, setRoster] = useState<ProfessorRosterEntry[]>([]);
   const [rosterError, setRosterError] = useState<string | null>(null);
@@ -297,6 +296,25 @@ export function ProfessorPage() {
     },
     [gameId],
   );
+
+  // Keep a stable ref to callCallable so the auto-advance effect doesn't
+  // re-trigger just because the function reference changed.
+  const callCallableRef = useRef(callCallable);
+  useEffect(() => { callCallableRef.current = callCallable; });
+
+  // Auto-advance 15 s after phase timer expires (5 s grace + 10 s freeze).
+  // Only re-runs when phaseEndsAtMs or gameId changes — not on every render.
+  // Skips if the timer was already expired before this effect mounted.
+  useEffect(() => {
+    if (!phaseEndsAtMs || !gameId) return;
+    const msUntilExpiry = phaseEndsAtMs - Date.now();
+    if (msUntilExpiry < -30_000) return;
+    const delay = Math.max(0, msUntilExpiry) + 15_000;
+    const t = setTimeout(() => {
+      void callCallableRef.current("advanceGamePhase", "auto-advance", "Phase auto-advanced.");
+    }, delay);
+    return () => clearTimeout(t);
+  }, [phaseEndsAtMs, gameId]);
 
   const onStart = () => callCallable("startGame", "start", "Game started.");
   const onAdvance = () =>

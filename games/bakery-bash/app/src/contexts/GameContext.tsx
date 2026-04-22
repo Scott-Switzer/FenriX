@@ -150,19 +150,14 @@ type GameAction =
 function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case "JOIN_GAME":
+      // Start from initialState so all round/phase/draft state is clean.
+      // Spreading state would carry over stale data from a previous game.
       return {
-        ...state,
+        ...initialState,
         gameId: action.payload.gameId,
         playerId: action.payload.playerId,
         gameCode: action.payload.gameCode,
         player: action.payload.player,
-        // Reset team-assignment state on a fresh join; backend writes
-        // role + teamId onto the player doc and the team doc, and the
-        // player-doc / team-doc listeners mirror them back into context.
-        role: "solo",
-        teamId: null,
-        teamName: null,
-        phase: "lobby",
       };
 
     case "SET_ROLE":

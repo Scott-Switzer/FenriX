@@ -557,13 +557,19 @@ exports.joinGame = onCall(CALLABLE_OPTS, async (request) => {
 
   const joinCode = cleanString(data.joinCode).toUpperCase();
   const displayName = cleanString(data.displayName);
-  const bakeryName = cleanString(data.bakeryName) || `${displayName}'s Bakery`;
+  const rawTeamNumber = data.teamNumber;
+  const teamNumber = Number.isInteger(rawTeamNumber) && rawTeamNumber >= 1 && rawTeamNumber <= 8
+    ? rawTeamNumber : null;
+  const bakeryName = cleanString(data.bakeryName) || (teamNumber ? `Team ${teamNumber}` : `${displayName}'s Bakery`);
 
   if (!/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/.test(joinCode)) {
     throw new HttpsError('invalid-argument', 'joinCode must be a 6-character game code (letters A-Z excluding I/O, digits 2-9).');
   }
   if (displayName.length < 2 || displayName.length > 40) {
     throw new HttpsError('invalid-argument', 'displayName must be 2–40 characters.');
+  }
+  if (!teamNumber) {
+    throw new HttpsError('invalid-argument', 'teamNumber must be an integer between 1 and 8.');
   }
   if (bakeryName.length > 60) {
     throw new HttpsError('invalid-argument', 'bakeryName must be 60 characters or fewer.');
@@ -581,12 +587,8 @@ exports.joinGame = onCall(CALLABLE_OPTS, async (request) => {
   const playerRef = gameRef.collection('players').doc(auth.uid);
   const rosterRef = gameRef.collection('roster').doc(auth.uid);
 
-  // BE-20: deterministic teamId derived from bakeryName (same name → same team).
-  // Players sharing a bakeryName in the same game are grouped automatically.
-  const teamId = (
-    bakeryName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') ||
-    auth.uid.slice(0, 8)
-  ).slice(0, 50);
+  // teamId is derived from teamNumber for predictable grouping.
+  const teamId = `team-${teamNumber}`;
   const teamRef = gameRef.collection('teams').doc(teamId);
 
   let playerId = auth.uid;
