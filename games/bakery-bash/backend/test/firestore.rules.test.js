@@ -391,4 +391,54 @@ describe("Bakery Bash Firestore security rules", () => {
       setDoc(decisionRef, { round: 1, productPrices: { coffee: 4.00 } }, { merge: true })
     );
   });
+
+  // ─────────────────────────────────────────────────────────
+  // isGameProfessor — game-scoped professor reads (no global custom claim).
+  // The base seed already sets games/{GAME_ID}.professorId = "uid_professor".
+  // ─────────────────────────────────────────────────────────
+  describe("isGameProfessor — submissions + player rounds", () => {
+    const PROF_UID = "uid_professor";
+    const OTHER_UID = "uid_unrelated";
+
+    beforeEach(async () => {
+      await testEnv.withSecurityRulesDisabled(async (ctx) => {
+        const db = ctx.firestore();
+        await setDoc(doc(db, "games", GAME_ID, "submissions", "round_1_decide"), {
+          round: 1,
+          phase: "decide",
+          submittedCount: 2,
+        });
+      });
+    });
+
+    it("game professor can read submissions without the global claim", async () => {
+      await assertSucceeds(
+        getDoc(doc(authedDb(PROF_UID), "games", GAME_ID, "submissions", "round_1_decide"))
+      );
+    });
+
+    it("non-professor signed-in user cannot read submissions", async () => {
+      await assertFails(
+        getDoc(doc(authedDb(OTHER_UID), "games", GAME_ID, "submissions", "round_1_decide"))
+      );
+    });
+
+    it("game professor can read another player's per-player rounds", async () => {
+      await assertSucceeds(
+        getDoc(doc(authedDb(PROF_UID), "games", GAME_ID, "players", PLAYER_A, "rounds", "round_1"))
+      );
+    });
+
+    it("player can still read their own rounds", async () => {
+      await assertSucceeds(
+        getDoc(doc(authedDb(PLAYER_A), "games", GAME_ID, "players", PLAYER_A, "rounds", "round_1"))
+      );
+    });
+
+    it("unrelated player cannot read another player's rounds", async () => {
+      await assertFails(
+        getDoc(doc(authedDb(OTHER_UID), "games", GAME_ID, "players", PLAYER_A, "rounds", "round_1"))
+      );
+    });
+  });
 });

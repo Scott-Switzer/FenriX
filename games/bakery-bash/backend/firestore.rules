@@ -24,6 +24,24 @@ service cloud.firestore {
     }
 
     // ─────────────────────────────────────────────────────────
+    // isGameProfessor — allows the actual game's professor (the
+    // UID written to game.professorUid / professorId at creation)
+    // to read game-scoped admin docs without the global custom
+    // claim. Removes a deploy dependency on the BE-18 set-claim
+    // script for live gameplay.
+    // ─────────────────────────────────────────────────────────
+    function isGameProfessor(gameId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/games/$(gameId))
+        && (
+          get(/databases/$(database)/documents/games/$(gameId)).data.professorUid
+            == request.auth.uid
+          || get(/databases/$(database)/documents/games/$(gameId)).data.professorId
+            == request.auth.uid
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────
     // /games/{gameId}
     // Players can read game state to track phase, round, timers.
     // Only Cloud Functions can write (phase transitions, score updates).
@@ -78,7 +96,7 @@ service cloud.firestore {
 
         // Round results are written exclusively by Cloud Functions.
         match /rounds/{roundId} {
-          allow read: if isOwner(playerId);
+          allow read: if isOwner(playerId) || isGameProfessor(gameId);
           allow write: if false;
         }
 
@@ -154,7 +172,7 @@ service cloud.firestore {
       // Doc IDs follow the pattern "round_{N}_{phase}".
       // ─────────────────────────────────────────────────────
       match /submissions/{doc} {
-        allow read: if isProfessor();
+        allow read: if isProfessor() || isGameProfessor(gameId);
         allow write: if false;
       }
     }

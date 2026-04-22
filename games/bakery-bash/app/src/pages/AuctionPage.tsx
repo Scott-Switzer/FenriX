@@ -348,7 +348,7 @@ export function AuctionPage() {
       const submitBids = httpsCallable(functions, "submitBids");
       await submitBids({ gameId, bidType: "chef", chefBids: { [chefId]: pendingChefBids[chefId] ?? 0 } });
     } catch (err) {
-      setSubmitError(humanizeFunctionError(err));
+      setSubmitError(humanizeFunctionError(err, "Could not submit chef bid. Please try again."));
     }
   }, [timerExpired, gameId, pendingChefBids]);
 

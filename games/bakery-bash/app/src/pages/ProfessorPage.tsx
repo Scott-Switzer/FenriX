@@ -373,7 +373,7 @@ export function ProfessorPage() {
       await extendPhase({ gameId, extraSeconds: 60 });
       setInfo("Phase extended by 1 minute.");
     } catch (err) {
-      setError(humanizeFunctionError(err));
+      setError(humanizeFunctionError(err, "Could not extend phase. Please try again."));
     } finally {
       setPendingAction(null);
     }

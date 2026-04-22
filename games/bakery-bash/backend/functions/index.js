@@ -155,6 +155,30 @@ try {
  */
 const BATCH_OP_LIMIT = 487;
 
+/**
+ * Batch-delete every document in a collection. Used by `resetGame` to wipe
+ * round/sim subcollections without leaving orphans. Chunks at BATCH_OP_LIMIT
+ * so games with many rounds × many players don't bust the 500-op batch limit.
+ */
+async function deleteCollectionDocs(colRef) {
+  const snap = await colRef.get();
+  if (snap.empty) return;
+  let batch = db.batch();
+  let ops = 0;
+  for (const docSnap of snap.docs) {
+    batch.delete(docSnap.ref);
+    ops += 1;
+    if (ops >= BATCH_OP_LIMIT) {
+      await batch.commit();
+      batch = db.batch();
+      ops = 0;
+    }
+  }
+  if (ops > 0) {
+    await batch.commit();
+  }
+}
+
 /** Chars allowed in generated join codes — avoids 0/O/1/I confusion. */
 const JOIN_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -2223,4 +2247,111 @@ exports.purchaseCompetitorInsight = onCall(async (request) => {
   }
 
   return { csv: rows.join("\n"), costDeducted: insightCost };
+});
+
+// ---------------------------------------------------------------------------
+// resetGame — professor-only. Wipes round/sim/leaderboard/conclusion data
+// and resets each player to lobby defaults so a class can replay without
+// rebuilding the roster. Authorization checks both `professorUid` (canonical)
+// and `professorId` (legacy alias) to match createGame's write pattern.
+// ---------------------------------------------------------------------------
+exports.resetGame = onCall(CALLABLE_OPTS, async (request) => {
+  const auth = requireAuth(request);
+  const gameId = cleanGameId((request.data || {}).gameId);
+  const gameRef = gameDoc(gameId);
+
+  const [gameSnap, cfgSnap, playersSnap] = await Promise.all([
+    gameRef.get(),
+    gameRef.collection('config').doc('params').get(),
+    gameRef.collection('players').get(),
+  ]);
+
+  if (!gameSnap.exists) throw new HttpsError('not-found', 'Game not found.');
+  if (
+    gameSnap.get('professorUid') !== auth.uid &&
+    gameSnap.get('professorId') !== auth.uid
+  ) {
+    throw new HttpsError('permission-denied', 'Only the professor can reset this game.');
+  }
+
+  const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
+  const startingBudget = numberOrDefault(
+    config.startingBudget,
+    DEFAULT_GAME_CONFIG.startingBudget,
+  );
+
+  const playerDocs = playersSnap.docs;
+
+  // Wipe game-level + per-player subcollections in parallel. deleteCollectionDocs
+  // chunks at BATCH_OP_LIMIT internally.
+  await Promise.all([
+    deleteCollectionDocs(gameRef.collection('rounds')),
+    deleteCollectionDocs(gameRef.collection('submissions')),
+    deleteCollectionDocs(gameRef.collection('marketInsights')),
+    deleteCollectionDocs(gameRef.collection('leaderboard')),
+    deleteCollectionDocs(gameRef.collection('conclusion')),
+    ...playerDocs.map((pd) => deleteCollectionDocs(pd.ref.collection('decisions'))),
+    ...playerDocs.map((pd) => deleteCollectionDocs(pd.ref.collection('rounds'))),
+    ...playerDocs.map((pd) => deleteCollectionDocs(pd.ref.collection('emails'))),
+    ...playerDocs.map((pd) =>
+      deleteCollectionDocs(
+        gameRef.collection('csvRows').doc(pd.id).collection('rounds'),
+      ),
+    ),
+  ]);
+
+  // Reset the game doc + each player to lobby defaults in chunked batches.
+  let batch = db.batch();
+  let ops = 0;
+  const commitBatch = async () => {
+    if (ops === 0) return;
+    await batch.commit();
+    batch = db.batch();
+    ops = 0;
+  };
+
+  batch.update(gameRef, {
+    phase: 'lobby',
+    round: 0,
+    currentRound: 0,
+    paused: false,
+    submittedCount: 0,
+    phaseEndsAt: null,
+    phaseStartedAt: FieldValue.serverTimestamp(),
+    pausedAt: null,
+    startedAt: null,
+    endedAt: null,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  ops += 1;
+
+  for (const pd of playerDocs) {
+    batch.update(pd.ref, {
+      budgetCurrent: startingBudget,
+      cumulativeRevenue: 0,
+      specialtyChefs: [],
+      sousChefCount: 0,
+      pendingDecision: {},
+      pendingBids: {},
+      pendingRosterAction: false,
+      rosterCompleted: false,
+      returningCustomersPending: 0,
+      chefSatisfactionScores: {},
+      maintenanceBars: {
+        cleanliness: 100,
+        ovenHealth: 100,
+        slicerHealth: 100,
+        espressoHealth: 100,
+      },
+      lastRoundResult: FieldValue.delete(),
+      consecutiveMissedRounds: 0,
+      disconnected: false,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    ops += 1;
+    if (ops >= BATCH_OP_LIMIT) await commitBatch();
+  }
+  await commitBatch();
+
+  return { gameId, phase: 'lobby' };
 });
