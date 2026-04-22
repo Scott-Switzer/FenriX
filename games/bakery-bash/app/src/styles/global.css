@@ -3241,3 +3241,110 @@ h3 { font-size: 0.7rem; }
   .round-briefing__float--matcha,
   .round-briefing__float--sandwich { width: 50px; height: 50px; }
 }
+
+/* ── How to Play page ───────────────────────────────────────────────── */
+.how-to-play { max-width: 640px; margin: 0 auto; padding: 2rem 1rem; }
+.how-to-play__header { display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; }
+.how-to-play__title  { font-size: 1.5rem; font-weight: bold; margin: 0; }
+.how-to-play__back   { font-size: 0.9rem; }
+.how-to-play__stages { display: flex; flex-direction: column; gap: 1.25rem; }
+.how-to-play__card   { background: var(--cream, #fff7e6); border-radius: 10px; padding: 1.5rem; border: 2px solid var(--honey, #f59e0b); }
+.how-to-play__card-label   { display: inline-block; background: var(--caramel, #d97706); color: #fff; font-size: 0.75rem; font-weight: bold; padding: 0.2rem 0.6rem; border-radius: 4px; margin-bottom: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.how-to-play__card-tagline { font-size: 1.1rem; font-weight: bold; margin: 0 0 0.5rem; }
+.how-to-play__card-body    { font-size: 0.9rem; line-height: 1.6; margin: 0; color: #444; }
+.landing-page__how-to-play-link { display: block; text-align: center; font-size: 0.85rem; color: var(--caramel, #d97706); margin-top: 0.5rem; text-decoration: underline; }
+
+/* ── Phase banner ───────────────────────────────────────────────────── */
+.round-header__phase-banner { font-size: 1.3rem; font-weight: bold; text-align: center; width: 100%; padding: 0.4rem 1rem; background: var(--honey, #f59e0b); letter-spacing: 0.05em; color: #1a1a1a; border-radius: 4px; margin-bottom: 0.5rem; }
+
+/* ── Active role badge ──────────────────────────────────────────────── */
+.round-header__role-badge { min-height: 48px; padding: 0.6rem 1.4rem; border-radius: 24px; font-size: 1rem; font-weight: bold; background: var(--cream, #fff7e6); display: inline-flex; align-items: center; border: 2px solid var(--honey, #f59e0b); }
+.round-header__role-badge--active { background: var(--caramel, #d97706); color: #fff; border-color: var(--caramel, #d97706); }
+
+/* ── Join form logo preview (FE-N06) ────────────────────────────────── */
+.join-form__logo-preview { width: 60px; height: 60px; border-radius: 50%; object-fit: cover; display: block; margin: 0.5rem 0; border: 2px solid var(--honey, #f59e0b); }
+
+/* ── Professor readiness banner (FE-N07) ────────────────────────────── */
+.prof-phase-readiness { padding: 0.75rem 1rem; border-radius: 6px; font-weight: bold; font-size: 0.95rem; margin-bottom: 1rem; }
+.prof-phase-readiness--go   { background: #dcfce7; color: #166534; border: 2px solid #22c55e; }
+.prof-phase-readiness--wait { background: #fee2e2; color: #991b1b; border: 2px solid #ef4444; }
+
+/* ── Auction bid input ──────────────────────────────────────────────── */
+.auction-page__bid-wrapper { display: flex; align-items: center; gap: 4px; }
+.auction-page__bid-prefix  { font-weight: bold; font-size: 1rem; line-height: 1; }
+.auction-page__bid-input   { width: 130px; min-width: 130px; }
+.auction-page__ad-description { font-size: 0.875rem; color: #555; line-height: 1.5; margin: 0 0 1rem; padding: 0.75rem; background: var(--cream, #fff7e6); border-radius: 6px; border-left: 3px solid var(--honey, #f59e0b); }
+
+/* ── Auction timer expired popup ────────────────────────────────────── */
+.auction-page__timer-expired { position: fixed; top: 2rem; left: 50%; transform: translateX(-50%); background: #1a1a2e; color: #fff; padding: 1rem 2rem; border-radius: 8px; font-size: 1rem; font-weight: bold; z-index: 9999; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+
+/* ── FE-N09: Product tile unit cost & bakery total committed ─────────── */
+.product-tile__unit-cost { font-size: 0.75rem; color: #888; margin-top: 0.2rem; }
+.bakery-view__total-committed { padding: 0.75rem 1rem; background: var(--cream, #fff7e6); border-top: 2px solid var(--honey, #f59e0b); font-size: 0.9rem; }
+
+/* ── FE-N09: Round header timer expired message ──────────────────────── */
+.round-header__timer-expired { font-size: 0.85rem; color: var(--berry, #ef4444); font-weight: bold; }
+
+/* ── FE-N09: Competitor intel sidebar section ────────────────────────── */
+.sidebar__intel-section { padding: 0.75rem; border-top: 1px solid #eee; }
+.sidebar__intel-btn     { width: 100%; font-size: 0.8rem; }
+.sidebar__intel-confirm { background: var(--cream, #fff7e6); border-radius: 6px; padding: 0.75rem; margin-top: 0.5rem; font-size: 0.85rem; }
+.sidebar__intel-result  { margin-top: 0.5rem; font-size: 0.85rem; }
+
+/* ── Results phase — metric cards ───────────────────────────────────── */
+.results-phase__metric-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+.results-phase__metric-card  { padding: 1.5rem; border-radius: 8px; text-align: center; }
+.results-phase__metric-value { font-size: 1.8rem; font-weight: bold; display: block; }
+.results-phase__metric-label { font-size: 0.85rem; color: #555; }
+.results-phase__metric-card--revenue     { background: #f0fdf4; }
+.results-phase__metric-card--cost        { background: #fff7ed; }
+.results-phase__metric-card--customer    { background: #eff6ff; }
+.results-phase__metric-card--satisfaction{ background: #fdf4ff; }
+/* ── Results phase — leaderboard ────────────────────────────────────── */
+.results-phase__leaderboard     { margin-top: 2rem; }
+.results-phase__section-title   { font-size: 1rem; font-weight: bold; margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.results-phase__rank-row        { display: flex; align-items: center; gap: 1rem; padding: 0.5rem 0; border-bottom: 1px solid #eee; }
+.results-phase__rank            { font-weight: bold; width: 2rem; }
+.results-phase__team-name       { flex: 1; }
+.results-phase__team-revenue    { font-weight: bold; }
+/* ── Burglar banner ─────────────────────────────────────────────────── */
+.results-phase__burglar-banner  { background: #fee2e2; border: 2px solid #ef4444; border-radius: 6px; padding: 0.75rem 1rem; color: #991b1b; font-weight: bold; margin: 1rem 0; }
+
+/* ── Simulate phase ─────────────────────────────────────────────────── */
+.simulate-phase__burglar-banner { background: #fee2e2; border: 2px solid #ef4444; border-radius: 6px; padding: 0.75rem 1rem; color: #991b1b; font-weight: bold; margin: 0.75rem 1rem; }
+.simulate-phase { min-height: 100vh; transition: background 1s ease; }
+.simulate-phase--day  { background: #fff7e6; }
+.simulate-phase--night{ background: #1a1a2e; color: #fff; }
+.simulate-phase__topbar { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem; background: rgba(0,0,0,0.1); }
+.simulate-phase__day-counter { font-weight: bold; font-size: 1rem; }
+.simulate-phase__revenue-counter { font-size: 1.1rem; }
+.simulate-phase__revenue-counter strong { font-size: 1.4rem; color: var(--caramel, #d97706); }
+.simulate-phase__main { display: grid; grid-template-columns: 200px 1fr 220px; gap: 1.5rem; padding: 1.5rem; min-height: calc(100vh - 60px); }
+.simulate-phase__panel-title { font-size: 0.85rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem; }
+/* Menu panel */
+.simulate-phase__menu-panel { background: rgba(255,255,255,0.15); border-radius: 8px; padding: 1rem; }
+.simulate-phase__menu-list  { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.simulate-phase__menu-item  { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; position: relative; }
+.simulate-phase__menu-icon  { width: 28px; height: 28px; }
+.simulate-phase__menu-item--soldout { opacity: 0.5; }
+.simulate-phase__sold-out-badge { font-size: 0.65rem; font-weight: bold; background: #ef4444; color: #fff; padding: 0.1rem 0.3rem; border-radius: 3px; margin-left: auto; }
+/* Bakery centre */
+.simulate-phase__bakery-visual { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; }
+.simulate-phase__ad-display    { display: flex; align-items: center; gap: 0.5rem; }
+.simulate-phase__ad-icon       { width: 80px; height: 80px; }
+.simulate-phase__storefront    { background: rgba(255,255,255,0.2); border-radius: 12px; padding: 2rem; text-align: center; min-width: 200px; }
+.simulate-phase__store-label   { font-size: 1.2rem; font-weight: bold; margin-bottom: 1rem; }
+.simulate-phase__customers     { font-size: 2rem; display: flex; gap: 1rem; justify-content: center; }
+.simulate-phase__customer      { animation: customerWalk 1s infinite alternate; display: inline-block; }
+.simulate-phase__customer--2   { animation-delay: 0.5s; }
+@keyframes customerWalk { from { transform: translateX(-8px); } to { transform: translateX(8px); } }
+.simulate-phase__night-label   { font-size: 1.5rem; }
+/* Status panel */
+.simulate-phase__status-panel  { background: rgba(255,255,255,0.15); border-radius: 8px; padding: 1rem; }
+.simulate-phase__bar-row       { margin-bottom: 0.75rem; }
+.simulate-phase__bar-label     { font-size: 0.8rem; display: block; margin-bottom: 0.25rem; }
+.simulate-phase__bar-track     { height: 10px; background: rgba(255,255,255,0.2); border-radius: 5px; overflow: hidden; }
+.simulate-phase__bar-fill      { height: 100%; border-radius: 5px; transition: width 2s linear; }
+.simulate-phase__bar-pct       { font-size: 0.75rem; }
+.simulate-phase__waiting       { font-size: 0.8rem; color: #999; margin-top: 1rem; }
+@media (prefers-reduced-motion: reduce) { .simulate-phase__customer { animation: none; } }

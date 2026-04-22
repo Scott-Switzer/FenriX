@@ -218,6 +218,12 @@ const DEFAULT_GAME_CONFIG = {
     excellent: 0.15,
     good: 0.08,
   },
+
+  curveballs: {
+    burglaryThreshold: 40,
+    burglaryChance: 0.25,
+    burglaryAmount: 10000,
+  },
 };
 
 // ---------------------------------------------------------------------------

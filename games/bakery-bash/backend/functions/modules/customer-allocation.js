@@ -167,8 +167,9 @@ function allocateAllCustomers(allPlayersState, roundPreferences, cfg = config, p
   // footTrafficMultiplier. If present, use it directly; otherwise compute.
   const footTrafficByPlayer = new Map();
   for (const p of allPlayersState) {
+    let attractiveness;
     if (p.footTrafficMultiplier != null) {
-      footTrafficByPlayer.set(p.playerId, p.footTrafficMultiplier);
+      attractiveness = p.footTrafficMultiplier;
     } else {
       // Fallback: compute from aggregate satisfaction + defaults
       const mod = satisfaction.getFootTrafficModifier(
@@ -177,8 +178,10 @@ function allocateAllCustomers(allPlayersState, roundPreferences, cfg = config, p
         p.numProductsOffered || 0,
         p.sousChefCount || 0
       );
-      footTrafficByPlayer.set(p.playerId, 1 + mod);
+      attractiveness = 1 + mod;
     }
+
+    footTrafficByPlayer.set(p.playerId, attractiveness);
   }
 
   // Step C: for each product, distribute returning customers and run the

@@ -236,6 +236,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       return {
         ...state,
         currentRound: state.currentRound + 1,
+        roundResults: [],   // clear stale results from previous round
         phase: "decide",
       };
 

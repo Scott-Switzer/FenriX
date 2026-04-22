@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { httpsCallable, type FunctionsError } from "firebase/functions";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useGameDispatch } from "../contexts/GameContext";
 import { useAuth } from "../contexts/AuthContext";
 import { PageShell } from "../components/ui/PageShell";
-import { functions } from "../lib/firebase";
+import { functions, storage } from "../lib/firebase";
 
 interface JoinGameResponse {
   gameId: string;
@@ -42,6 +43,8 @@ export function LandingPage() {
   const [teamNumber, setTeamNumber] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const dispatch = useGameDispatch();
@@ -76,8 +79,19 @@ export function LandingPage() {
     setJoining(true);
 
     try {
+      let logoUrl: string | undefined;
+      if (logoFile && teamNumber) {
+        const ext = logoFile.name.split(".").pop();
+        const storageRef = ref(
+          storage,
+          `teams/${normalizedCode}/${teamNumber}/logo.${ext}`,
+        );
+        await uploadBytes(storageRef, logoFile);
+        logoUrl = await getDownloadURL(storageRef);
+      }
+
       const joinGame = httpsCallable<
-        { joinCode: string; displayName: string; teamNumber: number },
+        { joinCode: string; displayName: string; teamNumber: number; logoUrl?: string },
         JoinGameResponse
       >(functions, "joinGame");
 
@@ -85,6 +99,7 @@ export function LandingPage() {
         joinCode: normalizedCode,
         displayName: trimmedName,
         teamNumber,
+        ...(logoUrl ? { logoUrl } : {}),
       });
       const { gameId, playerId } = result.data;
 
@@ -164,6 +179,33 @@ export function LandingPage() {
             </div>
           </div>
 
+          <label className="form-field">
+            <span className="form-field__label">Team Logo (optional)</span>
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="form-field__input"
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                setLogoFile(file);
+                if (file) {
+                  const reader = new FileReader();
+                  reader.onload = (ev) => setLogoPreview(ev.target?.result as string);
+                  reader.readAsDataURL(file);
+                } else {
+                  setLogoPreview(null);
+                }
+              }}
+            />
+            {logoPreview && (
+              <img
+                src={logoPreview}
+                className="join-form__logo-preview"
+                alt="Team logo preview"
+              />
+            )}
+          </label>
+
           {error && <p className="landing-page__error">{error}</p>}
 
           <button
@@ -177,6 +219,7 @@ export function LandingPage() {
               ? "Signing you in…"
               : "Join Game"}
           </button>
+          <a href="/how-to-play" className="landing-page__how-to-play-link">How to Play</a>
         </form>
       </div>
     </PageShell>

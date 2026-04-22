@@ -472,6 +472,20 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
       bakeryName: p.bakeryName,
     });
 
+    // --- Burglar curveball (BE-N06) — fires when cleanliness is critically low ---
+    const burglaryThreshold = (config && config.curveballs && config.curveballs.burglaryThreshold) || 40;
+    const burglaryChance = (config && config.curveballs && config.curveballs.burglaryChance) || 0.25;
+    const burglaryAmount = (config && config.curveballs && config.curveballs.burglaryAmount) || 10000;
+    const cleanlinessPct = typeof p.cleanliness_pct === 'number' ? p.cleanliness_pct : undefined;
+    let burglary = false;
+    let actualBurglaryAmount = 0;
+    let budgetAfterBurglary = budgetAfter;
+    if (cleanlinessPct != null && cleanlinessPct < burglaryThreshold && Math.random() < burglaryChance) {
+      burglary = true;
+      actualBurglaryAmount = burglaryAmount;
+      budgetAfterBurglary = Math.max(0, budgetAfter - burglaryAmount);
+    }
+
     results.push({
       playerId: p.playerId,
       displayName: p.displayName,
@@ -481,7 +495,7 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
       amountBorrowed,
       interestCharged,
       totalSpent,
-      budgetAfter,
+      budgetAfter: budgetAfterBurglary,
       customerCount,
       perProductCustomers,
       aggregateSatisfactionPct: postSelloutAggregate,
@@ -492,6 +506,8 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
       csvRow,
       productPrices: resolvedPricesPerPlayer[p.playerId] || {},
       revenueBreakdown,
+      burglary,
+      burglaryAmount: burglary ? actualBurglaryAmount : 0,
     });
   }
 

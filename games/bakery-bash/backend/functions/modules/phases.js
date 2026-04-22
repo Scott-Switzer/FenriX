@@ -6,10 +6,10 @@
  * Phase sequence per round:
  *   lobby
  *     → round_N_email
- *     → round_N_decide
  *     → round_N_bid_ad
  *     → round_N_bid_chef
  *     → round_N_roster
+ *     → round_N_decide
  *     → simulating
  *     → results_ready
  *     → (round_(N+1)_email | game_over)
@@ -28,10 +28,10 @@
  */
 const PHASE_ORDER = [
   'email',
-  'decide',
   'bid_ad',
   'bid_chef',
   'roster',
+  'decide',
   'simulating',
   'results_ready',
 ];
@@ -157,11 +157,11 @@ function formatPhase(round, phase) {
  * Advance the phase state machine by one step.
  *
  *   lobby                 → round_1_email
- *   round_N_email         → round_N_decide
- *   round_N_decide        → round_N_bid_ad
+ *   round_N_email         → round_N_bid_ad
  *   round_N_bid_ad        → round_N_bid_chef
  *   round_N_bid_chef      → round_N_roster
- *   round_N_roster        → simulating
+ *   round_N_roster        → round_N_decide
+ *   round_N_decide        → simulating
  *   simulating            → results_ready
  *   results_ready         → round_(N+1)_email | game_over
  *
@@ -183,14 +183,14 @@ function getNextPhase(currentPhaseString, currentRound, totalRounds) {
 
   switch (phase) {
     case 'email':
-      return { phase: formatPhase(round, 'decide'), round };
-    case 'decide':
       return { phase: formatPhase(round, 'bid_ad'), round };
     case 'bid_ad':
       return { phase: formatPhase(round, 'bid_chef'), round };
     case 'bid_chef':
       return { phase: formatPhase(round, 'roster'), round };
     case 'roster':
+      return { phase: formatPhase(round, 'decide'), round };
+    case 'decide':
       return { phase: 'simulating', round };
     case 'simulating':
       return { phase: 'results_ready', round };

@@ -55,7 +55,7 @@ function barColor(pct: number): string {
 }
 
 export function ResultsPhase() {
-  const { roundResults, currentRound, chefSatisfactionScores } = useGame();
+  const { roundResults, currentRound, chefSatisfactionScores, leaderboard } = useGame();
   const latest = roundResults[roundResults.length - 1];
 
   const scores: Record<string, number> =
@@ -120,6 +120,28 @@ export function ResultsPhase() {
             amountBorrowed={latest.amountBorrowed}
             interestCharged={latest.interestCharged}
           />
+
+          <div className="results-phase__metric-cards">
+            <div className="results-phase__metric-card results-phase__metric-card--revenue">
+              <span className="results-phase__metric-value">{formatMoney(revenueDisplay)}</span>
+              <span className="results-phase__metric-label">Revenue</span>
+            </div>
+            <div className="results-phase__metric-card results-phase__metric-card--customer">
+              <span className="results-phase__metric-value">{latest?.customerCount ?? "—"}</span>
+              <span className="results-phase__metric-label">Customers</span>
+            </div>
+            <div className="results-phase__metric-card results-phase__metric-card--satisfaction">
+              <span className="results-phase__metric-value">{latest?.customerSatisfaction ?? "—"}</span>
+              <span className="results-phase__metric-label">Satisfaction</span>
+            </div>
+          </div>
+
+          {(latest as any)?.burglary && (
+            <div className="results-phase__burglar-banner">
+              🔓 Your bakery was broken into! A maintenance deficit left you vulnerable.
+              {(latest as any).burglaryAmount ? ` –$${(latest as any).burglaryAmount.toLocaleString()}` : ""}
+            </div>
+          )}
 
           <div className="results-phase__kpis">
             <Kpi
@@ -321,6 +343,21 @@ export function ResultsPhase() {
       <p className="results-phase__waiting">
         Waiting for professor to advance to the next round…
       </p>
+
+      {leaderboard && leaderboard.length > 0 && (
+        <div className="results-phase__leaderboard">
+          <h3 className="results-phase__section-title">Standings</h3>
+          {leaderboard.map((entry: any, i: number) => (
+            <div key={entry.uid ?? i} className="results-phase__rank-row">
+              <span className="results-phase__rank">#{i + 1}</span>
+              <span className="results-phase__team-name">{entry.displayName ?? "Team"}</span>
+              <span className="results-phase__team-revenue">
+                ${(entry.cumulativeRevenue ?? 0).toLocaleString()}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

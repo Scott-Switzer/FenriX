@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { httpsCallable } from "firebase/functions";
+import { useGame } from "../../contexts/GameContext";
+import { functions } from "../../lib/firebase";
 import { StaffTab } from "./tabs/StaffTab";
 import { StatusTab } from "./tabs/StatusTab";
 
@@ -34,6 +37,23 @@ export interface GameSidebarProps {
 
 export function GameSidebar({ readOnly = false }: GameSidebarProps) {
   const [activeTab, setActiveTab] = useState<Tab>("Hire");
+  const [showIntelConfirm, setShowIntelConfirm] = useState(false);
+  const [intelCsv, setIntelCsv] = useState<string | null>(null);
+
+  const { gameId, role, currentRound } = useGame();
+
+  const handlePurchaseIntel = async () => {
+    if (!gameId) return;
+    setShowIntelConfirm(false);
+    try {
+      const purchaseFn = httpsCallable(functions, "purchaseCompetitorInsight");
+      const result = await purchaseFn({ gameId, round: (currentRound ?? 1) - 1 });
+      const data = result.data as { csv: string };
+      setIntelCsv(data.csv);
+    } catch (err: any) {
+      alert(err.message || "Could not purchase insight.");
+    }
+  };
 
   return (
     <aside className="game-sidebar">
@@ -65,6 +85,30 @@ export function GameSidebar({ readOnly = false }: GameSidebarProps) {
         {activeTab === "Hire" && <StaffTab readOnly={readOnly} />}
         {activeTab === "Status" && <StatusTab />}
       </div>
+
+      {role === "finance" && (currentRound ?? 0) > 1 && (
+        <div className="sidebar__intel-section">
+          <button
+            className="btn btn--secondary btn--small sidebar__intel-btn"
+            onClick={() => setShowIntelConfirm(true)}
+          >
+            Buy Competitor Intel — $5,000
+          </button>
+          {showIntelConfirm && (
+            <div className="sidebar__intel-confirm">
+              <p>Spend $5,000 to see all teams' submitted quantities and prices from last round?</p>
+              <button className="btn btn--primary btn--small" onClick={handlePurchaseIntel}>Confirm</button>
+              <button className="btn btn--ghost btn--small" onClick={() => setShowIntelConfirm(false)}>Cancel</button>
+            </div>
+          )}
+          {intelCsv && (
+            <div className="sidebar__intel-result">
+              <p>Intel purchased! <a download="competitor-intel.csv" href={`data:text/csv;charset=utf-8,${encodeURIComponent(intelCsv)}`}>Download CSV</a></p>
+              <button className="btn btn--ghost btn--small" onClick={() => setIntelCsv(null)}>Close</button>
+            </div>
+          )}
+        </div>
+      )}
     </aside>
   );
 }

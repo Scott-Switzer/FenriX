@@ -365,6 +365,20 @@ export function ProfessorPage() {
     );
   };
 
+  const handleExtendPhase = async () => {
+    if (!gameId) return;
+    setPendingAction("extend");
+    try {
+      const extendPhase = httpsCallable(functions, "extendPhase");
+      await extendPhase({ gameId, extraSeconds: 60 });
+      setInfo("Phase extended by 1 minute.");
+    } catch (err) {
+      setError(humanizeFunctionError(err));
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
   const onCreateGame = async () => {
     setError(null);
     setInfo(null);
@@ -508,6 +522,26 @@ export function ProfessorPage() {
         </p>
       )}
 
+      {gameId && roster.length > 0 && isRunning && (() => {
+        const currentBasePhase = phase ? parseGamePhase(phase, currentRound).base : null;
+        const currentSubmissions: Record<string, SubmissionEntry> =
+          currentBasePhase ? (submissions[currentBasePhase] ?? {}) : {};
+        const submittedCount = roster.filter(
+          (p) => currentSubmissions[p.uid]?.status === "submitted",
+        ).length;
+        const allReady = roster.length > 0 && submittedCount === roster.length;
+        const waitingCount = roster.length - submittedCount;
+        return (
+          <div
+            className={`prof-phase-readiness prof-phase-readiness--${allReady ? "go" : "wait"}`}
+          >
+            {allReady
+              ? "🟢 All teams ready — safe to advance"
+              : `🔴 Waiting for ${waitingCount} team${waitingCount !== 1 ? "s" : ""}`}
+          </div>
+        );
+      })()}
+
       <div className="professor-page__controls">
         <button
           className="btn btn--primary"
@@ -529,6 +563,14 @@ export function ProfessorPage() {
           title="Advance the current round to the next phase."
         >
           {pendingAction === "advance" ? "Advancing…" : "Advance Round"}
+        </button>
+
+        <button
+          className="btn btn--small btn--secondary"
+          onClick={handleExtendPhase}
+          disabled={!!pendingAction || phase === "simulating" || phase === "game_over" || phase === "lobby"}
+        >
+          {pendingAction === "extend" ? "Extending…" : "+ 1 Min"}
         </button>
 
         <button

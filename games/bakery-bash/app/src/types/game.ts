@@ -443,7 +443,7 @@ export const PLAYER_ROLES: PlayerRole[] = [
 
 export const PLAYER_ROLE_LABELS: Record<PlayerRole, string> = {
   operations: "Operations",
-  advertising: "Advertising",
+  advertising: "Bidder",
   finance: "Finance",
   solo: "Solo (all roles)",
 };

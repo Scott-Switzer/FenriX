@@ -678,6 +678,10 @@ exports.joinGame = onCall(CALLABLE_OPTS, async (request) => {
       pendingBids: { ad: null, chef: null },
       pendingRosterAction: false,
       lastRoundResult: null,
+      teamLogoUrl: typeof (request.data.logoUrl) === 'string' &&        // BE-N07
+        request.data.logoUrl.startsWith('https://firebasestorage.googleapis.com')
+        ? request.data.logoUrl
+        : null,
       updatedAt: FieldValue.serverTimestamp(),
     });
 
@@ -1125,6 +1129,8 @@ async function runSimulationAndPersist(gameRef, round, config) {
         amountBorrowed: r.amountBorrowed,
         interestCharged: r.interestCharged,
         selloutAnywhere: r.selloutAnywhere || false,
+        burglary: r.burglary || false,           // BE-N06
+        burglaryAmount: r.burglaryAmount || 0,   // BE-N06
       },
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -1157,6 +1163,8 @@ async function runSimulationAndPersist(gameRef, round, config) {
       perProductSold,
       selloutFlags,
       returningCustomersEarned: r.returningCustomersEarned,
+      burglary: r.burglary || false,             // BE-N06
+      burglaryAmount: r.burglaryAmount || 0,     // BE-N06
       computedAt: FieldValue.serverTimestamp(),
     });
 
@@ -1534,6 +1542,15 @@ exports.submitBids = onCall(CALLABLE_OPTS, async (request) => {
     const game = gSnap.data();
     if (!canSubmitBids(game.phase, bidType)) {
       throw new HttpsError('failed-precondition', `Current phase ${game.phase} does not accept ${bidType} bids.`);
+    }
+
+    // BE-N04: server-side timer enforcement — reject bids after the phase timer expires.
+    const phaseEnd = game.phaseEndsAt;
+    if (phaseEnd && Timestamp.now().toMillis() > phaseEnd.toMillis()) {
+      throw new HttpsError(
+        'failed-precondition',
+        'The auction timer has expired. No more bids are accepted.'
+      );
     }
 
     const round = numberOrDefault(game.currentRound || game.round, 1);
@@ -2111,4 +2128,99 @@ exports.setTeamRole = onCall(CALLABLE_OPTS, async (request) => {
   });
 
   return { success: true };
+});
+
+// ===========================================================================
+// extendPhase — BE-N02: professor extends the active phase timer
+// ===========================================================================
+
+exports.extendPhase = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const { gameId, extraSeconds } = request.data || {};
+  if (!gameId || typeof extraSeconds !== "number") {
+    throw new HttpsError("invalid-argument", "gameId and extraSeconds are required.");
+  }
+  const cappedExtra = Math.min(extraSeconds, 300);
+  const gameRef = db.collection("games").doc(gameId);
+  const gameSnap = await gameRef.get();
+  if (!gameSnap.exists) throw new HttpsError("not-found", "Game not found.");
+  const game = gameSnap.data();
+  const isProfessor = request.auth.uid === game.professorUid ||
+    (request.auth.token && request.auth.token.professor === true);
+  if (!isProfessor) throw new HttpsError("permission-denied", "Professors only.");
+  const terminalPhases = ["lobby", "game_over", "simulating"];
+  if (terminalPhases.includes(game.phase)) {
+    throw new HttpsError("failed-precondition", "Cannot extend this phase.");
+  }
+  if (!game.phaseEndsAt) throw new HttpsError("failed-precondition", "No active timer.");
+  const currentEnd = game.phaseEndsAt.toMillis();
+  const newEnd = Timestamp.fromMillis(currentEnd + cappedExtra * 1000);
+  await gameRef.update({ phaseEndsAt: newEnd });
+  return { success: true, newPhaseEndsAt: newEnd.toMillis() };
+});
+
+// ===========================================================================
+// purchaseCompetitorInsight — BE-N03: player purchases competitor decisions CSV
+// ===========================================================================
+
+exports.purchaseCompetitorInsight = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const { gameId, round } = request.data || {};
+  if (!gameId || typeof round !== "number") {
+    throw new HttpsError("invalid-argument", "gameId and round are required.");
+  }
+  const uid = request.auth.uid;
+  const gameRef = db.collection("games").doc(gameId);
+  const gameSnap = await gameRef.get();
+  if (!gameSnap.exists) throw new HttpsError("not-found", "Game not found.");
+  const game = gameSnap.data();
+  const currentPhase = typeof game.phase === "string" ? game.phase : "";
+  if (!currentPhase.includes("decide")) {
+    throw new HttpsError("failed-precondition", "Competitor insight only available during Decisions phase.");
+  }
+  if (round < 1 || round >= (game.currentRound || 1)) {
+    throw new HttpsError("invalid-argument", "Can only purchase insight for a completed round.");
+  }
+
+  const configSnap = await gameRef.collection("config").doc("params").get();
+  const config = configSnap.exists ? configSnap.data() : {};
+  const insightCost = (config.competitorInsightCost) || 5000;
+
+  await db.runTransaction(async (tx) => {
+    const playerRef = gameRef.collection("players").doc(uid);
+    const playerSnap = await tx.get(playerRef);
+    if (!playerSnap.exists) throw new HttpsError("not-found", "Player not found.");
+    const player = playerSnap.data();
+    const budget = player.budgetCurrent || 0;
+    if (budget < insightCost) {
+      throw new HttpsError("failed-precondition", "Insufficient budget to purchase competitor insight.");
+    }
+    tx.update(playerRef, { budgetCurrent: FieldValue.increment(-insightCost) });
+    tx.set(
+      playerRef.collection("purchases").doc(`insight_round_${round}`),
+      { round, costDeducted: insightCost, purchasedAt: FieldValue.serverTimestamp() }
+    );
+  });
+
+  // Collect all player decisions for the requested round.
+  const playersSnap = await gameRef.collection("players").get();
+  const rows = [];
+  rows.push("team_name,product,quantity,price");
+  for (const pDoc of playersSnap.docs) {
+    const pData = pDoc.data();
+    const teamName = pData.displayName || pDoc.id;
+    const decisionSnap = await pDoc.ref.collection("decisions").doc(`round_${round}`).get();
+    if (!decisionSnap.exists) continue;
+    const dec = decisionSnap.data();
+    const quantities = dec.quantities || {};
+    const prices = dec.productPrices || {};
+    for (const [product, qty] of Object.entries(quantities)) {
+      if (typeof qty === "number" && qty > 0) {
+        const price = prices[product] || 0;
+        rows.push(`"${teamName}",${product},${qty},${price}`);
+      }
+    }
+  }
+
+  return { csv: rows.join("\n"), costDeducted: insightCost };
 });

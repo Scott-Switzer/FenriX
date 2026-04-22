@@ -62,7 +62,7 @@ const ROLE_DESCRIPTIONS: Record<PlayerRole, string> = {
   operations:
     "Submits the Decide screen — menu, quantities, sous chef hires, maintenance.",
   advertising:
-    "Submits the Ad Bid screen — sealed bids on TV / Radio / Newspaper / Billboard.",
+    "The Bidder places all auction bids — advertisements and chef hiring.",
   finance:
     "Submits the Chef Bid screen + roster decisions — specialty chef hires & layoffs.",
   solo: "All three buttons enabled — used automatically when you're playing alone.",
@@ -293,6 +293,25 @@ export function TeamPage() {
     }
   };
 
+  const [clearingRole, setClearingRole] = useState(false);
+
+  const handleClearRole = async () => {
+    if (!gameId || !teamId) return;
+    setRoleError(null);
+    setClearingRole(true);
+    try {
+      const setTeamRole = httpsCallable<
+        { gameId: string; teamId: string; role: null },
+        { ok: true }
+      >(functions, "setTeamRole");
+      await setTeamRole({ gameId, teamId, role: null });
+    } catch (err) {
+      setRoleError(humanizeBackendError(err, "role"));
+    } finally {
+      setClearingRole(false);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -465,6 +484,16 @@ export function TeamPage() {
                             ✓ You
                           </span>
                         )}
+                        {mine && (
+                          <button
+                            type="button"
+                            className="btn btn--ghost"
+                            onClick={() => void handleClearRole()}
+                            disabled={clearingRole}
+                          >
+                            {clearingRole ? "Clearing…" : "× Clear"}
+                          </button>
+                        )}
                       </div>
                       <p className="team-page__role-desc">
                         {ROLE_DESCRIPTIONS[r]}
@@ -498,8 +527,7 @@ export function TeamPage() {
               <div className="team-page__roles-status" aria-live="polite">
                 {!isSolo && !myClaimedRole && (
                   <span className="team-page__roles-warn">
-                    No role selected yet — your Submit buttons stay
-                    disabled until you pick one.
+                    Pick a role to unlock your team's controls.
                   </span>
                 )}
                 {!isSolo && myClaimedRole && (

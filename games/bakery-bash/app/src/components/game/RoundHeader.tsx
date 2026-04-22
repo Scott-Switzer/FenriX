@@ -2,10 +2,27 @@ import { useEffect, useState } from "react";
 import { useGame } from "../../contexts/GameContext";
 import {
   PLAYER_ROLE_LABELS,
+  parseGamePhase,
+  roleOwnsDecide,
+  roleOwnsAdBids,
+  roleOwnsChefBids,
+  roleOwnsRoster,
   type MaintenanceBars,
   type RoundResult,
   type StaffCounts,
 } from "../../types/game";
+
+const PHASE_LABELS: Record<string, string> = {
+  lobby:         "Lobby",
+  email:         "Briefing",
+  decide:        "Decisions Round",
+  bid_ad:        "Ad Auction",
+  bid_chef:      "Chef Auction",
+  roster:        "Kitchen Roster",
+  simulating:    "Round in Progress\u2026",
+  results_ready: "Results",
+  game_over:     "Game Over",
+};
 
 /**
  * Column schema for the round-history CSV download. Kept in one place so
@@ -113,6 +130,7 @@ export function RoundHeader() {
     player,
     role,
     teamId,
+    phase,
   } = useGame();
 
   const phaseSeconds = usePhaseCountdownSeconds();
@@ -131,8 +149,22 @@ export function RoundHeader() {
   const teamLabel =
     teamName ?? player?.bakeryName ?? player?.name ?? null;
 
+  const parsed = parseGamePhase(phase ?? "lobby", currentRound ?? 1);
+  const phaseBannerLabel = PHASE_LABELS[parsed.base] ?? phase ?? "";
+
+  const roleLabel = PLAYER_ROLE_LABELS[role];
+  const isActiveRole =
+    (parsed.base === "decide" && roleOwnsDecide(role)) ||
+    (parsed.base === "bid_ad" && roleOwnsAdBids(role)) ||
+    (parsed.base === "bid_chef" && roleOwnsChefBids(role)) ||
+    (parsed.base === "roster" && roleOwnsRoster(role));
+
   return (
     <header className="round-header">
+      <div className="round-header__phase-banner">
+        {phaseBannerLabel}
+      </div>
+
       <button
         className="round-header__email"
         onClick={() => downloadResultsCsv(roundResults)}
@@ -152,9 +184,9 @@ export function RoundHeader() {
               teamId — otherwise every fresh client claims to be "solo"
               even when they're actually one of three teammates. */}
           {teamId && (
-            <span className={`role-badge role-badge--${role}`}>
-              {PLAYER_ROLE_LABELS[role]}
-            </span>
+            <div className={`round-header__role-badge${isActiveRole ? " round-header__role-badge--active" : ""}`}>
+              {isActiveRole ? `Your turn: ${roleLabel}` : `Active: ${roleLabel}`}
+            </div>
           )}
         </div>
       )}
@@ -165,7 +197,10 @@ export function RoundHeader() {
             displaySeconds < 30 ? "round-header__timer--urgent" : ""
           }`}
         >
-          {formatTime(displaySeconds)}
+          {displaySeconds <= 0
+            ? <span className="round-header__timer-expired">Time's up — waiting for professor</span>
+            : formatTime(displaySeconds)
+          }
         </div>
       )}
     </header>

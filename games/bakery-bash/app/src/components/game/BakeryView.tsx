@@ -5,8 +5,11 @@ import {
   type ProductKey,
   type StationId,
 } from "../../types/game";
+
 import { PRICE_ZONES } from "../../lib/pricing";
 import { PriceInput } from "./PriceInput";
+
+const UNIT_COST = 0.5;
 
 /**
  * Product display metadata — prices are fixed per FRONTEND.md rule #2.
@@ -187,6 +190,7 @@ function ProductTile({
               </button>
             </div>
           )}
+          <span className="product-tile__unit-cost">Cost: ${UNIT_COST.toFixed(2)} / unit</span>
           <PriceInput
             value={price}
             onChange={onPriceChange}
@@ -270,6 +274,11 @@ export function BakeryView({ readOnly = false }: BakeryViewProps) {
     });
   };
 
+  const allProducts = STATIONS.flatMap((s) => s.products);
+  const totalCommitted = allProducts
+    .filter((item) => pendingDecision.menu[item])
+    .reduce((sum, item) => sum + (pendingDecision.quantities[item] ?? 0) * UNIT_COST, 0);
+
   return (
     <div className={`bakery-view${readOnly ? " bakery-view--readonly" : ""}`}>
       <div className="bakery-view__sign">
@@ -332,6 +341,10 @@ export function BakeryView({ readOnly = false }: BakeryViewProps) {
             </section>
           );
         })}
+      </div>
+
+      <div className="bakery-view__total-committed">
+        Total Committed This Round: <strong>${totalCommitted.toFixed(2)}</strong>
       </div>
     </div>
   );

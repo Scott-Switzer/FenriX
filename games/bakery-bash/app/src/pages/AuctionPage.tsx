@@ -63,10 +63,10 @@ interface AdCard {
 
 // Display-order list for ads; backend expects the canonical keys.
 const AD_CARDS: readonly AdCard[] = [
-  { id: "TV",        label: "TV",        icon: "/assets/ads/tv.svg",        desc: "Reaches the most customers" },
-  { id: "Radio",     label: "Radio",     icon: "/assets/ads/radio.svg",     desc: "Good local reach" },
-  { id: "Newspaper", label: "Newspaper", icon: "/assets/ads/newspaper.svg", desc: "Steady, reliable audience" },
-  { id: "Billboard", label: "Billboard", icon: "/assets/ads/billboard.svg", desc: "Constant neighborhood presence" },
+  { id: "TV",        label: "Television",  icon: "/assets/ads/tv.svg",        desc: "Make your advertisements come to life with motion pictures!" },
+  { id: "Radio",     label: "Radio",       icon: "/assets/ads/radio.svg",     desc: "A few rhymes and a good chime will be sure to reel in loyal customers." },
+  { id: "Newspaper", label: "Newspaper",   icon: "/assets/ads/newspaper.svg", desc: "Extra! Extra! Read all about it \u2014 at least let\u2019s hope they do." },
+  { id: "Billboard", label: "Billboard",   icon: "/assets/ads/billboard.svg", desc: "Plant your brand right in their path. Hard to miss, impossible to forget." },
 ];
 
 const TAB_DURATION_SECONDS = 60;
@@ -229,6 +229,8 @@ export function AuctionPage() {
   const [remaining, setRemaining] = useState<number>(TAB_DURATION_SECONDS);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [chefBidInputs, setChefBidInputs] = useState<Record<string, string>>({});
+  const [showExpiredPopup, setShowExpiredPopup] = useState(false);
 
   const parsed = parseGamePhase(phase, currentRound);
   const basePhase = parsed.base;
@@ -317,6 +319,9 @@ export function AuctionPage() {
   const chefPool = backendPool ?? placeholderPool;
   const chefPoolIsReal = backendPool !== null;
 
+  // Derived before callbacks so they can reference it.
+  const timerExpired = typeof remaining === "number" && remaining <= 0;
+
   const setChefBid = useCallback(
     (id: string, value: number) => {
       dispatch({
@@ -337,7 +342,18 @@ export function AuctionPage() {
     [dispatch]
   );
 
+  const handleSubmitSingleBid = useCallback(async (chefId: string) => {
+    if (timerExpired || !gameId) return;
+    try {
+      const submitBids = httpsCallable(functions, "submitBids");
+      await submitBids({ gameId, bidType: "chef", chefBids: { [chefId]: pendingChefBids[chefId] ?? 0 } });
+    } catch (err) {
+      setSubmitError(humanizeFunctionError(err));
+    }
+  }, [timerExpired, gameId, pendingChefBids]);
+
   const handleSubmitBids = useCallback(async () => {
+    if (timerExpired) { setShowExpiredPopup(true); return; }
     if (!gameId) {
       setSubmitError("Not connected to a game yet.");
       return;
@@ -360,7 +376,6 @@ export function AuctionPage() {
           return acc;
         }, {} as Record<AdType, number>);
         await submitBids({ gameId, bidType: "ad", adBids });
-        dispatch({ type: "SET_AD_BIDS_SUBMITTED", payload: true });
       } else {
         // If the real chef pool from `rounds/{round}.chefPool` has loaded,
         // send bids keyed by those real IDs. Until then, chef IDs in
@@ -385,7 +400,6 @@ export function AuctionPage() {
           { gameId: string; playerId: string; bidType: string; submitted: boolean }
         >(functions, "submitBids");
         await submitBids({ gameId, bidType: "chef", chefBids });
-        dispatch({ type: "SET_CHEF_BIDS_SUBMITTED", payload: true });
       }
     } catch (err) {
       setSubmitError(
@@ -395,6 +409,7 @@ export function AuctionPage() {
       setSubmitting(false);
     }
   }, [
+    timerExpired,
     gameId,
     isAdPhase,
     isChefPhase,
@@ -417,6 +432,14 @@ export function AuctionPage() {
     }, 1000);
     return () => clearInterval(tick);
   }, [activeTab]);
+
+  useEffect(() => {
+    if (timerExpired) {
+      setShowExpiredPopup(true);
+      const t = setTimeout(() => setShowExpiredPopup(false), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [timerExpired]);
 
   const timerMinutes = Math.floor(remaining / 60);
   const timerSeconds = remaining % 60;
@@ -460,10 +483,15 @@ export function AuctionPage() {
     ? "Submitting…"
     : alreadySubmitted
     ? "Submitted — waiting for other players…"
-    : "Submit Bids";
+    : "Submit All Bids";
 
   return (
     <PageShell className="game-page auction-page">
+      {showExpiredPopup && (
+        <div className="auction-page__timer-expired" role="alert">
+          Auction timer is up! Results will be displayed shortly.
+        </div>
+      )}
       <RoundHeader />
 
       <div className="auction-page__header">
@@ -509,6 +537,10 @@ export function AuctionPage() {
               Bid on advertisement slots to attract more customers to your
               bakery.
             </p>
+            <p className="auction-page__ad-description">
+              The highest bidder for each ad holds it for the entire round &#8212; one full month of exclusive
+              reach. Ownership resets every auction, so no team can hold a slot forever. May the best bid win!
+            </p>
             <div className="auction-ads__grid">
               {AD_CARDS.map((ad) => (
                 <div key={ad.id} className="auction-ad">
@@ -531,18 +563,21 @@ export function AuctionPage() {
                   </div>
                   <div className="auction-ad__bid">
                     <label className="auction-ad__bid-label">Your Bid</label>
-                    <input
-                      type="number"
-                      className="auction-ad__bid-input"
-                      placeholder="$0"
-                      min={0}
-                      value={pendingAdBids[ad.id] ?? 0}
-                      disabled={bidsReadOnly}
-                      readOnly={bidsReadOnly}
-                      onChange={(e) =>
-                        setAdBid(ad.id, parseInt(e.target.value, 10) || 0)
-                      }
-                    />
+                    <div className="auction-page__bid-wrapper">
+                      <span className="auction-page__bid-prefix">$</span>
+                      <input
+                        type="number"
+                        className="auction-ad__bid-input auction-page__bid-input"
+                        placeholder="0"
+                        min={0}
+                        value={pendingAdBids[ad.id] ?? 0}
+                        disabled={timerExpired || bidsReadOnly}
+                        readOnly={bidsReadOnly}
+                        onChange={(e) =>
+                          setAdBid(ad.id, parseInt(e.target.value, 10) || 0)
+                        }
+                      />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -590,18 +625,35 @@ export function AuctionPage() {
                       <label className="auction-chef__bid-label">
                         Your Bid
                       </label>
-                      <input
-                        type="number"
-                        className="auction-chef__bid-input"
-                        placeholder="$0"
-                        min={0}
-                        value={pendingChefBids[chef.id] ?? ""}
-                        disabled={bidsReadOnly}
-                        readOnly={bidsReadOnly}
-                        onChange={(e) =>
-                          setChefBid(chef.id, parseInt(e.target.value) || 0)
-                        }
-                      />
+                      <div className="auction-page__bid-wrapper">
+                        <span className="auction-page__bid-prefix">$</span>
+                        <input
+                          type="number"
+                          className="auction-chef__bid-input auction-page__bid-input"
+                          placeholder="0"
+                          min={0}
+                          value={chefBidInputs[chef.id] ?? ""}
+                          disabled={timerExpired || bidsReadOnly}
+                          readOnly={bidsReadOnly}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            setChefBidInputs(prev => ({ ...prev, [chef.id]: raw }));
+                            const parsed = parseInt(raw, 10);
+                            if (!isNaN(parsed) && parsed >= 0) {
+                              setChefBid(chef.id, parsed);
+                            } else if (raw === "") {
+                              setChefBid(chef.id, 0);
+                            }
+                          }}
+                        />
+                      </div>
+                      <button
+                        className="btn btn--small chef-card__submit"
+                        disabled={timerExpired || !pendingChefBids[chef.id]}
+                        onClick={(e) => { e.preventDefault(); handleSubmitSingleBid(chef.id); }}
+                      >
+                        Submit Bid
+                      </button>
                     </div>
                   </div>
                 );
@@ -621,6 +673,7 @@ export function AuctionPage() {
         className="btn btn--primary auction-page__submit"
         onClick={handleSubmitBids}
         disabled={
+          timerExpired ||
           submitting ||
           alreadySubmitted ||
           (!isAdPhase && !isChefPhase) ||
