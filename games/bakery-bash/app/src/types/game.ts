@@ -290,12 +290,29 @@ export function toChefCardInput(chef: ChefPoolEntry): ChefCardInput {
 
 export type AuctionTab = "chefs" | "ads";
 
+// POST-01: per-product dynamic pricing
+export type PriceZone = 'floor' | 'competitive' | 'premium';
+export type ElasticityTier = 'high' | 'medium' | 'low';
+
+export interface ProductPriceConfig {
+  floor: number;
+  competitiveRangeLow: number;
+  competitiveRangeHigh: number;
+  premiumRangeLow: number;
+  premiumRangeHigh: number;
+  ceiling: number;
+  elasticityTier: ElasticityTier;
+}
+
 export interface MenuItem {
   id: MenuItemId;
   name: string;
   unlocked: boolean;
   basePrice: number;
   quantity: number;
+  priceFloor: number;
+  priceCeiling: number;
+  elasticityTier: ElasticityTier;
 }
 
 // ---------------------------------------------------------------------------
@@ -324,6 +341,8 @@ export interface PendingDecisionDraft {
   staffCounts: StaffCounts;
   /** One task per maintenance guy; length must equal `staffCounts.maintenanceGuys`. */
   maintenanceTasks: MaintenanceTask[];
+  /** POST-01: Finance-owned per-product prices. */
+  productPrices: Record<ProductKey, number>;
 }
 
 /** Shape passed as `adBids` to `submitBids({ bidType: "ad" })`. */

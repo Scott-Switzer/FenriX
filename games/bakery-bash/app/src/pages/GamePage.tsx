@@ -490,6 +490,7 @@ export function GamePage() {
           sanitizedAssignments as PendingDecisionDraft["sousChefAssignments"],
         staffCounts: pendingDecision.staffCounts,
         maintenanceTasks,
+        productPrices: pendingDecision.productPrices,
       });
       dispatch({ type: "SET_DECISION_SUBMITTED", payload: true });
       // Do NOT dispatch SET_PHASE — the backend phase listener owns transitions.

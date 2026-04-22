@@ -42,6 +42,11 @@ function buildDefaultDecisionDraft(): PendingDecisionDraft {
     acc[p] = 0;
     return acc;
   }, {} as Record<ProductKey, number>);
+  const productPrices = PRODUCT_KEYS.reduce((acc, p) => {
+    acc[p] = 0;
+    return acc;
+  }, {} as Record<ProductKey, number>);
+
   return {
     menu,
     quantities,
@@ -49,6 +54,7 @@ function buildDefaultDecisionDraft(): PendingDecisionDraft {
     sousChefAssignments,
     staffCounts: { ...DEFAULT_STAFF_COUNTS },
     maintenanceTasks: [],
+    productPrices,
   };
 }
 
