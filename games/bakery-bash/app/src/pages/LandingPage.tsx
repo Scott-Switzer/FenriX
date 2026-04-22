@@ -6,24 +6,11 @@ import { useAuth } from "../contexts/AuthContext";
 import { PageShell } from "../components/ui/PageShell";
 import { functions } from "../lib/firebase";
 
-/**
- * Response shape returned by the `joinGame` Cloud Function.
- * Backend only sends back `{ gameId, playerId }` — the display name we sent
- * in the request is what we use locally.
- * See `backend/functions/index.js::exports.joinGame`.
- */
 interface JoinGameResponse {
   gameId: string;
   playerId: string;
 }
 
-/**
- * Accepted join code format: 6 characters from the backend's unambiguous
- * alphabet — letters A-Z excluding I and O, digits 2-9 (excludes 0 and 1).
- * Must match `joinGame`'s server-side regex exactly so we surface a
- * friendly inline error instead of letting the request fire and bounce
- * back as a generic Firebase "internal"/"invalid-argument" toast.
- */
 const JOIN_CODE_REGEX = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/;
 
 const JOIN_FAILURE_MESSAGES: Record<string, string> = {
@@ -38,7 +25,6 @@ function humanizeJoinError(err: unknown): string {
   if (err && typeof err === "object" && "code" in err) {
     const fnErr = err as FunctionsError;
     const rawCode = fnErr.code || "";
-    // Firebase error codes come through as `functions/not-found`, etc.
     const suffix = rawCode.split("/").pop() || rawCode;
     if (suffix && JOIN_FAILURE_MESSAGES[suffix]) {
       return JOIN_FAILURE_MESSAGES[suffix];
@@ -48,9 +34,12 @@ function humanizeJoinError(err: unknown): string {
   return "Could not join game. Please try again.";
 }
 
+const TEAM_COUNT = 8;
+
 export function LandingPage() {
   const [playerName, setPlayerName] = useState("");
   const [gameCode, setGameCode] = useState("");
+  const [teamNumber, setTeamNumber] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
 
@@ -75,6 +64,10 @@ export function LandingPage() {
       );
       return;
     }
+    if (!teamNumber) {
+      setError("Please select your team number.");
+      return;
+    }
     if (authLoading || !user) {
       setError("Still signing you in… please try again in a moment.");
       return;
@@ -83,18 +76,15 @@ export function LandingPage() {
     setJoining(true);
 
     try {
-      // Role + team are assigned by the backend (per BACKEND.md / DEC-21):
-      // we only ship name + join code now. The post-join /team page picks
-      // up the assignment from the player doc and shows the team naming
-      // UI once the professor (or auto-assignment) finalizes membership.
       const joinGame = httpsCallable<
-        { joinCode: string; displayName: string },
+        { joinCode: string; displayName: string; teamNumber: number },
         JoinGameResponse
       >(functions, "joinGame");
 
       const result = await joinGame({
         joinCode: normalizedCode,
         displayName: trimmedName,
+        teamNumber,
       });
       const { gameId, playerId } = result.data;
 
@@ -107,18 +97,14 @@ export function LandingPage() {
           player: {
             id: playerId,
             name: trimmedName,
-            // Default bakery label until the player chooses a team name on
-            // the /team page (which writes to the shared team doc).
-            bakeryName: `${trimmedName}'s Bakery`,
+            bakeryName: `Team ${teamNumber}`,
             budget: 0,
             cumulativeRevenue: 0,
           },
         },
       });
-      // Hand off to the team-assignment + naming step. Game phase listener
-      // (mounted by GamePage) takes over routing once the professor starts
-      // the round.
-      navigate("/team");
+
+      navigate("/team", { state: { teamNumber } });
     } catch (err) {
       setError(humanizeJoinError(err));
     } finally {
@@ -161,6 +147,23 @@ export function LandingPage() {
             />
           </label>
 
+          <div className="form-field">
+            <span className="form-field__label">Team Number</span>
+            <div className="landing-page__team-grid">
+              {Array.from({ length: TEAM_COUNT }, (_, i) => i + 1).map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  className={`btn ${teamNumber === n ? "btn--primary" : "btn--ghost"}`}
+                  onClick={() => setTeamNumber(n)}
+                  disabled={disabled}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {error && <p className="landing-page__error">{error}</p>}
 
           <button
@@ -174,10 +177,6 @@ export function LandingPage() {
               ? "Signing you in…"
               : "Join Game"}
           </button>
-
-          <p className="landing-page__footnote">
-            Your role and team are assigned after you join.
-          </p>
         </form>
       </div>
     </PageShell>

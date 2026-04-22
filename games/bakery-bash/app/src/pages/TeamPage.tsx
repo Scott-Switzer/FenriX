@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   collection,
   doc,
@@ -72,6 +72,8 @@ export function TeamPage() {
   const { gameId, playerId, player, teamId, role, phase } = useGame();
   const dispatch = useGameDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
+  const selectedTeamNumber = (location.state as { teamNumber?: number } | null)?.teamNumber ?? null;
 
   const [roster, setRoster] = useState<Record<string, RosterEntry>>({});
   const [team, setTeam] = useState<TeamDoc | null>(null);
@@ -92,23 +94,29 @@ export function TeamPage() {
   useEffect(() => {
     if (!gameId || !playerId) return;
     const playerRef = doc(db, "games", gameId, "players", playerId);
-    const unsubscribe = onSnapshot(playerRef, (snap) => {
-      if (!snap.exists()) return;
-      const data = snap.data() as DocumentData;
-      if (
-        data.role === "operations" ||
-        data.role === "advertising" ||
-        data.role === "finance" ||
-        data.role === "solo"
-      ) {
-        dispatch({ type: "SET_ROLE", payload: data.role as PlayerRole });
-      }
-      if (typeof data.teamId === "string" && data.teamId.length > 0) {
-        dispatch({ type: "SET_TEAM_ID", payload: data.teamId });
-      } else if (data.teamId === null) {
-        dispatch({ type: "SET_TEAM_ID", payload: null });
-      }
-    });
+    const unsubscribe = onSnapshot(
+      playerRef,
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data() as DocumentData;
+        if (
+          data.role === "operations" ||
+          data.role === "advertising" ||
+          data.role === "finance" ||
+          data.role === "solo"
+        ) {
+          dispatch({ type: "SET_ROLE", payload: data.role as PlayerRole });
+        }
+        if (typeof data.teamId === "string" && data.teamId.length > 0) {
+          dispatch({ type: "SET_TEAM_ID", payload: data.teamId });
+        } else if (data.teamId === null) {
+          dispatch({ type: "SET_TEAM_ID", payload: null });
+        }
+      },
+      (err) => {
+        console.error("team player-doc listener error:", { gameId, playerId, err });
+      },
+    );
     return unsubscribe;
   }, [gameId, playerId, dispatch]);
 
@@ -116,20 +124,26 @@ export function TeamPage() {
   useEffect(() => {
     if (!gameId) return;
     const rosterRef = collection(db, "games", gameId, "roster");
-    const unsubscribe = onSnapshot(rosterRef, (snap) => {
-      const next: Record<string, RosterEntry> = {};
-      snap.docs.forEach((d) => {
-        const data = d.data() as DocumentData;
-        const uid = typeof data.uid === "string" ? data.uid : d.id;
-        next[uid] = {
-          uid,
-          displayName:
-            typeof data.displayName === "string" ? data.displayName : "Player",
-          joinedAt: (data.joinedAt as Timestamp | null) ?? null,
-        };
-      });
-      setRoster(next);
-    });
+    const unsubscribe = onSnapshot(
+      rosterRef,
+      (snap) => {
+        const next: Record<string, RosterEntry> = {};
+        snap.docs.forEach((d) => {
+          const data = d.data() as DocumentData;
+          const uid = typeof data.uid === "string" ? data.uid : d.id;
+          next[uid] = {
+            uid,
+            displayName:
+              typeof data.displayName === "string" ? data.displayName : "Player",
+            joinedAt: (data.joinedAt as Timestamp | null) ?? null,
+          };
+        });
+        setRoster(next);
+      },
+      (err) => {
+        console.error("team roster listener error:", { gameId, err });
+      },
+    );
     return unsubscribe;
   }, [gameId]);
 
@@ -326,10 +340,15 @@ export function TeamPage() {
 
         {waitingForAssignment ? (
           <div className="team-page__waiting" role="status">
-            <p>Waiting for the professor to assign you to a team…</p>
+            {selectedTeamNumber && (
+              <span className="team-page__selected-team">
+                Team {selectedTeamNumber}
+              </span>
+            )}
+            <p>Waiting for the professor to confirm your team assignment…</p>
             <p className="team-page__waiting-hint">
-              You'll see your teammates here as soon as teams are formed.
-              You don't need to do anything.
+              Your teammates will appear here once the professor finalises
+              teams. You don't need to do anything else.
             </p>
           </div>
         ) : (

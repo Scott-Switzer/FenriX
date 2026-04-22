@@ -386,9 +386,7 @@ export function GamePage() {
           const data = d.data() as DocumentData;
           map[d.id] = {
             displayName:
-              typeof data.displayName === "string"
-                ? data.displayName
-                : undefined,
+              typeof data.displayName === "string" ? data.displayName : undefined,
             bakeryName:
               typeof data.bakeryName === "string" ? data.bakeryName : undefined,
           };
@@ -396,7 +394,7 @@ export function GamePage() {
         setRosterByUid(map);
       },
       (err) => {
-        console.error("games/roster listener error", { gameId, err });
+        console.error("game roster listener error:", { gameId, err });
       },
     );
     return unsubscribe;
@@ -446,11 +444,7 @@ export function GamePage() {
         setAdWinners(Object.keys(out).length > 0 ? out : null);
       },
       (err) => {
-        console.error("games/rounds prev-round listener error", {
-          gameId,
-          prevRound,
-          err,
-        });
+        console.error("game prev-round listener error:", { gameId, prevRound, err });
       },
     );
     return unsubscribe;
@@ -459,6 +453,7 @@ export function GamePage() {
   // Redirect into the dedicated phase page when backend says so. This is
   // phase-driven (not a manual navigation after submit).
   useEffect(() => {
+    if (!gameId) return;
     if (basePhase === "bid_ad" || basePhase === "bid_chef") {
       navigate("/auction");
     } else if (basePhase === "email") {

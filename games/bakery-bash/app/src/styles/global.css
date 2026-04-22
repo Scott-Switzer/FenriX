@@ -226,6 +226,20 @@ h3 { font-size: 0.7rem; }
   width: 100%;
 }
 
+.landing-page__team-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.4rem;
+}
+
+.landing-page__team-grid .btn {
+  margin-top: 0;
+  width: auto;
+  padding: 0.6rem 0;
+  font-size: 0.7rem;
+  min-width: 0;
+}
+
 .landing-page__error {
   font-family: var(--font-pixel);
   font-size: 0.55rem;
@@ -2309,6 +2323,18 @@ h3 { font-size: 0.7rem; }
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+}
+
+.team-page__selected-team {
+  font-family: var(--font-pixel);
+  font-size: 0.6rem;
+  color: var(--cream);
+  background: var(--caramel);
+  border: var(--border);
+  box-shadow: var(--shadow-pixel-sm);
+  padding: 0.5rem 1.25rem;
+  display: inline-block;
+  align-self: center;
 }
 
 .team-page__waiting p {

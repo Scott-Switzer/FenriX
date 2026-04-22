@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   collection,
@@ -71,7 +71,7 @@ const SUBMISSION_PHASES: Array<{ key: BasePhase; label: string }> = [
 ];
 
 export function ProfessorPage() {
-  const { gameId: contextGameId, currentRound, gameCode } = useGame();
+  const { gameId: contextGameId, currentRound, gameCode, phaseEndsAtMs } = useGame();
   const dispatch = useGameDispatch();
   const { user } = useAuth();
 
@@ -268,6 +268,7 @@ export function ProfessorPage() {
       fnName: string,
       label: string,
       onSuccessMessage: string,
+      extraData?: Record<string, unknown>,
     ): Promise<void> => {
       if (!gameId) {
         setError("No active game to control.");
@@ -277,11 +278,11 @@ export function ProfessorPage() {
       setInfo(null);
       setPendingAction(label);
       try {
-        const callable = httpsCallable<{ gameId: string }, CallableResult>(
-          functions,
-          fnName,
-        );
-        await callable({ gameId });
+        const callable = httpsCallable<
+          { gameId: string } & Record<string, unknown>,
+          CallableResult
+        >(functions, fnName);
+        await callable({ gameId, ...(extraData ?? {}) });
         setInfo(onSuccessMessage);
       } catch (err) {
         setError(
@@ -296,6 +297,32 @@ export function ProfessorPage() {
     },
     [gameId],
   );
+
+  // Keep a stable ref to callCallable so the auto-advance effect doesn't
+  // re-trigger just because the function reference changed.
+  const callCallableRef = useRef(callCallable);
+  useEffect(() => { callCallableRef.current = callCallable; });
+
+  // Auto-advance 15 s after phase timer expires (5 s grace + 10 s freeze).
+  // Re-runs when phase, phaseEndsAtMs, or gameId changes. Passes
+  // expectedFromPhase so the backend's CRIT-02 guard rejects double-advances
+  // when multiple professor tabs (or remounts) each fire their own timer.
+  useEffect(() => {
+    if (!phaseEndsAtMs || !gameId || !phase) return;
+    const msUntilExpiry = phaseEndsAtMs - Date.now();
+    if (msUntilExpiry < -30_000) return;
+    const delay = Math.max(0, msUntilExpiry) + 15_000;
+    const expectedFromPhase = phase;
+    const t = setTimeout(() => {
+      void callCallableRef.current(
+        "advanceGamePhase",
+        "auto-advance",
+        "Phase auto-advanced.",
+        { expectedFromPhase },
+      );
+    }, delay);
+    return () => clearTimeout(t);
+  }, [phaseEndsAtMs, gameId, phase]);
 
   const onStart = () => callCallable("startGame", "start", "Game started.");
   const onAdvance = () =>

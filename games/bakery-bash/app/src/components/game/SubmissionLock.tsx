@@ -39,13 +39,6 @@ export interface SubmissionLockProps {
   hint?: React.ReactNode;
 }
 
-function formatMs(ms: number): string {
-  if (!Number.isFinite(ms) || ms <= 0) return "0:00";
-  const totalSec = Math.floor(ms / 1000);
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
 
 export function SubmissionLock({
   phase,
@@ -128,13 +121,6 @@ export function SubmissionLock({
       className={`submission-lock submission-lock--${phase} submission-lock--${countdownTier}`}
       data-submitted={submitted ? "true" : "false"}
     >
-      <div className="submission-lock__timer">
-        <span className="submission-lock__timer-label">Time left:</span>{" "}
-        <span className="submission-lock__timer-value">
-          {remainingMs === null ? "—" : formatMs(remainingMs)}
-        </span>
-      </div>
-
       <div className="submission-lock__counts">
         <span className="submission-lock__counts-label">Submitted:</span>{" "}
         <span className="submission-lock__counts-value">

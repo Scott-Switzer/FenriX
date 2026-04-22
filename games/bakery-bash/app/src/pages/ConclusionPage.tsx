@@ -60,19 +60,25 @@ export function ConclusionPage() {
   useEffect(() => {
     if (!gameId) return;
     const boardRef = doc(db, "games", gameId, "leaderboard", "latest");
-    const unsubscribe = onSnapshot(boardRef, (snap) => {
-      if (!snap.exists()) {
-        setBoard(null);
-        return;
-      }
-      const data = snap.data() as DocumentData;
-      setBoard({
-        round: typeof data.round === "number" ? data.round : 0,
-        rankings: Array.isArray(data.rankings)
-          ? (data.rankings as LeaderboardRanking[])
-          : [],
-      });
-    });
+    const unsubscribe = onSnapshot(
+      boardRef,
+      (snap) => {
+        if (!snap.exists()) {
+          setBoard(null);
+          return;
+        }
+        const data = snap.data() as DocumentData;
+        setBoard({
+          round: typeof data.round === "number" ? data.round : 0,
+          rankings: Array.isArray(data.rankings)
+            ? (data.rankings as LeaderboardRanking[])
+            : [],
+        });
+      },
+      (err) => {
+        console.error("conclusion leaderboard listener error:", { gameId, err });
+      },
+    );
     return unsubscribe;
   }, [gameId]);
 
@@ -88,41 +94,47 @@ export function ConclusionPage() {
       playerId,
       "rounds",
     );
-    const unsubscribe = onSnapshot(roundsCol, (snap) => {
-      const next: Record<number, RoundResult> = {};
-      snap.forEach((docSnap) => {
-        const data = docSnap.data() as DocumentData;
-        const round =
-          typeof data.round === "number" ? data.round : parseRoundId(docSnap.id);
-        if (typeof round !== "number") return;
-        next[round] = {
-          round,
-          revenue:
-            typeof data.revenueNet === "number"
-              ? data.revenueNet
-              : typeof data.revenueGross === "number"
-                ? data.revenueGross
+    const unsubscribe = onSnapshot(
+      roundsCol,
+      (snap) => {
+        const next: Record<number, RoundResult> = {};
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() as DocumentData;
+          const round =
+            typeof data.round === "number" ? data.round : parseRoundId(docSnap.id);
+          if (typeof round !== "number") return;
+          next[round] = {
+            round,
+            revenue:
+              typeof data.revenueNet === "number"
+                ? data.revenueNet
+                : typeof data.revenueGross === "number"
+                  ? data.revenueGross
+                  : 0,
+            revenueNet: data.revenueNet,
+            revenueGross: data.revenueGross,
+            amountBorrowed: data.amountBorrowed,
+            interestCharged: data.interestCharged,
+            customerCount:
+              typeof data.customerCount === "number" ? data.customerCount : 0,
+            customerSatisfaction:
+              typeof data.aggregateSatisfactionPct === "number"
+                ? Math.round(data.aggregateSatisfactionPct)
                 : 0,
-          revenueNet: data.revenueNet,
-          revenueGross: data.revenueGross,
-          amountBorrowed: data.amountBorrowed,
-          interestCharged: data.interestCharged,
-          customerCount:
-            typeof data.customerCount === "number" ? data.customerCount : 0,
-          customerSatisfaction:
-            typeof data.aggregateSatisfactionPct === "number"
-              ? Math.round(data.aggregateSatisfactionPct)
-              : 0,
-          chefSatisfactionScore: data.chefSatisfactionScore,
-          productBreakdown: data.productBreakdown,
-          auctionResults: {
-            adWon: data.adWon ?? null,
-            chefWon: data.chefWon ?? null,
-          },
-        };
-      });
-      setPerRoundBreakdowns(next);
-    });
+            chefSatisfactionScore: data.chefSatisfactionScore,
+            productBreakdown: data.productBreakdown,
+            auctionResults: {
+              adWon: data.adWon ?? null,
+              chefWon: data.chefWon ?? null,
+            },
+          };
+        });
+        setPerRoundBreakdowns(next);
+      },
+      (err) => {
+        console.error("conclusion per-round listener error:", { gameId, playerId, err });
+      },
+    );
     return unsubscribe;
   }, [gameId, playerId]);
 
