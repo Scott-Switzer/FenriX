@@ -616,14 +616,17 @@ exports.joinGame = onCall(CALLABLE_OPTS, async (request) => {
     if (!gSnap.exists) {
       throw new HttpsError('not-found', 'No game exists for that join code.');
     }
-    if (gSnap.get('phase') !== 'lobby') {
-      throw new HttpsError('failed-precondition', 'This game is no longer accepting players.');
-    }
 
     const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
 
-    // BE-24: enforce player cap for new joins (rejoins are always allowed)
+    // BE-24: new joins are only accepted during lobby and are subject to the
+    // player cap. Rejoins (same uid, existing player doc) are allowed at any
+    // phase so a student who refreshes their browser mid-game can recover
+    // without being locked out.
     if (!pSnap.exists) {
+      if (gSnap.get('phase') !== 'lobby') {
+        throw new HttpsError('failed-precondition', 'This game is no longer accepting new players.');
+      }
       const playerCap = numberOrDefault(config.playerCap, 20);
       const currentTotal = numberOrDefault(gSnap.get('totalPlayers'), 0);
       if (currentTotal >= playerCap) {

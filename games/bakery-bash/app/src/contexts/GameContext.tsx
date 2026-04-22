@@ -1,6 +1,7 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useReducer,
   type ReactNode,
   type Dispatch,
@@ -392,8 +393,95 @@ function gameReducer(state: GameState, action: GameAction): GameState {
 const GameContext = createContext<GameState>(initialState);
 const GameDispatchContext = createContext<Dispatch<GameAction>>(() => {});
 
+// Survives tab refresh during a live game. AuthProvider restores the Firebase
+// UID via Firebase's own IndexedDB persistence, so the only thing we need to
+// carry across reloads is the game/player linkage — once `gameId` is seeded,
+// `useGameListener` reattaches and Firestore re-hydrates phase/round/etc.
+// localStorage (not sessionStorage) so a closed-and-reopened tab still rejoins.
+const PERSISTED_SESSION_KEY = "bakery-bash:game-session";
+
+type PersistedSession = {
+  gameId: string;
+  playerId: string;
+  gameCode: string;
+  role: PlayerRole;
+  teamId: string | null;
+};
+
+function readPersistedSession(): PersistedSession | null {
+  try {
+    const raw = window.localStorage.getItem(PERSISTED_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PersistedSession>;
+    if (
+      typeof parsed.gameId !== "string" ||
+      typeof parsed.playerId !== "string" ||
+      typeof parsed.gameCode !== "string"
+    ) {
+      return null;
+    }
+    const role: PlayerRole =
+      parsed.role === "operations" ||
+      parsed.role === "advertising" ||
+      parsed.role === "finance" ||
+      parsed.role === "solo"
+        ? parsed.role
+        : "solo";
+    return {
+      gameId: parsed.gameId,
+      playerId: parsed.playerId,
+      gameCode: parsed.gameCode,
+      role,
+      teamId: typeof parsed.teamId === "string" ? parsed.teamId : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedSession(payload: PersistedSession | null): void {
+  try {
+    if (!payload) {
+      window.localStorage.removeItem(PERSISTED_SESSION_KEY);
+      return;
+    }
+    window.localStorage.setItem(PERSISTED_SESSION_KEY, JSON.stringify(payload));
+  } catch {
+    // Private mode / quota: acceptable to no-op; a refresh will still sign in,
+    // just without the game linkage shortcut.
+  }
+}
+
+function buildInitialState(): GameState {
+  const persisted = readPersistedSession();
+  if (!persisted) return initialState;
+  return {
+    ...initialState,
+    gameId: persisted.gameId,
+    playerId: persisted.playerId,
+    gameCode: persisted.gameCode,
+    role: persisted.role,
+    teamId: persisted.teamId,
+  };
+}
+
 export function GameProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(gameReducer, initialState);
+  const [state, dispatch] = useReducer(
+    gameReducer,
+    undefined,
+    buildInitialState,
+  );
+
+  const { gameId, playerId, gameCode, role, teamId, phase } = state;
+  useEffect(() => {
+    // Clear on game_over so a reopened tab lands on the landing page instead
+    // of being re-routed into the finished game's conclusion screen.
+    if (!gameId || !playerId || !gameCode || phase === "game_over") {
+      writePersistedSession(null);
+      return;
+    }
+    writePersistedSession({ gameId, playerId, gameCode, role, teamId });
+  }, [gameId, playerId, gameCode, role, teamId, phase]);
 
   return (
     <GameContext.Provider value={state}>
