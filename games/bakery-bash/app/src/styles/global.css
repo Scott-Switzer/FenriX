@@ -136,6 +136,23 @@ h3 { font-size: 0.7rem; }
   box-shadow: var(--shadow-pixel-sm);
 }
 
+.btn--ghost {
+  background: var(--cream);
+  color: var(--espresso);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.btn--ghost:hover:not(:disabled) {
+  background: var(--dough);
+  color: var(--espresso);
+}
+.btn--ghost:visited {
+  color: var(--espresso);
+}
+
 /* ─── Form Fields ────────────────────────────────────────── */
 
 .form-field {
@@ -2462,4 +2479,106 @@ h3 { font-size: 0.7rem; }
   font-size: 0.8rem;
   color: var(--dark-roast);
   text-align: center;
+}
+
+/* ─── Submission Lock (shared phase footer) ──────────────── */
+
+.submission-lock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0.85rem 1.1rem;
+  margin-top: 1rem;
+  background: var(--cream);
+  border: var(--border);
+  box-shadow: var(--shadow-pixel-sm);
+}
+
+.submission-lock__timer,
+.submission-lock__counts {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.submission-lock__timer-label,
+.submission-lock__counts-label {
+  font-family: var(--font-pixel);
+  font-size: 0.55rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.submission-lock__timer-value {
+  font-family: var(--font-pixel);
+  font-size: 0.85rem;
+  color: var(--espresso);
+  white-space: nowrap;
+}
+
+.submission-lock--warning .submission-lock__timer-value {
+  color: var(--caramel);
+}
+
+.submission-lock--critical .submission-lock__timer-value {
+  color: var(--berry);
+  animation: blink 0.6s step-end infinite;
+}
+
+.submission-lock__counts-value {
+  font-family: var(--font-pixel);
+  font-size: 0.8rem;
+  color: var(--espresso);
+  white-space: nowrap;
+}
+
+.submission-lock__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.submission-lock__hint {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  color: var(--dark-roast);
+  text-align: center;
+}
+
+.submission-lock__locked {
+  font-family: var(--font-pixel);
+  font-size: 0.6rem;
+  color: var(--sage);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.submission-lock__action {
+  flex-shrink: 0;
+}
+
+.submission-lock[data-submitted="true"] .submission-lock__action {
+  opacity: 0.7;
+}
+
+@media (max-width: 600px) {
+  .submission-lock {
+    gap: 0.75rem;
+  }
+  .submission-lock__main {
+    flex-basis: 100%;
+    order: 3;
+  }
+  .submission-lock__action {
+    flex-basis: 100%;
+    order: 4;
+  }
+  .submission-lock__action .btn {
+    width: 100%;
+  }
 }
