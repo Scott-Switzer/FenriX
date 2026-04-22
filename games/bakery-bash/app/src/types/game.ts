@@ -458,6 +458,9 @@ export function roleOwnsAdBids(role: PlayerRole): boolean {
 export function roleOwnsChefBids(role: PlayerRole): boolean {
   return role === "finance" || role === "solo";
 }
+export function roleOwnsPricing(role: PlayerRole): boolean {
+  return role === "finance" || role === "solo";
+}
 /**
  * Roster (lay-off + continue) is owned by Operations per the backend
  * contract. `backend/functions/index.js::layoffChef` and `continueFromRoster`

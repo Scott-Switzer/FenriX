@@ -134,6 +134,7 @@ type GameAction =
         sousChefAssignments?: Partial<Record<ProductKey, number>>;
         staffCounts?: Partial<StaffCounts>;
         maintenanceTasks?: MaintenanceTask[];
+        productPrices?: Partial<Record<ProductKey, number>>;
       };
     }
   | {
@@ -295,6 +296,9 @@ function gameReducer(state: GameState, action: GameAction): GameState {
           action.payload.maintenanceTasks !== undefined
             ? action.payload.maintenanceTasks
             : state.pendingDecision.maintenanceTasks,
+        productPrices: action.payload.productPrices
+          ? { ...state.pendingDecision.productPrices, ...action.payload.productPrices }
+          : state.pendingDecision.productPrices,
       };
       return { ...state, pendingDecision: next };
     }
