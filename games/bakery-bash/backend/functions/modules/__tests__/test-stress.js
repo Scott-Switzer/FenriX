@@ -1181,6 +1181,75 @@ function runBatchChunkingVerification() {
 // Main
 // ===========================================================================
 
+// ============================================================================
+// SUITE POST-01: 20-player randomized-prices simulation
+// ============================================================================
+
+function runDynamicPricingStress() {
+  console.log('\n=== SUITE POST-01: Dynamic Pricing Stress ===');
+
+  const { PRICE_ZONES } = config;
+
+  function randomPrice(cfg) {
+    const steps = Math.round((cfg.ceiling - cfg.floor) / 0.25);
+    const stepIndex = Math.floor(Math.random() * (steps + 1));
+    return cfg.floor + stepIndex * 0.25;
+  }
+
+  const players = Array.from({ length: 20 }, (_, i) => ({
+    playerId: `P${i}`,
+    displayName: `Player ${i}`,
+    bakeryName: `Bakery ${i}`,
+    decision: {
+      menu: PRODUCT_KEYS.reduce((a, p) => ({ ...a, [p]: true }), {}),
+      quantities: PRODUCT_KEYS.reduce((a, p) => ({ ...a, [p]: 10 }), {}),
+      sousChefCount: 0,
+      sousChefAssignments: {},
+      productPrices: PRODUCT_KEYS.reduce((a, p) => ({ ...a, [p]: randomPrice(PRICE_ZONES[p]) }), {}),
+    },
+    specialtyChefs: [],
+    budgetCurrent: 500000,
+    returningCustomersPending: 0,
+    auctionResults: { adWon: null, adBidPaid: 0, chefsWon: [], chefBidPaid: 0 },
+    priorSubmittedPrices: [],
+  }));
+
+  const roundPreferences = {
+    modifiers: PRODUCT_KEYS.reduce((a, p) => ({ ...a, [p]: 1.0 }), {}),
+  };
+
+  const start = Date.now();
+  let results;
+  let threw = null;
+  try {
+    results = runSimulation(players, roundPreferences, mergeConfig({}));
+  } catch (e) {
+    threw = e;
+  }
+
+  const elapsedMs = Date.now() - start;
+
+  ok(!threw, 'POST-01 stress: runSimulation does not throw with randomized prices',
+    threw && threw.message);
+  ok(results && results.length === 20,
+    'POST-01 stress: result count equals player count (20)');
+  ok(elapsedMs < 500,
+    `POST-01 stress: elapsed ${elapsedMs}ms under 500ms budget`);
+
+  if (results) {
+    for (const product of PRODUCT_KEYS) {
+      const totalAlloc = results.reduce((s, r) => {
+        const pps = r.perProductSatisfaction && r.perProductSatisfaction[product];
+        return s + (pps ? (pps.qtySold || 0) : 0);
+      }, 0);
+      const basePool = config.PRODUCT_CATALOG[product].baseDemand * 1.0;
+      // 15% headroom for integer rounding in discrete allocation across 20 players.
+      ok(totalAlloc <= basePool * 1.15,
+        `POST-01 stress: ${product} pool conserved (alloc ${totalAlloc} ≤ pool ${basePool})`);
+    }
+  }
+}
+
 async function main() {
   console.log('==========================================================');
   console.log('  Bakery Bash — Stress Test + Race Condition Analysis');
@@ -1194,6 +1263,7 @@ async function main() {
   runConclusionStress();
   runRaceConditionAnalysis();
   runBatchChunkingVerification();
+  runDynamicPricingStress();
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(2);
 

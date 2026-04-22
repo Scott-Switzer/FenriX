@@ -187,6 +187,68 @@ section('A2. Products & Pricing');
     'Optional menu = sandwich, coffee, matcha');
 }
 
+section('A2b. Pricing Zones (POST-01)');
+{
+  const {
+    PRICE_ZONES,
+    ELASTICITY_COEFFICIENTS,
+    PRICE_STEP,
+    FLOOR_BONUS,
+    MULTIPLIER_FLOOR,
+  } = require(path.join(BASE, 'config'));
+
+  // PRICE_ZONES has all 6 products
+  for (const p of PRODUCT_KEYS) {
+    assert(PRICE_ZONES && PRICE_ZONES[p], `PRICE_ZONES missing ${p}`);
+  }
+
+  // Each product has well-ordered zone bounds
+  for (const p of PRODUCT_KEYS) {
+    const z = PRICE_ZONES[p];
+    assert(z.floor < z.competitiveRangeLow,    `${p}: floor < competitiveRangeLow`);
+    assert(z.competitiveRangeLow < z.competitiveRangeHigh, `${p}: competitiveRangeLow < competitiveRangeHigh`);
+    assert(z.competitiveRangeHigh <= z.premiumRangeLow,    `${p}: competitiveRangeHigh <= premiumRangeLow`);
+    assert(z.premiumRangeLow < z.premiumRangeHigh, `${p}: premiumRangeLow < premiumRangeHigh`);
+    assert(z.premiumRangeHigh <= z.ceiling,       `${p}: premiumRangeHigh <= ceiling`);
+  }
+
+  // Elasticity tiers are all High/Medium/Low
+  for (const p of PRODUCT_KEYS) {
+    const tier = PRICE_ZONES[p].elasticityTier;
+    assert(['high', 'medium', 'low'].includes(tier), `${p}: tier ${tier}`);
+  }
+
+  // ELASTICITY_COEFFICIENTS covers each referenced tier
+  assertClose(ELASTICITY_COEFFICIENTS.high, 1.5, 'high');
+  assertClose(ELASTICITY_COEFFICIENTS.medium, 1.0, 'medium');
+  assertClose(ELASTICITY_COEFFICIENTS.low, 0.6, 'low');
+
+  // Constants match spec
+  assertClose(PRICE_STEP, 0.25, 'PRICE_STEP');
+  assertClose(FLOOR_BONUS, 0.15, 'FLOOR_BONUS');
+  assertClose(MULTIPLIER_FLOOR, 0.1, 'MULTIPLIER_FLOOR');
+
+  // Coffee zone matches proposal table
+  const z_coffee = PRICE_ZONES.coffee;
+  assertClose(z_coffee.floor, 2.00, 'coffee floor');
+  assertClose(z_coffee.competitiveRangeLow, 3.00, 'coffee competitiveRangeLow');
+  assertClose(z_coffee.competitiveRangeHigh, 4.50, 'coffee competitiveRangeHigh');
+  assertClose(z_coffee.premiumRangeLow, 5.00, 'coffee premiumRangeLow');
+  assertClose(z_coffee.premiumRangeHigh, 6.00, 'coffee premiumRangeHigh');
+  assertClose(z_coffee.ceiling, 6.50, 'coffee ceiling');
+  assert(z_coffee.elasticityTier === 'high', 'coffee elasticity = high');
+
+  // Matcha zone matches proposal table
+  const z_matcha = PRICE_ZONES.matcha;
+  assertClose(z_matcha.floor, 3.50, 'matcha floor');
+  assertClose(z_matcha.competitiveRangeLow, 5.50, 'matcha competitiveRangeLow');
+  assertClose(z_matcha.competitiveRangeHigh, 7.00, 'matcha competitiveRangeHigh');
+  assertClose(z_matcha.premiumRangeLow, 7.50, 'matcha premiumRangeLow');
+  assertClose(z_matcha.premiumRangeHigh, 9.00, 'matcha premiumRangeHigh');
+  assertClose(z_matcha.ceiling, 10.00, 'matcha ceiling');
+  assert(z_matcha.elasticityTier === 'low', 'matcha elasticity = low');
+}
+
 section('A3. Chef System');
 {
   // Chef nationalities and specialties

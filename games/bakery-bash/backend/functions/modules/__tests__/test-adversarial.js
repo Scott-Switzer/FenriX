@@ -1689,6 +1689,82 @@ test('[Balance] Revenue with 6 products > revenue with 3 products (numProductsCo
 }, 'MEDIUM');
 
 // ============================================================================
+// POST-01: validateProductPrices — adversarial
+// ============================================================================
+
+section('POST-01: validateProductPrices — adversarial');
+
+function assertNear(actual, expected, epsilon, msg) {
+  assert(Math.abs(actual - expected) < epsilon, `${msg}: expected ~${expected}, got ${actual}`);
+}
+
+function assertThrowsMatching(fn, pattern, msg) {
+  try {
+    fn();
+    throw new Error('Expected throw but did not');
+  } catch (e) {
+    if (e.message === 'Expected throw but did not') throw new Error(msg || 'Expected to throw');
+    if (!pattern.test(e.message)) throw new Error(`${msg || 'Error message'} did not match ${pattern}: "${e.message}"`);
+  }
+}
+
+test('validateProductPrices: clamps price = ceiling + 0.01 to ceiling (coffee 6.51 → 6.50)', () => {
+  const out = decisionVal.validateProductPrices({ coffee: 6.51 });
+  assertNear(out.coffee, 6.50, 0.001, 'coffee clamped to ceiling');
+});
+
+test('validateProductPrices: clamps price = floor - 0.01 to floor (coffee 1.99 → 2.00)', () => {
+  const out = decisionVal.validateProductPrices({ coffee: 1.99 });
+  assertNear(out.coffee, 2.00, 0.001, 'coffee clamped to floor');
+});
+
+test('validateProductPrices: rejects string values', () => {
+  assertThrowsMatching(
+    () => decisionVal.validateProductPrices({ coffee: 'free' }),
+    /finite positive number/,
+    'string value rejection'
+  );
+});
+
+test('validateProductPrices: rejects MIG-01 legacy key "latte"', () => {
+  assertThrowsMatching(
+    () => decisionVal.validateProductPrices({ latte: 5 }),
+    /unknown product "latte"/,
+    'legacy key latte rejection'
+  );
+});
+
+test('validateProductPrices: rejects MIG-01 legacy key "matchaLatte"', () => {
+  assertThrowsMatching(
+    () => decisionVal.validateProductPrices({ matchaLatte: 6 }),
+    /unknown product "matchaLatte"/,
+    'legacy key matchaLatte rejection'
+  );
+});
+
+test('validateProductPrices: treats null as empty (carry-over path)', () => {
+  const out = decisionVal.validateProductPrices(null);
+  assert(typeof out === 'object' && out !== null, 'result is object');
+  assert(Object.keys(out).length === 0, 'result is empty object');
+});
+
+test('validateProductPrices: rejects Infinity', () => {
+  assertThrowsMatching(
+    () => decisionVal.validateProductPrices({ coffee: Infinity }),
+    /finite positive number/,
+    'Infinity rejection'
+  );
+});
+
+test('validateProductPrices: rejects -Infinity', () => {
+  assertThrowsMatching(
+    () => decisionVal.validateProductPrices({ coffee: -Infinity }),
+    /finite positive number/,
+    '-Infinity rejection'
+  );
+});
+
+// ============================================================================
 // FINAL REPORT
 // ============================================================================
 

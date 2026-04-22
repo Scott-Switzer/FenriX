@@ -86,6 +86,52 @@ Pricing is **fixed for MVP** (per the proposal). Stored in `games/{gameId}/confi
 
 ---
 
+### Per-Product Dynamic Pricing (POST-01)
+
+Implemented in `functions/modules/pricing.js` and `functions/modules/config.js::PRICE_ZONES`.
+
+The Finance role submits per-product prices via the `submitPrices` callable. Prices are validated and written to `players/{uid}/decisions/round_N.productPrices` by Admin SDK (bypasses Firestore client rules).
+
+#### Price Zones
+
+Each product has a `PRICE_ZONES` entry with a floor, competitive range, premium range, and ceiling. Prices snap to a $0.25 grid and are clamped to `[floor, ceiling]` before the simulation runs.
+
+| Zone | Range | Effect |
+|---|---|---|
+| Floor | `[floor, competitiveRangeLow)` | +15% demand bonus (`FLOOR_BONUS = 0.15`) |
+| Competitive | `[competitiveRangeLow, premiumRangeLow)` | Baseline demand |
+| Premium | `[premiumRangeLow, ceiling]` | Negative elasticity only |
+
+#### Demand Multiplier Formula
+
+```
+competitiveMid = (competitiveRangeLow + competitiveRangeHigh) / 2
+pctΔP = (price − competitiveMid) / competitiveMid
+elasticityEffect = −elasticityCoeff × pctΔP
+multiplier = max(0.1, 1 + floorBonus + elasticityEffect)
+```
+
+Elasticity coefficients by tier: `high = 1.5`, `medium = 1.0`, `low = 0.6`.
+
+| Product | Floor | Ceiling | Elasticity |
+|---|---|---|---|
+| Coffee | $2.00 | $6.50 | high |
+| Croissant | $2.50 | $8.00 | medium |
+| Bagel | $1.50 | $5.50 | high |
+| Cookie | $1.00 | $5.00 | high |
+| Sandwich | $5.00 | $14.00 | medium |
+| Matcha | $3.50 | $10.00 | low |
+
+#### Carry-Over Logic
+
+If a player does not submit prices for a product this round, the simulation carries over the most recent prior submission for that product. If no prior submission exists, the catalog `fixedPrice` is used. This is handled by `resolvePriceForSim()` in `pricing.js`.
+
+#### Revenue
+
+`calculateProductRevenue` in `revenue.js` accepts an optional `productPrices` map. When present, each product's price is taken from the map (falling back to catalog for missing or invalid entries).
+
+---
+
 ### Round Preference Profile
 
 Generated at game create. Persisted at `games/{gameId}/preferences/rounds[N].assignments`. Cloud-Function-readable for sim; client-readable as a hint string only (the email body — see Market Insight Email).

@@ -313,6 +313,47 @@ function validateChefBids(data, chefPool) {
 }
 
 // ---------------------------------------------------------------------------
+// validateProductPrices (POST-01)
+// ---------------------------------------------------------------------------
+
+const {
+  PRICE_ZONES,
+} = require('./config');
+
+const {
+  snapPriceToStep,
+  clampPrice,
+} = require('./pricing');
+
+/**
+ * Validate and sanitize a per-product price map.
+ * Returns a canonical object with every submitted product snapped to $0.25
+ * and clamped to [floor, ceiling].
+ *
+ * @param {unknown} raw - { [product]: number } | null | undefined
+ * @returns {object} canonical { [product]: number } (may be empty)
+ * @throws {ValidationError} on unknown keys or non-number / non-positive / non-finite values
+ */
+function validateProductPrices(raw) {
+  if (raw == null) return {};
+  if (typeof raw !== 'object') {
+    fail('invalid-argument', `productPrices must be an object (got ${typeof raw})`);
+  }
+
+  const out = {};
+  for (const [key, val] of Object.entries(raw)) {
+    if (!PRICE_ZONES[key]) {
+      fail('invalid-argument', `productPrices has unknown product "${key}"`);
+    }
+    if (typeof val !== 'number' || !Number.isFinite(val) || val <= 0) {
+      fail('invalid-argument', `productPrices.${key} must be a finite positive number (got ${val})`);
+    }
+    out[key] = clampPrice(snapPriceToStep(val), PRICE_ZONES[key]);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // buildDefaultDecision / buildDefaultBids
 // ---------------------------------------------------------------------------
 
@@ -367,6 +408,7 @@ module.exports = {
   validateDecision,
   validateAdBids,
   validateChefBids,
+  validateProductPrices,
   buildDefaultDecision,
   buildDefaultBids,
   // Exposed for tests

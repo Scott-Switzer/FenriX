@@ -616,7 +616,7 @@ New MVP work that fell out of the April 19 meeting. All must land before the Apr
 
 Ordered roughly by strategic value per proposal's "Deferred from Design Deck" table.
 
-- [ ] **POST-01** — Per-product dynamic pricing
+- [x] **POST-01** — Per-product dynamic pricing ✅ (feat/post-01-dynamic-pricing)
   - Unlock price inputs per product, apply price zones (Floor / Competitive / Premium / Ceiling) with elasticity. Above-ceiling pricing drops satisfaction. Floor pricing boosts demand 15%. Biggest strategic value of any post-MVP feature per proposal.
 
 - [ ] **POST-02** — Named customer archetypes

@@ -22,10 +22,12 @@ import { ResultsPhase } from "./phases/ResultsPhase";
 import { db, functions } from "../lib/firebase";
 import { humanizeFunctionError } from "../lib/errors";
 import {
+  PRODUCT_KEYS,
   PRODUCT_STATION,
   parseGamePhase,
   ownerOfDecide,
   roleOwnsDecide,
+  roleOwnsPricing,
   totalSousChefs,
   type GameConfigParams,
   type MaintenanceBars,
@@ -110,12 +112,14 @@ export function GamePage() {
     currentRound,
     pendingDecision,
     decisionSubmitted,
+    pricesSubmitted,
     role,
   } = useGame();
   const dispatch = useGameDispatch();
   const navigate = useNavigate();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [submittingPrices, setSubmittingPrices] = useState(false);
 
   // FE-11 — previous round's ad winners, rendered at the top of Decide.
   // The aggregate `rounds/round_{N}` doc writes
@@ -255,6 +259,29 @@ export function GamePage() {
           dispatch({ type: "SET_TEAM_ID", payload: null });
         }
 
+        // POST-01: hydrate `pendingDecision.productPrices` so Finance sees
+        // their last submitted prices (backend carry-over) on round 2+ instead
+        // of the catalog defaults. `submitPrices` writes via dot-path, so the
+        // field is present on the player doc across rounds.
+        const pending = data.pendingDecision;
+        if (pending && typeof pending === "object" && pending.productPrices &&
+            typeof pending.productPrices === "object") {
+          const incoming = pending.productPrices as Record<string, unknown>;
+          const hydratedPrices: Partial<Record<ProductKey, number>> = {};
+          for (const key of PRODUCT_KEYS) {
+            const v = incoming[key];
+            if (typeof v === "number" && Number.isFinite(v)) {
+              hydratedPrices[key] = v;
+            }
+          }
+          if (Object.keys(hydratedPrices).length > 0) {
+            dispatch({
+              type: "UPDATE_PENDING_DECISION",
+              payload: { productPrices: hydratedPrices },
+            });
+          }
+        }
+
         // lastRoundResult → dispatch ADD_RESULT so ResultsPhase + the CSV
         // download pick it up. Backend writes this on the player doc after
         // each round's simulation (`games/{gameId}/players/{uid}.lastRoundResult`).
@@ -348,22 +375,30 @@ export function GamePage() {
   useEffect(() => {
     if (!gameId) return;
     const rosterRef = collection(db, "games", gameId, "roster");
-    const unsubscribe = onSnapshot(rosterRef, (snap) => {
-      const map: Record<
-        string,
-        { displayName?: string; bakeryName?: string }
-      > = {};
-      snap.docs.forEach((d) => {
-        const data = d.data() as DocumentData;
-        map[d.id] = {
-          displayName:
-            typeof data.displayName === "string" ? data.displayName : undefined,
-          bakeryName:
-            typeof data.bakeryName === "string" ? data.bakeryName : undefined,
-        };
-      });
-      setRosterByUid(map);
-    });
+    const unsubscribe = onSnapshot(
+      rosterRef,
+      (snap) => {
+        const map: Record<
+          string,
+          { displayName?: string; bakeryName?: string }
+        > = {};
+        snap.docs.forEach((d) => {
+          const data = d.data() as DocumentData;
+          map[d.id] = {
+            displayName:
+              typeof data.displayName === "string"
+                ? data.displayName
+                : undefined,
+            bakeryName:
+              typeof data.bakeryName === "string" ? data.bakeryName : undefined,
+          };
+        });
+        setRosterByUid(map);
+      },
+      (err) => {
+        console.error("games/roster listener error", { gameId, err });
+      },
+    );
     return unsubscribe;
   }, [gameId]);
 
@@ -378,36 +413,46 @@ export function GamePage() {
     }
     const prevRound = currentRound - 1;
     const prevRoundRef = doc(db, "games", gameId, "rounds", `round_${prevRound}`);
-    const unsubscribe = onSnapshot(prevRoundRef, (snap) => {
-      if (!snap.exists()) {
-        setAdWinners(null);
-        return;
-      }
-      const data = snap.data() as DocumentData;
-      const auction = data.auctionResults as DocumentData | undefined;
-      const adsRaw = (auction?.ads ?? null) as DocumentData | null;
-      if (!adsRaw || typeof adsRaw !== "object") {
-        setAdWinners(null);
-        return;
-      }
-      const out: Partial<Record<AdWinnerEntry["adType"], AdWinnerEntry>> = {};
-      (["TV", "Billboard", "Radio", "Newspaper"] as const).forEach((t) => {
-        const entry = adsRaw[t];
-        if (!entry || typeof entry !== "object") return;
-        const winnerId =
-          typeof entry.winnerId === "string" ? entry.winnerId : null;
-        const winningBid =
-          typeof entry.winningBid === "number" ? entry.winningBid : undefined;
-        if (!winnerId || !winningBid) return; // no bids landed for this surface
-        out[t] = {
-          adType: t,
-          amount: winningBid,
-          bakeryName: rosterByUid[winnerId]?.bakeryName,
-          displayName: rosterByUid[winnerId]?.displayName,
-        };
-      });
-      setAdWinners(Object.keys(out).length > 0 ? out : null);
-    });
+    const unsubscribe = onSnapshot(
+      prevRoundRef,
+      (snap) => {
+        if (!snap.exists()) {
+          setAdWinners(null);
+          return;
+        }
+        const data = snap.data() as DocumentData;
+        const auction = data.auctionResults as DocumentData | undefined;
+        const adsRaw = (auction?.ads ?? null) as DocumentData | null;
+        if (!adsRaw || typeof adsRaw !== "object") {
+          setAdWinners(null);
+          return;
+        }
+        const out: Partial<Record<AdWinnerEntry["adType"], AdWinnerEntry>> = {};
+        (["TV", "Billboard", "Radio", "Newspaper"] as const).forEach((t) => {
+          const entry = adsRaw[t];
+          if (!entry || typeof entry !== "object") return;
+          const winnerId =
+            typeof entry.winnerId === "string" ? entry.winnerId : null;
+          const winningBid =
+            typeof entry.winningBid === "number" ? entry.winningBid : undefined;
+          if (!winnerId || !winningBid) return; // no bids landed for this surface
+          out[t] = {
+            adType: t,
+            amount: winningBid,
+            bakeryName: rosterByUid[winnerId]?.bakeryName,
+            displayName: rosterByUid[winnerId]?.displayName,
+          };
+        });
+        setAdWinners(Object.keys(out).length > 0 ? out : null);
+      },
+      (err) => {
+        console.error("games/rounds prev-round listener error", {
+          gameId,
+          prevRound,
+          err,
+        });
+      },
+    );
     return unsubscribe;
   }, [gameId, currentRound, rosterByUid]);
 
@@ -490,6 +535,7 @@ export function GamePage() {
           sanitizedAssignments as PendingDecisionDraft["sousChefAssignments"],
         staffCounts: pendingDecision.staffCounts,
         maintenanceTasks,
+        productPrices: pendingDecision.productPrices,
       });
       dispatch({ type: "SET_DECISION_SUBMITTED", payload: true });
       // Do NOT dispatch SET_PHASE — the backend phase listener owns transitions.
@@ -504,6 +550,33 @@ export function GamePage() {
       setSubmitting(false);
     }
   }, [gameId, basePhase, pendingDecision, dispatch]);
+
+  const handleSubmitPrices = useCallback(async () => {
+    if (!gameId) {
+      setSubmitError("Not connected to a game yet.");
+      return;
+    }
+    if (basePhase !== "decide") {
+      setSubmitError("Prices can only be submitted during the decide phase.");
+      return;
+    }
+    setSubmitError(null);
+    setSubmittingPrices(true);
+    try {
+      const callable = httpsCallable<
+        { gameId: string; productPrices: Record<ProductKey, number> },
+        { submitted: boolean }
+      >(functions, "submitPrices");
+      await callable({ gameId, productPrices: pendingDecision.productPrices });
+      dispatch({ type: "SET_PRICES_SUBMITTED", payload: true });
+    } catch (err) {
+      setSubmitError(
+        humanizeFunctionError(err, "Could not submit prices. Please try again."),
+      );
+    } finally {
+      setSubmittingPrices(false);
+    }
+  }, [gameId, basePhase, pendingDecision.productPrices, dispatch]);
 
   const isDecisionPhase = basePhase === "decide";
   const isSimulating = basePhase === "simulating";
@@ -565,18 +638,34 @@ export function GamePage() {
             : undefined
         }
         action={
-          <button
-            className="btn btn--primary game-page__submit"
-            onClick={handleSubmit}
-            disabled={submitDisabled}
-            title={
-              !canSubmit
-                ? `Your ${ownerLabel} teammate submits this decision.`
-                : undefined
-            }
-          >
-            {submitLabel}
-          </button>
+          <>
+            {roleOwnsPricing(role) && (
+              <button
+                className="btn btn--secondary game-page__submit"
+                type="button"
+                onClick={handleSubmitPrices}
+                disabled={submittingPrices || !gameId}
+              >
+                {submittingPrices
+                  ? "Submitting…"
+                  : pricesSubmitted
+                    ? "✓ Update Prices"
+                    : "Submit Prices"}
+              </button>
+            )}
+            <button
+              className="btn btn--primary game-page__submit"
+              onClick={handleSubmit}
+              disabled={submitDisabled}
+              title={
+                !canSubmit
+                  ? `Your ${ownerLabel} teammate submits this decision.`
+                  : undefined
+              }
+            >
+              {submitLabel}
+            </button>
+          </>
         }
       />
     </PageShell>

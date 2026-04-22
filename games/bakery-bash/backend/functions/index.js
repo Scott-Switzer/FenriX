@@ -26,6 +26,7 @@ const { onCall, HttpsError } = require('firebase-functions/v2/https');
 // Without this, Cloud Run blocks requests at the IAM layer before they
 // reach the onCall handler, causing 401s instead of auth checks.
 const CALLABLE_OPTS = { invoker: 'public' };
+
 const { getApps, initializeApp } = require('firebase-admin/app');
 const {
   FieldValue,
@@ -89,6 +90,16 @@ try {
     validateDecision: (d) => d,
     validateAdBids: (d) => d,
     validateChefBids: (d) => d,
+    // Fail-closed: the real validator snaps to the $0.25 grid and clamps to
+    // [floor, ceiling]. A passthrough fallback would let unsnapped/unclamped
+    // prices reach Firestore and break resolvePriceForSim's contract, so we
+    // refuse price submissions when the validation module is unavailable.
+    validateProductPrices: () => {
+      throw new HttpsError(
+        'internal',
+        'Price validation module unavailable; cannot validate prices.',
+      );
+    },
   };
 }
 
@@ -983,6 +994,19 @@ async function runSimulationAndPersist(gameRef, round, config) {
     )
   );
 
+  // POST-01: load prior-round decisions for each player so pricing carry-over
+  // can walk back through rounds 1..round-1.
+  const priorRoundIds = [];
+  for (let r = 1; r < round; r += 1) priorRoundIds.push(`round_${r}`);
+
+  const priorDecisionSnapsByPlayer = await Promise.all(
+    playerDocs.map((pd) =>
+      Promise.all(priorRoundIds.map((rid) =>
+        pd.ref.collection('decisions').doc(rid).get()
+      ))
+    )
+  );
+
   // BE-19: compute disconnection state for each player before simulation.
   // A player is considered "disconnected" if they have missed 2+ consecutive rounds.
   const disconnectionMap = new Map();
@@ -1009,6 +1033,11 @@ async function runSimulationAndPersist(gameRef, round, config) {
     const ar = auctionByPlayer.get(pd.id) || {
       adWon: null, adBidPaid: 0, chefsWon: [], chefBidPaid: 0,
     };
+
+    // POST-01: chronological list of prior-round productPrices maps.
+    const priorSubmittedPrices = (priorDecisionSnapsByPlayer[i] || [])
+      .map((s) => (s && s.exists && s.data()) ? (s.data().productPrices || null) : null);
+
     return {
       playerId: pd.id,
       displayName: p.displayName || 'Player',
@@ -1018,11 +1047,13 @@ async function runSimulationAndPersist(gameRef, round, config) {
         quantities: (decision && decision.quantities) || {},
         sousChefCount: missed ? 0 : numberOrDefault(decision && decision.sousChefCount, p.sousChefCount || 0),
         sousChefAssignments: (decision && decision.sousChefAssignments) || {},
+        productPrices: (decision && decision.productPrices) || {},   // POST-01
       },
       specialtyChefs: Array.isArray(p.specialtyChefs) ? p.specialtyChefs : [],
       budgetCurrent: numberOrDefault(p.budgetCurrent, 0),
       returningCustomersPending: numberOrDefault(p.returningCustomersPending, 0),
       auctionResults: ar,
+      priorSubmittedPrices,   // POST-01
     };
   });
 
@@ -1312,29 +1343,35 @@ exports.submitDecision = onCall(CALLABLE_OPTS, async (request) => {
     roundId = `round_${currentRound}`;
     const decisionRef = playerRef.collection('decisions').doc(roundId);
     const dSnap = await transaction.get(decisionRef);
-    if (dSnap.exists) {
+    // POST-01: `submitPrices` may have created this doc already with just
+    // `productPrices + pricesSubmittedAt`. We only block duplicate Operations
+    // submissions — presence of `submittedAt` is the Operations marker.
+    if (dSnap.exists && dSnap.get('submittedAt')) {
       throw new HttpsError('already-exists', 'Decision already submitted for this round.');
     }
 
+    // Merge so an existing Finance-written `productPrices` survives.
     transaction.set(decisionRef, {
       round: currentRound,
       submittedAt: FieldValue.serverTimestamp(),
       ...validated,
-    });
+    }, { merge: true });
 
     // BUG-1 fix: FieldValue.serverTimestamp() is invalid inside a nested
     // map — Firestore only allows sentinels at top-level fields. Use
     // Timestamp.now() for the nested submittedAt.
+    //
+    // POST-01: use dot-paths rather than replacing the whole `pendingDecision`
+    // so Finance's `pendingDecision.productPrices` (written by submitPrices)
+    // isn't clobbered when Operations submits after Finance.
     transaction.update(playerRef, {
-      pendingDecision: {
-        submitted: true,
-        submittedAt: Timestamp.now(),
-        round: currentRound,
-        menu: validated.menu || {},
-        quantities: validated.quantities || {},
-        sousChefCount: validated.sousChefCount || 0,
-        sousChefAssignments: validated.sousChefAssignments || {},
-      },
+      'pendingDecision.submitted': true,
+      'pendingDecision.submittedAt': Timestamp.now(),
+      'pendingDecision.round': currentRound,
+      'pendingDecision.menu': validated.menu || {},
+      'pendingDecision.quantities': validated.quantities || {},
+      'pendingDecision.sousChefCount': validated.sousChefCount || 0,
+      'pendingDecision.sousChefAssignments': validated.sousChefAssignments || {},
       // BE-19: un-flag a reconnected player immediately on successful submit.
       // Without this, a previously-disconnected player stays flagged on the
       // professor dashboard until the next simulation batch runs.
@@ -1354,6 +1391,95 @@ exports.submitDecision = onCall(CALLABLE_OPTS, async (request) => {
     await recordSubmission(
       gameRef, `${roundId}_decide`, uid,
       _submitDecision_displayName, _submitDecision_role
+    );
+  }
+
+  return { gameId, playerId: uid, roundId, submitted: true };
+});
+
+// ===========================================================================
+// submitPrices (POST-01)
+// ===========================================================================
+//
+// Finance-role-gated per-product price submission. Lives in its own callable
+// (rather than piggybacking on submitDecision) because Finance and Operations
+// are separate people and must not race on the same document write.
+//
+// Multiple submits during a single Decide phase are allowed — latest wins.
+
+exports.submitPrices = onCall(CALLABLE_OPTS, async (request) => {
+  const auth = requireAuth(request, 'Sign in before submitting prices.');
+  const data = request.data || {};
+  const gameId = cleanGameId(data.gameId);
+  const uid = auth.uid;
+  const gameRef = gameDoc(gameId);
+  const playerRef = gameRef.collection('players').doc(uid);
+
+  let roundId = null;
+  let _submitPrices_role = null;
+  let _submitPrices_displayName = '';
+
+  await db.runTransaction(async (transaction) => {
+    const [gSnap, pSnap, cfgSnap] = await Promise.all([
+      transaction.get(gameRef),
+      transaction.get(playerRef),
+      transaction.get(gameRef.collection('config').doc('params')),
+    ]);
+
+    if (!gSnap.exists) throw new HttpsError('not-found', 'Game not found.');
+    if (!pSnap.exists) throw new HttpsError('failed-precondition', 'Join the game before submitting.');
+
+    // Finance-only (solo players pass through assertRoleAllowed's solo case).
+    assertRoleAllowed(pSnap.get('role'), ['finance']);
+    _submitPrices_role = pSnap.get('role') || null;
+    _submitPrices_displayName = pSnap.get('displayName') || '';
+
+    const game = gSnap.data();
+    if (!canSubmitDecision(game.phase)) {
+      throw new HttpsError('failed-precondition', 'Prices can only be submitted during the decide phase.');
+    }
+
+    const currentRound = numberOrDefault(game.currentRound || game.round, 1);
+    // Note: cfgSnap is read for parity with submitDecision even though the
+    // price validator doesn't need it today. Future work may apply per-game
+    // zone overrides from config.
+    void mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
+
+    // Validate + snap + clamp
+    // ValidationError is a plain JS error — convert to HttpsError so the
+    // Firebase Functions runtime surfaces the right code to the client.
+    let validated;
+    try {
+      validated = decisionValidation.validateProductPrices(data.productPrices);
+    } catch (vErr) {
+      if (ValidationError && vErr instanceof ValidationError) {
+        throw new HttpsError(vErr.code || 'invalid-argument', vErr.message);
+      }
+      throw vErr;
+    }
+
+    roundId = `round_${currentRound}`;
+    const decisionRef = playerRef.collection('decisions').doc(roundId);
+
+    // Multiple submits are allowed during the same phase — use set-merge,
+    // NOT the already-exists check that submitDecision uses.
+    transaction.set(decisionRef, {
+      round: currentRound,
+      productPrices: validated,
+      pricesSubmittedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    transaction.update(playerRef, {
+      'pendingDecision.productPrices': validated,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  // Mirror submission state for the professor dashboard
+  if (roundId) {
+    await recordSubmission(
+      gameRef, `${roundId}_prices`, uid,
+      _submitPrices_displayName, _submitPrices_role
     );
   }
 

@@ -384,5 +384,11 @@ describe("Bakery Bash Firestore security rules", () => {
     );
     await assertFails(updateDoc(decisionRef, { staffCount: 99 }));
     await assertFails(deleteDoc(decisionRef));
+
+    // POST-01: productPrices written by submitPrices (Admin SDK) — client
+    // writes to the decisions doc must still be rejected even with this field.
+    await assertFails(
+      setDoc(decisionRef, { round: 1, productPrices: { coffee: 4.00 } }, { merge: true })
+    );
   });
 });

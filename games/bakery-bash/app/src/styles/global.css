@@ -680,6 +680,95 @@ h3 { font-size: 0.7rem; }
   outline-offset: -2px;
 }
 
+/* ─── PriceInput (POST-01) ─────────────────────────────────── */
+
+.price-input {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.price-input__nudge {
+  font-family: var(--font-pixel);
+  font-size: 0.7rem;
+  width: 28px;
+  height: 32px;
+  border: var(--border-light);
+  background: var(--flour);
+  color: var(--espresso);
+  cursor: pointer;
+}
+
+.price-input__nudge:hover:not(:disabled) {
+  background: var(--dough);
+}
+
+.price-input__nudge:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.price-input__symbol {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  color: var(--dark-roast);
+}
+
+.price-input__field {
+  width: 56px;
+  height: 32px;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  text-align: right;
+  padding: 0 0.4rem;
+  border: var(--border-light);
+  background: var(--cream);
+  color: var(--espresso);
+  -moz-appearance: textfield;
+}
+
+.price-input__field::-webkit-outer-spin-button,
+.price-input__field::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.price-input__field:focus {
+  outline: 2px solid var(--caramel);
+  outline-offset: -2px;
+}
+
+.price-input__field:disabled {
+  opacity: 0.6;
+  background: var(--flour);
+}
+
+.price-input__badge {
+  font-family: var(--font-pixel);
+  font-size: 0.55rem;
+  padding: 0.2rem 0.45rem;
+  border: var(--border-light);
+  white-space: nowrap;
+}
+
+.price-input__badge--floor {
+  background: var(--lime);
+  color: var(--espresso);
+  border-color: var(--sage);
+}
+
+.price-input__badge--competitive {
+  background: var(--flour);
+  color: var(--dark-roast);
+  border-color: var(--dough);
+}
+
+.price-input__badge--premium {
+  background: var(--honey);
+  color: var(--espresso);
+  border-color: var(--caramel);
+}
+
 .product-tile__add {
   font-family: var(--font-pixel);
   font-size: 0.5rem;
