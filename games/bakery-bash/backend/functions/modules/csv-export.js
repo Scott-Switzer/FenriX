@@ -67,6 +67,13 @@ const CSV_COLUMNS = [
   { key: 'coffee_qty_stocked',    header: 'coffee_qty_stocked',    type: 'int' },
   { key: 'matcha_qty_stocked',    header: 'matcha_qty_stocked',    type: 'int' },
 
+  { key: 'croissant_price', header: 'croissant_price', type: 'float' },
+  { key: 'cookie_price',    header: 'cookie_price',    type: 'float' },
+  { key: 'bagel_price',     header: 'bagel_price',     type: 'float' },
+  { key: 'sandwich_price',  header: 'sandwich_price',  type: 'float' },
+  { key: 'coffee_price',    header: 'coffee_price',    type: 'float' },
+  { key: 'matcha_price',    header: 'matcha_price',    type: 'float' },
+
   // --- Outputs ---
   { key: 'revenue',                  header: 'revenue',                  type: 'float' },
   { key: 'amount_borrowed',          header: 'amount_borrowed',          type: 'float' },
@@ -230,6 +237,14 @@ function buildCsvRow(roundResult) {
     const onMenu = !!menu[p];
     const qty = quantities[p];
     row[`${p}_qty_stocked`] = onMenu ? (qty == null ? 0 : qty) : null;
+  }
+
+  // Per-product prices. If not on menu or price is missing, leave blank (null).
+  const productPrices = (r.productPrices) || {};
+  for (const p of CSV_PRODUCT_ORDER) {
+    const onMenu = !!menu[p];
+    const price = productPrices[p];
+    row[`${p}_price`] = (onMenu && Number.isFinite(price)) ? price : null;
   }
 
   // Outputs
