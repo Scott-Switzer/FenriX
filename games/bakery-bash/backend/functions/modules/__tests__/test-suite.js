@@ -650,6 +650,62 @@ describe('customer-allocation.js', () => {
   });
 });
 
+describe('customer-allocation.js — price weight (POST-01)', () => {
+  it('pool stays conserved when two players have identical satisfaction but opposite prices', () => {
+    const allPlayersState = [
+      {
+        playerId: 'A',
+        perProductSatisfaction: { coffee: 80 },
+        returningCustomers: 0,
+        sousChefCount: 0,
+        numProductsOffered: 1,
+        aggregateSatisfactionPct: 80,
+        footTrafficMultiplier: 1.0,
+      },
+      {
+        playerId: 'B',
+        perProductSatisfaction: { coffee: 80 },
+        returningCustomers: 0,
+        sousChefCount: 0,
+        numProductsOffered: 1,
+        aggregateSatisfactionPct: 80,
+        footTrafficMultiplier: 1.0,
+      },
+    ];
+    const roundPreferences = { modifiers: { coffee: 1.0 } };
+    const perPlayerPrices = {
+      A: { coffee: 2.00 },
+      B: { coffee: 6.50 },
+    };
+
+    const result = custAlloc.allocateAllCustomers(
+      allPlayersState,
+      roundPreferences,
+      undefined,
+      perPlayerPrices,
+    );
+
+    const a = result.get('A');
+    const b = result.get('B');
+    const total = a.totalCustomers + b.totalCustomers;
+    const poolSize = config.PRODUCT_CATALOG.coffee.baseDemand;
+    ok(total >= poolSize - 3 && total <= poolSize + 1, `pool conserved (total ${total}, pool ${poolSize})`);
+    ok(a.totalCustomers > b.totalCustomers * 5, `A (floor) captures vastly more than B (ceiling); got A=${a.totalCustomers}, B=${b.totalCustomers}`);
+  });
+
+  it('legacy path (no perPlayerPrices) yields equal split for equal satisfaction', () => {
+    const allPlayersState = [
+      { playerId: 'A', perProductSatisfaction: { coffee: 80 }, returningCustomers: 0, sousChefCount: 0, numProductsOffered: 1, aggregateSatisfactionPct: 80, footTrafficMultiplier: 1.0 },
+      { playerId: 'B', perProductSatisfaction: { coffee: 80 }, returningCustomers: 0, sousChefCount: 0, numProductsOffered: 1, aggregateSatisfactionPct: 80, footTrafficMultiplier: 1.0 },
+    ];
+    const roundPreferences = { modifiers: { coffee: 1.0 } };
+    const result = custAlloc.allocateAllCustomers(allPlayersState, roundPreferences);
+    const a = result.get('A');
+    const b = result.get('B');
+    near(a.totalCustomers, b.totalCustomers, 2, 'equal split without price');
+  });
+});
+
 // ============================================================================
 // 5. REVENUE
 // ============================================================================
