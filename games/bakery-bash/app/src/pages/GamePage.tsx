@@ -26,6 +26,7 @@ import {
   parseGamePhase,
   ownerOfDecide,
   roleOwnsDecide,
+  roleOwnsPricing,
   totalSousChefs,
   type GameConfigParams,
   type MaintenanceBars,
@@ -116,6 +117,8 @@ export function GamePage() {
   const navigate = useNavigate();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [pricesSubmitted, setPricesSubmitted] = useState(false);
+  const [submittingPrices, setSubmittingPrices] = useState(false);
 
   // FE-11 — previous round's ad winners, rendered at the top of Decide.
   // The aggregate `rounds/round_{N}` doc writes
@@ -506,6 +509,33 @@ export function GamePage() {
     }
   }, [gameId, basePhase, pendingDecision, dispatch]);
 
+  const handleSubmitPrices = useCallback(async () => {
+    if (!gameId) {
+      setSubmitError("Not connected to a game yet.");
+      return;
+    }
+    if (basePhase !== "decide") {
+      setSubmitError("Prices can only be submitted during the decide phase.");
+      return;
+    }
+    setSubmitError(null);
+    setSubmittingPrices(true);
+    try {
+      const callable = httpsCallable<
+        { gameId: string; productPrices: Record<ProductKey, number> },
+        { submitted: boolean }
+      >(functions, "submitPrices");
+      await callable({ gameId, productPrices: pendingDecision.productPrices });
+      setPricesSubmitted(true);
+    } catch (err) {
+      setSubmitError(
+        humanizeFunctionError(err, "Could not submit prices. Please try again."),
+      );
+    } finally {
+      setSubmittingPrices(false);
+    }
+  }, [gameId, basePhase, pendingDecision.productPrices]);
+
   const isDecisionPhase = basePhase === "decide";
   const isSimulating = basePhase === "simulating";
 
@@ -566,18 +596,34 @@ export function GamePage() {
             : undefined
         }
         action={
-          <button
-            className="btn btn--primary game-page__submit"
-            onClick={handleSubmit}
-            disabled={submitDisabled}
-            title={
-              !canSubmit
-                ? `Your ${ownerLabel} teammate submits this decision.`
-                : undefined
-            }
-          >
-            {submitLabel}
-          </button>
+          <>
+            {roleOwnsPricing(role) && (
+              <button
+                className="btn btn--secondary game-page__submit"
+                type="button"
+                onClick={handleSubmitPrices}
+                disabled={submittingPrices || !gameId}
+              >
+                {submittingPrices
+                  ? "Submitting…"
+                  : pricesSubmitted
+                    ? "✓ Update Prices"
+                    : "Submit Prices"}
+              </button>
+            )}
+            <button
+              className="btn btn--primary game-page__submit"
+              onClick={handleSubmit}
+              disabled={submitDisabled}
+              title={
+                !canSubmit
+                  ? `Your ${ownerLabel} teammate submits this decision.`
+                  : undefined
+              }
+            >
+              {submitLabel}
+            </button>
+          </>
         }
       />
     </PageShell>
