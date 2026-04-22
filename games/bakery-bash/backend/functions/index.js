@@ -82,6 +82,7 @@ try {
     validateDecision: (d) => d,
     validateAdBids: (d) => d,
     validateChefBids: (d) => d,
+    validateProductPrices: (d) => d || {},
   };
 }
 
@@ -1337,6 +1338,85 @@ exports.submitDecision = onCall(async (request) => {
     await recordSubmission(
       gameRef, `${roundId}_decide`, uid,
       _submitDecision_displayName, _submitDecision_role
+    );
+  }
+
+  return { gameId, playerId: uid, roundId, submitted: true };
+});
+
+// ===========================================================================
+// submitPrices (POST-01)
+// ===========================================================================
+//
+// Finance-role-gated per-product price submission. Lives in its own callable
+// (rather than piggybacking on submitDecision) because Finance and Operations
+// are separate people and must not race on the same document write.
+//
+// Multiple submits during a single Decide phase are allowed — latest wins.
+
+exports.submitPrices = onCall(async (request) => {
+  const auth = requireAuth(request, 'Sign in before submitting prices.');
+  const data = request.data || {};
+  const gameId = cleanGameId(data.gameId);
+  const uid = auth.uid;
+  const gameRef = gameDoc(gameId);
+  const playerRef = gameRef.collection('players').doc(uid);
+
+  let roundId = null;
+  let _submitPrices_role = null;
+  let _submitPrices_displayName = '';
+
+  await db.runTransaction(async (transaction) => {
+    const [gSnap, pSnap, cfgSnap] = await Promise.all([
+      transaction.get(gameRef),
+      transaction.get(playerRef),
+      transaction.get(gameRef.collection('config').doc('params')),
+    ]);
+
+    if (!gSnap.exists) throw new HttpsError('not-found', 'Game not found.');
+    if (!pSnap.exists) throw new HttpsError('failed-precondition', 'Join the game before submitting.');
+
+    // Finance-only (solo players pass through assertRoleAllowed's solo case).
+    assertRoleAllowed(pSnap.get('role'), ['finance']);
+    _submitPrices_role = pSnap.get('role') || null;
+    _submitPrices_displayName = pSnap.get('displayName') || '';
+
+    const game = gSnap.data();
+    if (!canSubmitDecision(game.phase)) {
+      throw new HttpsError('failed-precondition', 'Prices can only be submitted during the decide phase.');
+    }
+
+    const currentRound = numberOrDefault(game.currentRound || game.round, 1);
+    // Note: cfgSnap is read for parity with submitDecision even though the
+    // price validator doesn't need it today. Future work may apply per-game
+    // zone overrides from config.
+    void mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
+
+    // Validate + snap + clamp
+    const validated = decisionValidation.validateProductPrices(data.productPrices);
+
+    roundId = `round_${currentRound}`;
+    const decisionRef = playerRef.collection('decisions').doc(roundId);
+
+    // Multiple submits are allowed during the same phase — use set-merge,
+    // NOT the already-exists check that submitDecision uses.
+    transaction.set(decisionRef, {
+      round: currentRound,
+      productPrices: validated,
+      pricesSubmittedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    transaction.update(playerRef, {
+      'pendingDecision.productPrices': validated,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  // Mirror submission state for the professor dashboard
+  if (roundId) {
+    await recordSubmission(
+      gameRef, `${roundId}_prices`, uid,
+      _submitPrices_displayName, _submitPrices_role
     );
   }
 
