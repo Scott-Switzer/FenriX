@@ -731,6 +731,32 @@ describe('revenue.js', () => {
   });
 });
 
+describe('revenue.js — perPlayerPrices override (POST-01)', () => {
+  it('calculateProductRevenue uses submitted prices instead of catalog fixedPrice', () => {
+    const qtySold = { coffee: 10, croissant: 20 };
+    const prices  = { coffee: 5.00, croissant: 6.00 };   // above catalog defaults
+    const { totalProductRevenue, breakdown } = revenue.calculateProductRevenue(qtySold, undefined, prices);
+    eq(totalProductRevenue, 10 * 5.00 + 20 * 6.00); // 170
+    eq(breakdown.coffee.price, 5.00);
+    eq(breakdown.croissant.price, 6.00);
+  });
+
+  it('calculateProductRevenue falls back to catalog fixedPrice when a product is missing from prices', () => {
+    const qtySold = { coffee: 10, croissant: 20 };
+    const prices  = { coffee: 5.00 };                    // croissant missing
+    const { totalProductRevenue } = revenue.calculateProductRevenue(qtySold, undefined, prices);
+    // coffee @ 5.00 + croissant @ catalog 4.75
+    near(totalProductRevenue, 10 * 5.00 + 20 * 4.75, 0.01);
+  });
+
+  it('calculateProductRevenue is unchanged when no prices arg supplied (legacy path)', () => {
+    const qtySold = { coffee: 10, croissant: 20 };
+    const { totalProductRevenue } = revenue.calculateProductRevenue(qtySold);
+    // catalog: coffee 4.00, croissant 4.75
+    near(totalProductRevenue, 10 * 4.00 + 20 * 4.75, 0.01);
+  });
+});
+
 // ============================================================================
 // 6. LOAN SHARK
 // ============================================================================
