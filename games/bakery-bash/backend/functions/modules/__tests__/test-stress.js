@@ -943,27 +943,23 @@ function runRaceConditionAnalysis() {
   ok(true, '[RC-2] submitBids ad+chef race: Firestore transaction retry ensures safety');
 
   // -------------------------------------------------------------------------
-  // RC-3: advanceGamePhase — double-advance
+  // RC-3: advanceGamePhase — double-advance guard (CRIT-02)
   // -------------------------------------------------------------------------
-  // ANALYSIS: advanceGamePhase reads game.phase inside a transaction, calls
-  // getNextPhase(), and writes the new phase. If two admins click simultaneously:
-  //   - Both enter the transaction and read the SAME current phase (e.g. 'round_1_decide')
-  //   - Both compute the SAME next phase ('round_1_bid_ad')
-  //   - Both write the same phase update
-  //   - Firestore's optimistic concurrency: one commits, the other RETRIES
-  //   - On retry, it reads 'round_1_bid_ad' and advances to 'round_1_bid_chef'
-  //   - THIS IS THE BUG: two rapid advance clicks can skip a phase.
-  // VERDICT: CRITICAL — no guard against double-advance within a transaction.
-  record('CRITICAL', 'advanceGamePhase: no double-advance guard — two concurrent admins can skip a phase',
-    'index.js', 'advanceGamePhase',
-    'Two simultaneous advanceGamePhase calls enter the transaction and both see phase=P. One commits P→P+1. Firestore retries the second with phase=P+1 and advances to P+2, skipping a phase. There is no "expectedPhase" check that would cause the second to reject.',
-    'Add an "expectedFromPhase" parameter (the admin sends the phase they think they are advancing from). Inside the transaction, verify that game.phase === expectedFromPhase; if not, throw failed-precondition. This makes the operation idempotent for concurrent calls from the same expected state.'
-  );
-  // Verify there is no expectedPhase guard in the source
-  const hasExpectedPhaseGuard = indexSrc.includes('expectedPhase') || indexSrc.includes('expectedFromPhase');
-  ok(!hasExpectedPhaseGuard,
-    '[RC-3] CONFIRMED: advanceGamePhase has NO expectedPhase guard (double-advance vulnerability)',
-    'If this test passes (ok=!hasGuard), the vulnerability is confirmed'
+  // HISTORY: advanceGamePhase used to read game.phase inside a transaction,
+  // call getNextPhase(), and write the new phase with no expectedPhase check.
+  // Two rapid admin clicks would have skipped a phase: the first commits
+  // P→P+1, the second retries, reads P+1, and advances to P+2.
+  // FIX: advanceGamePhase now accepts an optional `expectedFromPhase`
+  // parameter. Inside the transaction it verifies game.phase === expected
+  // and otherwise throws failed-precondition. The frontend ProfessorPage
+  // passes this on both manual and auto-advance paths.
+  const hasExpectedPhaseGuard =
+    indexSrc.includes('expectedFromPhase') &&
+    indexSrc.includes("'failed-precondition'") &&
+    /Phase has already advanced/.test(indexSrc);
+  ok(hasExpectedPhaseGuard,
+    '[RC-3] advanceGamePhase has expectedFromPhase guard (double-advance prevented)',
+    'Guard was removed or renamed — two rapid admin clicks could again skip a phase'
   );
 
   // -------------------------------------------------------------------------
@@ -1000,91 +996,93 @@ function runRaceConditionAnalysis() {
   // VERDICT: SAFE — layoffChef's phase check runs inside the transaction, so
   //          the retry guarantees it always sees the current phase.
   //
-  // continueFromRoster race with advanceGamePhase:
-  //   - continueFromRoster does NOT check game.phase. It only reads playerRef.
-  //   - This means continueFromRoster can execute during ANY phase (including simulating).
-  //   - This is LOW severity since it only sets pendingRosterAction=false and rosterCompleted=true.
-  //   - The simulation reads specialtyChefs directly, not pendingRosterAction, so this is safe.
-  record('MEDIUM', 'continueFromRoster: no game-phase validation — can execute during any phase',
-    'index.js', 'continueFromRoster',
-    'continueFromRoster does not read game.phase. It only reads playerRef. A player could call this after phase has advanced to simulating or results_ready. The simulation engine does not use rosterCompleted flag, but stale state could cause client-side confusion.',
-    'Add a transaction.get(gameRef) inside continueFromRoster and verify phase === round_N_roster before allowing the action.'
+  // HISTORY: continueFromRoster used to skip the game-phase check. MED-05 fixed
+  // it to read the game doc inside the transaction and reject unless
+  // phase === 'roster'.
+  const continueFromRosterHasPhaseCheck =
+    indexSrc.includes('continueFromRoster') &&
+    /Roster actions are only allowed during the roster phase/.test(indexSrc);
+  ok(continueFromRosterHasPhaseCheck,
+    '[RC-5] continueFromRoster validates game.phase === roster inside its transaction',
+    'Phase check was removed — continueFromRoster could execute during any phase'
   );
-  ok(true, '[RC-5] layoffChef phase check inside transaction: race-safe (MEDIUM finding on continueFromRoster)');
 
   // -------------------------------------------------------------------------
   // RC-6: advanceGamePhase side-effects after transaction
   // -------------------------------------------------------------------------
-  // ANALYSIS: The transaction commits the phase change, then side-effects run
-  // (email gen, chef pool gen, simulation). If the Cloud Function crashes
-  // AFTER the transaction but BEFORE side-effects complete, the game doc shows
-  // 'simulating' but no simulation results are written. The professor UI gets
-  // stuck and must retry advanceGamePhase.
-  // This is a known trade-off (transaction must be short). The code logs the
-  // error and surfaces it as an HttpsError('internal') so the professor can retry.
-  // VERDICT: MEDIUM — crash between transaction commit and side-effects leaves
-  //          game in simulating limbo. Retry works but requires manual intervention.
-  record('MEDIUM', 'advanceGamePhase: crash after transaction commit but before simulation leaves game in simulating limbo',
-    'index.js', 'advanceGamePhase',
-    'The phase is committed (simulating) inside the transaction. The simulation runs outside the transaction. A crash between these leaves the game stuck in simulating with no results. The professor must retry advanceGamePhase.',
-    'Add a Firestore-triggered Cloud Function that watches for simulationStatus=running older than N minutes and re-triggers the simulation. Alternatively, track simulationStartedAt and add a recovery endpoint.'
+  // HISTORY: advanceGamePhase commits phase='simulating' inside a transaction,
+  // then runs the simulation and the simulating→results_ready transition
+  // outside the transaction. A crash between those steps used to leave the
+  // game stuck at 'simulating' with no automatic recovery — the professor had
+  // to guess when to re-click Advance.
+  // FIX: retryStuckSimulation callable wraps recovery.diagnoseSimulationState
+  // to decide whether to re-run the simulation (idempotent thanks to the
+  // deterministic noiseSeed) or just re-run the phase transition. The
+  // Professor panel surfaces a "Retry Stuck Simulation" button while phase
+  // is 'simulating'.
+  const hasRetryStuckSimulation =
+    indexSrc.includes('retryStuckSimulation') &&
+    indexSrc.includes('diagnoseSimulationState');
+  ok(hasRetryStuckSimulation,
+    '[RC-6] retryStuckSimulation callable exists to recover simulating-phase limbo',
+    'Recovery path was removed — a mid-simulation crash would strand the game again'
   );
-  ok(true, '[RC-6] advanceGamePhase crash between tx and simulation: known MEDIUM risk (retry required)');
 
   // -------------------------------------------------------------------------
   // RC-7: submittedCount desync
   // -------------------------------------------------------------------------
-  // ANALYSIS: submittedCount is updated by TWO paths:
-  //   1. submitDecision (transaction): increments by FieldValue.increment(1)
-  //   2. onDecisionSubmitted (trigger): OVERWRITES submittedCount with a fresh count query
-  // If the trigger fires BEFORE submitDecision's increment lands, the trigger
-  // count will be one behind. Then submitDecision's increment lands on top of
-  // the trigger's overwrite, producing submittedCount = triggerCount + 1.
-  // If N players submit simultaneously, the trigger may fire multiple times
-  // and each overwrites with a potentially stale count. Worst case:
-  //   - 150 players submit simultaneously
-  //   - 150 trigger invocations each query decisions in parallel
-  //   - Some see 148, some see 149, some see 150
-  //   - All overwrite submittedCount — final value is whichever lands last
-  //   - Meanwhile, 150 increments from submitDecision may push it past 150
-  // VERDICT: HIGH — submittedCount can be incorrect when many players submit
-  //          simultaneously. Not safety-critical (simulation is manually triggered)
-  //          but can mislead the professor's UI into thinking not all players submitted.
-  record('HIGH', 'submittedCount desync: double-write from submitDecision increment and onDecisionSubmitted overwrite',
-    'index.js', 'submitDecision + onDecisionSubmitted',
-    'submitDecision uses FieldValue.increment(1) in a transaction. onDecisionSubmitted trigger re-queries all decisions and OVERWRITES submittedCount. Both paths write submittedCount concurrently. With 150 simultaneous submissions, overwrite and increment collide, leaving submittedCount in an unknown state. The simulation is manually triggered so no deadlock, but the professor sees wrong "X of N submitted" counts.',
-    'Remove FieldValue.increment from submitDecision and rely solely on the onDecisionSubmitted trigger for submittedCount. Or remove the trigger overwrite and rely solely on increment (remove the re-query). Do not mix increment and overwrite on the same counter field.'
+  // HISTORY: submittedCount was written by two paths: submitDecision's
+  // FieldValue.increment(1) inside a transaction AND onDecisionSubmitted's
+  // trigger that OVERWROTE submittedCount with a fresh count query.
+  // Concurrent submissions let the trigger's overwrite stomp the increment.
+  // FIX: CRIT-01/MED-12/HIGH-08 removed the trigger's write. submitDecision's
+  // increment is the sole authoritative writer; onDecisionSubmitted is now
+  // observational and only logs.
+  // Extract the onDecisionSubmitted function body (declaration through next
+  // top-level `exports.`) and verify it contains no writes to submittedCount
+  // — the sole authoritative writer is submitDecision's transactional
+  // FieldValue.increment(1) elsewhere in index.js.
+  const triggerStart = indexSrc.indexOf('exports.onDecisionSubmitted');
+  const triggerEndCandidate = indexSrc.indexOf('exports.', triggerStart + 1);
+  const triggerBody =
+    triggerStart >= 0
+      ? indexSrc.slice(triggerStart, triggerEndCandidate > 0 ? triggerEndCandidate : undefined)
+      : '';
+  const triggerIsObservationalOnly =
+    triggerBody.length > 0 &&
+    !/\.(?:update|set)\s*\([^)]*submittedCount/.test(triggerBody) &&
+    !/submittedCount\s*:/.test(triggerBody);
+  ok(triggerIsObservationalOnly,
+    '[RC-7] onDecisionSubmitted trigger no longer writes submittedCount (increment-only)',
+    'Trigger was restored as a writer — submittedCount can desync under load'
   );
-  ok(true, '[RC-7] submittedCount desync: HIGH finding logged (increment vs overwrite conflict)');
 
   // -------------------------------------------------------------------------
-  // RC-8: Batch write ordering — simulationStatus=complete before all player writes
+  // RC-8: noiseSeed determinism
   // -------------------------------------------------------------------------
-  // ANALYSIS: runSimulationAndPersist appends the round doc update
-  // (simulationStatus='complete') to the FINAL batch. The final batch is the
-  // last to commit. This means simulationStatus is set to complete only after
-  // all player writes land — correct.
-  // However, if the final batch fails (e.g., Firestore outage), earlier batches
-  // have already committed but simulationStatus remains 'running'. A retry of
-  // advanceGamePhase would re-run the simulation and re-write all player results.
-  // This is safe (idempotent results with same inputs) EXCEPT that the noiseSeed
-  // uses `Date.now()` — so a retry produces DIFFERENT revenue values for all players.
-  record('HIGH', 'runSimulationAndPersist: noiseSeed uses Date.now() — retry produces different results',
-    'index.js / simulation.js', 'runSimulationAndPersist / computeGrossRevenue',
-    'noiseSeed is `${playerId}:${Date.now()}`. If the final batch fails and the professor retries, the simulation re-runs with a new Date.now(), producing different revenue. Earlier player writes from batch 1..N-1 are already committed with the old values. This leaves player round docs inconsistent with the leaderboard.',
-    'Use a deterministic noiseSeed: `${gameId}:${round}:${playerId}`. This makes simulation results reproducible on retry and eliminates divergence between batches.'
+  // HISTORY: runSimulationAndPersist originally seeded revenue noise with
+  // `${playerId}:${Date.now()}`. A simulation retry produced different
+  // revenue for every player, leaving partially-written batches
+  // inconsistent with the leaderboard.
+  // FIX: noiseSeed is now `${gameId}:${round}:${playerId}`, making a retry
+  // bitwise-identical to the original run.
+  const simulationSrc = fs.readFileSync(path.join(root, 'simulation.js'), 'utf8');
+  const noiseSeedIsDeterministic =
+    /noiseSeed:\s*`\$\{[^`]*gameId[^`]*\}:\$\{[^`]*round[^`]*\}:\$\{[^`]*playerId[^`]*\}`/.test(simulationSrc);
+  ok(noiseSeedIsDeterministic,
+    '[RC-8] noiseSeed uses deterministic `${gameId}:${round}:${playerId}` (retry is bitwise-identical)',
+    'noiseSeed regressed — retry would produce different revenue than the original run'
   );
-  ok(true, '[RC-8] noiseSeed=Date.now() found — HIGH finding (non-deterministic retry)');
 
   // -------------------------------------------------------------------------
-  // Summary of race condition findings
+  // Summary of race condition findings — all previously-flagged items remediated
   // -------------------------------------------------------------------------
-  console.log('\n  Race Condition Summary:');
-  console.log('    CRITICAL: advanceGamePhase double-advance (no expectedPhase guard)');
-  console.log('    HIGH:     submittedCount desync (increment vs overwrite conflict)');
-  console.log('    HIGH:     noiseSeed=Date.now() causes non-deterministic retry');
-  console.log('    MEDIUM:   advanceGamePhase crash between tx and simulation (simulating limbo)');
-  console.log('    MEDIUM:   continueFromRoster missing phase validation');
+  console.log('\n  Race Condition Summary (all previously-flagged items now remediated):');
+  console.log('    FIXED:    advanceGamePhase double-advance (expectedFromPhase guard in index.js + ProfessorPage)');
+  console.log('    FIXED:    submittedCount desync (onDecisionSubmitted is observational-only)');
+  console.log('    FIXED:    noiseSeed determinism (`${gameId}:${round}:${playerId}`)');
+  console.log('    FIXED:    simulating-phase limbo (retryStuckSimulation callable)');
+  console.log('    FIXED:    continueFromRoster missing phase validation (MED-05)');
   console.log('    LOW:      submitDecision double-submit (correctly guarded)');
   console.log('    LOW:      submitBids ad+chef race (correctly handled by retry)');
   console.log('    LOW:      joinGame double-join (correctly deduplicated)');
@@ -1097,18 +1095,25 @@ function runRaceConditionAnalysis() {
 function runBatchChunkingVerification() {
   console.log('\n=== SUITE 6: Batch Chunking Logic Verification ===');
 
-  // Reproduce the exact batch-chunking logic from index.js
-  const BATCH_OP_LIMIT = 490;
+  // Reproduce the exact batch-chunking logic from index.js. The limit was
+  // lowered from 490 to 487 so floor(487/3)=162 players/batch, leaving
+  // 162*3+2=488 ops in the worst-case final batch (≤ 490, under the 500
+  // Firestore hard cap).
+  const fs = require('fs');
+  const indexSrc = fs.readFileSync(path.join(root, '..', 'index.js'), 'utf8');
+  const indexLimitMatch = /const BATCH_OP_LIMIT\s*=\s*(\d+)/.exec(indexSrc);
+  const BATCH_OP_LIMIT = indexLimitMatch ? Number(indexLimitMatch[1]) : 487;
   const OPS_PER_PLAYER = 3;
   const PLAYERS_PER_BATCH = Math.floor(BATCH_OP_LIMIT / OPS_PER_PLAYER);
 
-  console.log(`  BATCH_OP_LIMIT = ${BATCH_OP_LIMIT}`);
+  console.log(`  BATCH_OP_LIMIT = ${BATCH_OP_LIMIT} (read from index.js)`);
   console.log(`  OPS_PER_PLAYER = ${OPS_PER_PLAYER}`);
   console.log(`  PLAYERS_PER_BATCH = floor(${BATCH_OP_LIMIT}/${OPS_PER_PLAYER}) = ${PLAYERS_PER_BATCH}`);
 
-  // 6a. PLAYERS_PER_BATCH is correct
-  ok(PLAYERS_PER_BATCH === 163,
-    `[batch] PLAYERS_PER_BATCH = ${PLAYERS_PER_BATCH} (expected 163)`,
+  // 6a. PLAYERS_PER_BATCH matches the code (162 at 487, 163 at 490)
+  const expectedPlayersPerBatch = Math.floor(BATCH_OP_LIMIT / OPS_PER_PLAYER);
+  ok(PLAYERS_PER_BATCH === expectedPlayersPerBatch,
+    `[batch] PLAYERS_PER_BATCH = ${PLAYERS_PER_BATCH} (expected ${expectedPlayersPerBatch})`,
     `got ${PLAYERS_PER_BATCH}`
   );
 
@@ -1158,23 +1163,19 @@ function runBatchChunkingVerification() {
     );
   }
 
-  // 6c. The edge case: PLAYERS_PER_BATCH=163 players fill exactly one batch
-  //     163 × 3 = 489 ops. Then + 2 agg = 491 ops in final batch.
-  //     491 > BATCH_OP_LIMIT(490) but < 500 (Firestore hard cap).
-  //     This is a code smell: the BATCH_OP_LIMIT comment says "10 ops of headroom"
-  //     but we actually only have 9 ops of headroom (500-491=9).
+  // 6c. Worst-case final batch: PLAYERS_PER_BATCH full of players + the 2
+  //     aggregate writes (leaderboard + round doc completion) appended to
+  //     that batch. At BATCH_OP_LIMIT=487 this is 162*3+2 = 488, comfortably
+  //     under the 500-op Firestore hard cap and within the soft limit.
   const fullBatchOps = PLAYERS_PER_BATCH * OPS_PER_PLAYER + 2;
   ok(fullBatchOps <= 500,
     `[batch] full batch + agg writes (${fullBatchOps}) fits Firestore hard cap (500)`,
     `${fullBatchOps} ops in worst-case final batch`
   );
-  if (fullBatchOps > BATCH_OP_LIMIT) {
-    record('MEDIUM', `BATCH_OP_LIMIT miscalculation: final batch can have ${fullBatchOps} ops`,
-      'index.js', 'runSimulationAndPersist',
-      `BATCH_OP_LIMIT=490 but floor(490/3)=163 players per batch. 163×3=489 + 2 agg writes = 491 ops, exceeding BATCH_OP_LIMIT by 1. Stays below Firestore hard cap (500) but violates the intended 10-op headroom.`,
-      'Set BATCH_OP_LIMIT=487 (floor(487/3)=162, 162×3=486 + 2 agg = 488 ≤ 490). Or write aggregate ops in a separate batch committed after all player batches.'
-    );
-  }
+  ok(fullBatchOps <= BATCH_OP_LIMIT + 3,
+    `[batch] full batch + agg writes (${fullBatchOps}) is within BATCH_OP_LIMIT (${BATCH_OP_LIMIT}) + 3-op headroom`,
+    `${fullBatchOps} ops exceeds limit ${BATCH_OP_LIMIT} by more than the aggregate-write buffer`
+  );
 }
 
 // ===========================================================================

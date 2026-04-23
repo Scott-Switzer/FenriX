@@ -423,7 +423,17 @@ export function ProfessorPage() {
 
   const onStart = () => callCallable("startGame", "start", "Game started.");
   const onAdvance = () =>
-    callCallable("advanceGamePhase", "advance", "Phase advanced.");
+    callCallable("advanceGamePhase", "advance", "Phase advanced.", {
+      // Pair with the auto-advance effect: the backend's CRIT-02 guard rejects
+      // the call if the phase has already moved on us.
+      expectedFromPhase: phase ?? undefined,
+    });
+  const onRetryStuckSimulation = () =>
+    callCallable(
+      "retryStuckSimulation",
+      "retry-stuck-sim",
+      "Simulation recovery complete — advancing to Results.",
+    );
   const onPauseResume = () =>
     paused
       ? callCallable("resumeGame", "resume", "Game resumed.")
@@ -672,6 +682,19 @@ export function ProfessorPage() {
         >
           {pendingAction === "extend" ? "Extending…" : "+ 1 Min"}
         </button>
+
+        {phase === "simulating" && (
+          <button
+            className="btn btn--small btn--secondary"
+            onClick={onRetryStuckSimulation}
+            disabled={!gameId || controlsDisabled}
+            title="If the Simulate screen hasn't moved to Results after ~60s, click to re-run the simulation and advance."
+          >
+            {pendingAction === "retry-stuck-sim"
+              ? "Recovering…"
+              : "Retry Stuck Simulation"}
+          </button>
+        )}
 
         <button
           className="btn btn--secondary"

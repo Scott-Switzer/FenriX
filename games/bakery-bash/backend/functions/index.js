@@ -75,6 +75,11 @@ const {
   buildCsvString,
 } = require('./modules/csv-export');
 
+const {
+  DEFAULT_STUCK_THRESHOLD_MS,
+  diagnoseSimulationState,
+} = require('./modules/recovery');
+
 // The following modules are part of the full backend surface. They are
 // required only where needed so that missing optional helpers do not break
 // the lobby / decision / bid flows.
@@ -1550,6 +1555,108 @@ exports.advanceGamePhase = onCall(CALLABLE_OPTS, async (request) => {
     gameId,
     phase: finalSnap.get('phase'),
     round: numberOrDefault(finalSnap.get('round'), 0),
+  };
+});
+
+// ===========================================================================
+// retryStuckSimulation
+// ===========================================================================
+
+/**
+ * Recover a game that is stuck at `phase === 'simulating'`.
+ *
+ * advanceGamePhase commits phase='simulating' inside a transaction, then runs
+ * the simulation and the simulating→results_ready transition *outside* the
+ * transaction. If the Cloud Function crashes or times out between those steps
+ * the professor sees a frozen "simulating" screen with no results.
+ *
+ * This callable diagnoses the state and takes one of three actions:
+ *
+ *   - 'advance'  — simulation completed but the phase transition didn't land.
+ *                  Re-run the transactional phase transition only.
+ *   - 'rerun'    — simulation stopped mid-way (crash or never started). Re-run
+ *                  it end-to-end. noiseSeed is deterministic
+ *                  (`${gameId}:${round}:${playerId}`) so partially-written
+ *                  player docs get overwritten with identical values.
+ *   - failed-precondition — game is not actually stuck (phase ≠ 'simulating',
+ *                  or simulation is still running within the 60s threshold).
+ */
+exports.retryStuckSimulation = onCall(CALLABLE_OPTS, async (request) => {
+  const auth = requireAuth(request, 'Sign in before recovering stuck simulations.');
+  const gameId = cleanGameId((request.data || {}).gameId);
+  const gameRef = gameDoc(gameId);
+
+  const [gSnap, cfgSnap] = await Promise.all([
+    gameRef.get(),
+    gameRef.collection('config').doc('params').get(),
+  ]);
+  if (!gSnap.exists) {
+    throw new HttpsError('not-found', 'Game not found.');
+  }
+  if (gSnap.get('professorUid') !== auth.uid && gSnap.get('professorId') !== auth.uid) {
+    throw new HttpsError('permission-denied', 'Only the professor can recover simulations.');
+  }
+
+  const game = gSnap.data();
+  const phase = game.phase;
+  const round = numberOrDefault(game.currentRound || game.round, 0);
+  const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
+
+  const roundRef = gameRef.collection('rounds').doc(`round_${round}`);
+  const roundSnap = await roundRef.get();
+  const simulationStatus = roundSnap.exists ? (roundSnap.get('simulationStatus') || null) : null;
+  const startedTs = roundSnap.exists ? roundSnap.get('simulationStartedAt') : null;
+  const simulationStartedAt =
+    startedTs && typeof startedTs.toMillis === 'function' ? startedTs.toMillis() : null;
+
+  const diagnosis = diagnoseSimulationState({
+    phase,
+    simulationStatus,
+    simulationStartedAt,
+    now: Date.now(),
+    stuckThresholdMs: DEFAULT_STUCK_THRESHOLD_MS,
+  });
+
+  logger.info('retryStuckSimulation diagnosis', {
+    gameId, round, phase, simulationStatus, diagnosis,
+  });
+
+  if (diagnosis.action === 'not-stuck' || diagnosis.action === 'wait') {
+    throw new HttpsError('failed-precondition', diagnosis.reason);
+  }
+
+  if (diagnosis.action === 'rerun') {
+    // Deterministic noiseSeed makes this idempotent — any partially-written
+    // player rows from the original (crashed) run get overwritten with the
+    // same values.
+    await runSimulationAndPersist(gameRef, round, config);
+  }
+
+  // Transition simulating → results_ready using the same transactional guard
+  // advanceGamePhase uses.
+  await db.runTransaction(async (tx) => {
+    const gs = await tx.get(gameRef);
+    if (!gs.exists || gs.get('phase') !== 'simulating') {
+      logger.warn('retryStuckSimulation: phase already moved before recovery advance.', {
+        gameId, currentPhase: gs.exists ? gs.get('phase') : 'deleted',
+      });
+      return;
+    }
+    tx.update(gameRef, {
+      phase: 'results_ready',
+      phaseStartedAt: FieldValue.serverTimestamp(),
+      phaseEndsAt: phaseEndsAtFromNow('results_ready', config),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  const finalSnap = await gameRef.get();
+  return {
+    gameId,
+    round,
+    action: diagnosis.action,
+    reason: diagnosis.reason,
+    phase: finalSnap.get('phase'),
   };
 });
 
