@@ -5,13 +5,14 @@ import {
   onSnapshot,
   type DocumentData,
 } from "firebase/firestore";
-import { useGameDispatch } from "../contexts/GameContext";
+import { useGame, useGameDispatch } from "../contexts/GameContext";
 import { db } from "../lib/firebase";
 import {
   type GameConfigParams,
   type LeaderboardRanking,
   type MaintenanceBars,
   type Player,
+  type PlayerRole,
   type RoundResult,
 } from "../types/game";
 
@@ -48,6 +49,7 @@ import {
  */
 export function useGameListener(gameId: string | null, playerId?: string | null): void {
   const dispatch = useGameDispatch();
+  const { teamId } = useGame();
 
   // Listener 1 — game doc (phase / round / phaseEndsAt).
   useEffect(() => {
@@ -337,4 +339,50 @@ export function useGameListener(gameId: string | null, playerId?: string | null)
     );
     return unsubscribe;
   }, [gameId, dispatch]);
+
+  // Listener 5 — team doc (FE-I15). Mirrors `roleAssignments` into
+  // context so the role-gate helpers can relax when nobody on the team
+  // holds the specialist role (2-player teams, cleared roles, mid-game
+  // disconnects). Re-subscribes when teamId changes; unsubscribes when
+  // the player leaves the team (rare — usually only on RESET).
+  useEffect(() => {
+    if (!gameId || !teamId) {
+      dispatch({ type: "SET_TEAM_ROLE_ASSIGNMENTS", payload: {} });
+      return;
+    }
+    const teamRef = doc(db, "games", gameId, "teams", teamId);
+    const unsubscribe = onSnapshot(
+      teamRef,
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data() as DocumentData;
+        const raw =
+          data.roleAssignments && typeof data.roleAssignments === "object"
+            ? (data.roleAssignments as Record<string, unknown>)
+            : {};
+        const sanitized: Record<string, PlayerRole | null> = {};
+        for (const [uid, r] of Object.entries(raw)) {
+          if (
+            r === "operations" ||
+            r === "advertising" ||
+            r === "finance" ||
+            r === "solo"
+          ) {
+            sanitized[uid] = r;
+          } else {
+            sanitized[uid] = null;
+          }
+        }
+        dispatch({ type: "SET_TEAM_ROLE_ASSIGNMENTS", payload: sanitized });
+      },
+      (err) => {
+        console.error("useGameListener/team snapshot error", {
+          gameId,
+          teamId,
+          err,
+        });
+      },
+    );
+    return unsubscribe;
+  }, [gameId, teamId, dispatch]);
 }

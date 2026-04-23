@@ -441,16 +441,19 @@ export function TeamPage() {
             <section className="team-page__roles">
               <h2 className="team-page__roles-title">Pick Your Role</h2>
               <p className="team-page__roles-intro">
-                Everyone sees every screen, but only the role owner can
-                press <em>Submit</em>. Choose together — each role can
-                only be held by one teammate.
+                Every teammate sees every screen. For each decision,
+                only <em>the teammate who picked that role</em> can
+                press <em>Submit</em> — so pick together, and each
+                role can only be held by one person. If a role is
+                left unfilled, any teammate can submit for it.
               </p>
 
               {isSolo && (
                 <p className="team-page__roles-solo">
-                  You're flying solo right now — once teammates join you'll
-                  be able to pick a role. Until then, all three submit
-                  buttons are enabled for you.
+                  You're the only one on this team right now — every
+                  submit button is enabled for you. Role picks here are
+                  optional until teammates join; whatever's left
+                  unfilled, you can still do.
                 </p>
               )}
 

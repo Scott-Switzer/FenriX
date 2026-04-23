@@ -116,6 +116,7 @@ export function GamePage() {
     decisionSubmitted,
     pricesSubmitted,
     role,
+    teamRoleAssignments,
     config,
   } = useGame();
   // BE-I03: auction result docs are keyed by team slug; fall back to the
@@ -663,8 +664,10 @@ export function GamePage() {
     );
   }
 
-  // DEC-21: only the Operations role (or solo) may submit Decide.
-  const canSubmit = roleOwnsDecide(role);
+  // DEC-21 / FE-I15: only the Operations role (or solo) may submit
+  // Decide — unless the team has nobody on operations, in which case
+  // any teammate can submit.
+  const canSubmit = roleOwnsDecide(role, teamRoleAssignments);
   const ownerLabel = ownerOfDecide();
   const submitDisabled =
     submitting || decisionSubmitted || !gameId || !canSubmit;
@@ -727,7 +730,7 @@ export function GamePage() {
         }
         action={
           <>
-            {roleOwnsPricing(role) && (
+            {roleOwnsPricing(role, teamRoleAssignments) && (
               <button
                 className="btn btn--secondary game-page__submit"
                 type="button"

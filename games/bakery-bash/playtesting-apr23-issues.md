@@ -9,46 +9,63 @@
 
 ---
 
+## Shipped so far
+
+| ID | PR | Notes |
+|---|---|---|
+| BE-I01 | [#72](https://github.com/fenrix-ai/FenriX/pull/72) | Auction costs no longer multiplied by team size. |
+| BE-I03 | [#72](https://github.com/fenrix-ai/FenriX/pull/72) | Auction-results doc keyed by team slug only. |
+| BE-I04 | [#77](https://github.com/fenrix-ai/FenriX/pull/77) | Teams ≤ 2 members default to `solo`; 2→3 join cascades specialist roles. |
+| BE-I13 | [#77](https://github.com/fenrix-ai/FenriX/pull/77) | `setTeamRole({ role: null \| "" \| "unassigned" })` clears the caller; player doc falls back to `solo`. |
+| FE-I14 | [#77](https://github.com/fenrix-ai/FenriX/pull/77) | "Pick Your Role" briefing + solo helper text rewritten to define the term inline. |
+| FE-I15 | [#77](https://github.com/fenrix-ai/FenriX/pull/77) | `assertRoleAllowed` + `roleOwnsX` accept team-fallback: any teammate can submit when nobody holds the specialist role. |
+
+Remaining P0s: **BE-I02** (chef cap never enforced). Everything else below is P1/P2.
+
+---
+
 ## Priority Summary
 
 ### From automated playthrough (6-user emulator run, numbers-focused)
 
-| ID | Area | Title | Priority | Effort |
-|---|---|---|---|---|
-| BE-I01 | simulation / auction | **Auction costs are charged N× for a team of N** | **P0 — ship-blocker** | M (~1 day) |
-| BE-I02 | roster / phases | **Chef cap (3) is never enforced; teams hoard 10+ chefs** | **P0 — ship-blocker** | M (~1 day) |
-| BE-I03 | roster / schema | **Auction-results doc duplicates payload under both team-slug and every member uid** | **P0** (enables I01 fix) | S (½ day) |
-| BE-I04 | team formation | **2-player teams have no `operations` role — can't submit decisions** | **P0** | S–M (½–1 day) |
-| BE-I05 | results schema | **`classStats.totalCustomerPool` never written** | P1 | XS (~1 hr) |
-| BE-I06 | results schema | **`fillRate` missing from `lastRoundResult`** | P1 | XS (~1 hr) |
-| BE-I07 | chef pool | **`skillLevel` field missing / renamed to `skillTier`** | P1 | S (~2 hr) |
-| BE-I08 | tests | **`test-phase-flow` + `test-lifecycle` (backend/scripts) expect old phase order** | P1 | XS (~1 hr) |
-| BE-I09 | tests | **Unit-test failure: `generateChefPool produces valid chefs`** | P1 | S (~2 hr) |
-| DOC-I10 | docs | **`GAME_DESIGN_PROPOSAL.md` phase-order section contradicts shipped code** | P1 | XS (~½ hr) |
-| UX-I11 | auctions | **Tie-break is earlier-submission → network-speed wins** | P2 | S–M |
-| FE-I12 | simulate phase | **Sim advances `decide → results_ready` in <3s; "simulating" frame is invisible** | P2 | S |
+| ID | Area | Title | Priority | Effort | Status |
+|---|---|---|---|---|---|
+| BE-I01 | simulation / auction | **Auction costs are charged N× for a team of N** | **P0 — ship-blocker** | M (~1 day) | ✅ shipped ([#72](https://github.com/fenrix-ai/FenriX/pull/72)) |
+| BE-I02 | roster / phases | **Chef cap (3) is never enforced; teams hoard 10+ chefs** | **P0 — ship-blocker** | M (~1 day) | ⏳ open |
+| BE-I03 | roster / schema | **Auction-results doc duplicates payload under both team-slug and every member uid** | **P0** (enables I01 fix) | S (½ day) | ✅ shipped ([#72](https://github.com/fenrix-ai/FenriX/pull/72)) |
+| BE-I04 | team formation | **2-player teams have no `operations` role — can't submit decisions** | **P0** | S–M (½–1 day) | ✅ shipped ([#77](https://github.com/fenrix-ai/FenriX/pull/77)) |
+| BE-I05 | results schema | **`classStats.totalCustomerPool` never written** | P1 | XS (~1 hr) | ⏳ open |
+| BE-I06 | results schema | **`fillRate` missing from `lastRoundResult`** | P1 | XS (~1 hr) | ⏳ open |
+| BE-I07 | chef pool | **`skillLevel` field missing / renamed to `skillTier`** | P1 | S (~2 hr) | ⏳ open |
+| BE-I08 | tests | **`test-phase-flow` + `test-lifecycle` (backend/scripts) expect old phase order** | P1 | XS (~1 hr) | ⏳ open |
+| BE-I09 | tests | **Unit-test failure: `generateChefPool produces valid chefs`** | P1 | S (~2 hr) | ⏳ open |
+| DOC-I10 | docs | **`GAME_DESIGN_PROPOSAL.md` phase-order section contradicts shipped code** | P1 | XS (~½ hr) | ⏳ open |
+| UX-I11 | auctions | **Tie-break is earlier-submission → network-speed wins** | P2 | S–M | ⏳ open |
+| FE-I12 | simulate phase | **Sim advances `decide → results_ready` in <3s; "simulating" frame is invisible** | P2 | S | ⏳ open |
 
 ### From manual playtesting (browser walk-through, UX-focused)
 
-| ID | Area | Title | Priority | Effort |
-|---|---|---|---|---|
-| BE-I13 | team roles | **"× Clear" button on Pick Your Role doesn't actually clear the role** | **P0** | XS (~1 hr) |
-| FE-I14 | team roles | **"Pick Your Role" briefing references "role owner" without defining it** | P2 | XS (~½ hr) |
-| FE-I15 / BE-I04 | team roles | **Teams with only 1 or 2 roles picked can't submit — need a solo-fallback** | **P0** (sibling of BE-I04) | S (½ day) |
-| FE-I16 | ad auction | **Typing into $0 bid input produces "01000" (leading zero)** | **P1** | XS (~½ hr) |
-| BE-I17 | professor | **`pauseGame` flips a flag that nothing honors — timer and submissions still tick** | **P1** | M (~1 day) |
-| FE-I18 | professor | **Per-phase submission grid is stuck on ⏳ for everyone** | **P1** | S (~2 hr) |
-| DESIGN-I19 | chef auction | **Minimum bid floor feels arbitrary — reconsider removing or simplifying** | P2 | design discussion |
-| FE-I20 | results | **Revenue / Customers / Satisfaction values duplicated in label strip below cards** | P2 | XS (~½ hr) |
-| FE-I21 | conclusion | **End-game screen needs polish — mirror the Results-phase card style** | P2 | M (~½–1 day) |
+| ID | Area | Title | Priority | Effort | Status |
+|---|---|---|---|---|---|
+| BE-I13 | team roles | **"× Clear" button on Pick Your Role doesn't actually clear the role** | **P0** | XS (~1 hr) | ✅ shipped ([#77](https://github.com/fenrix-ai/FenriX/pull/77)) |
+| FE-I14 | team roles | **"Pick Your Role" briefing references "role owner" without defining it** | P2 | XS (~½ hr) | ✅ shipped ([#77](https://github.com/fenrix-ai/FenriX/pull/77)) |
+| FE-I15 / BE-I04 | team roles | **Teams with only 1 or 2 roles picked can't submit — need a solo-fallback** | **P0** (sibling of BE-I04) | S (½ day) | ✅ shipped ([#77](https://github.com/fenrix-ai/FenriX/pull/77)) |
+| FE-I16 | ad auction | **Typing into $0 bid input produces "01000" (leading zero)** | **P1** | XS (~½ hr) | ⏳ open |
+| BE-I17 | professor | **`pauseGame` flips a flag that nothing honors — timer and submissions still tick** | **P1** | M (~1 day) | ⏳ open |
+| FE-I18 | professor | **Per-phase submission grid is stuck on ⏳ for everyone** | **P1** | S (~2 hr) | ⏳ open |
+| DESIGN-I19 | chef auction | **Minimum bid floor feels arbitrary — reconsider removing or simplifying** | P2 | design discussion | ⏳ open |
+| FE-I20 | results | **Revenue / Customers / Satisfaction values duplicated in label strip below cards** | P2 | XS (~½ hr) | ⏳ open |
+| FE-I21 | conclusion | **End-game screen needs polish — mirror the Results-phase card style** | P2 | M (~½–1 day) | ⏳ open |
 
-**P0 total effort (all sources): ~4–4.5 person-days.** Everything P0 should land before May 1 or the live game will produce nonsense numbers for multi-player teams, block any team that doesn't show up with exactly 3 people, and present a broken "Clear role" button on the first screen every student sees.
+**P0 status:** 5 of 6 shipped. Only **BE-I02** (chef cap never enforced) is still open before May 1.
 
 ---
 
 ## P0 — Must-fix before May 1
 
 ### BE-I01 — Auction costs multiplied by team size
+
+> ✅ **Shipped in PR [#72](https://github.com/fenrix-ai/FenriX/pull/72).** Auction results are written under the team-slug key only; simulation reads once per team. Covered by `backend/scripts/test-multi-team-costs.js`.
 
 **Severity:** Critical. Kills the game economy for every team of 2 or 3 — which is literally every team on May 1.
 
@@ -140,6 +157,8 @@ Either fix alone is enough to prevent the runaway case; both together give the p
 
 ### BE-I03 — Auction-results doc shape leaks member uids alongside team slug
 
+> ✅ **Shipped in PR [#72](https://github.com/fenrix-ai/FenriX/pull/72).** Auction results are keyed by team slug only; the per-member uid copies were deleted. Regression asserted in `test-multi-team-costs.js`.
+
 **Severity:** High (root cause of BE-I01; also confuses any CSV export or audit tooling).
 
 **Symptom.** A round's `auctionResults` doc in Firestore looks like:
@@ -166,6 +185,8 @@ Either fix alone is enough to prevent the runaway case; both together give the p
 
 ### BE-I04 — 2-player teams can't play without manual role assignment
 
+> ✅ **Shipped in PR [#77](https://github.com/fenrix-ai/FenriX/pull/77).** `createTeam` + `joinGame` default to `solo` while the team has ≤2 members; on 2→3 the whole team flips to finance/advertising/operations in the same transaction. Any specialist role a player manually picked is preserved. Covered by `test-create-join-flow.js` + `test-apr23-e2e.js`.
+
 **Severity:** High. Attendance on May 1 will not be perfectly divisible by 3. Any team that shows up with 2 people will hit `permission-denied` on `submitDecision`.
 
 **Symptom.** `joinGame`/`createTeam` auto-assign in order `['finance', 'advertising', 'operations']`. For a 2-player team, nobody gets operations. Any `submitDecision`, `layoffChef`, or `continueFromRoster` call throws:
@@ -186,6 +207,8 @@ Minimum-risk version for May 1: **when a team has ≤2 members, every member's r
 ---
 
 ### BE-I13 — "× Clear" button on Pick Your Role does nothing
+
+> ✅ **Shipped in PR [#77](https://github.com/fenrix-ai/FenriX/pull/77).** `setTeamRole` now accepts `role: null`, `""`, or `"unassigned"` as an explicit clear — the caller's entry is nulled out on the team doc and their player doc falls back to `role: "solo"`. Covered by `test-team-roles.js` + `test-apr23-e2e.js`.
 
 **Severity:** High. Discovered via manual playtest. It's on the first interactive screen every student lands on, so a broken button there signals "this is janky" before the game even starts.
 
@@ -223,6 +246,8 @@ Go with (A) — less callable sprawl.
 
 ### FE-I15 — Teams with 1 or 2 roles picked can't submit anything
 
+> ✅ **Shipped in PR [#77](https://github.com/fenrix-ai/FenriX/pull/77).** Backend: `assertRoleAllowed` takes an optional `teamRoleAssignments` map and returns ok when nobody on the team holds any of the required roles; a new `assertRoleAllowedWithTeam` helper fetches the team doc in the transaction and is wired into every role-gated callable (`submitDecision`, `submitPrices`, `submitBids` ×2, `layoffChef`, `continueFromRoster`). Frontend: `useGameListener` subscribes to the team doc, `GameContext.teamRoleAssignments` mirrors it, and every `roleOwnsX` helper accepts the same map so submit buttons unlock for any teammate when the specialist seat is vacant. Covered by `test-fallback-roles.js` + `test-apr23-e2e.js`.
+
 **Severity:** High. Sibling of **BE-I04** — same root problem, different surface. On May 1 teams won't all show up with 3 people, **and** even 3-person teams may not all have picked before the phase moves on. Right now the game hard-gates on specific roles and has no graceful fallback.
 
 **Symptom scenarios.**
@@ -257,6 +282,8 @@ Go with (A) — less callable sprawl.
 ---
 
 ### FE-I14 — "Pick Your Role" briefing uses "role owner" without defining it
+
+> ✅ **Shipped in PR [#77](https://github.com/fenrix-ai/FenriX/pull/77).** Intro paragraph rewritten to "For each decision, only the teammate who picked that role can press Submit — so pick together, and each role can only be held by one person. If a role is left unfilled, any teammate can submit for it." Solo helper text also updated.
 
 **Severity:** Low (P2). Flagged during manual playtest.
 
@@ -521,14 +548,14 @@ No decision yet; write up the trade-off and bring it to the next all-hands.
 Split into tracks so backend + frontend can run in parallel.
 
 **Backend track (Scott / Dylan B.)**
-1. **Day 1:** BE-I03 (schema cleanup) → BE-I01 (cost multiplier fix, depends on I03) → add `test-multi-team-costs.js` → verify end-to-end via the `/tmp/playtest.js`-style harness.
-2. **Day 2:** BE-I02 (chef cap enforcement) → BE-I04 (auto-assign for 2-player teams) → BE-I13 (backend branch of the Clear-role fix, backend side). All three touch the role/roster transaction; batching them keeps the diffs coherent.
+1. **Day 1:** ✅ BE-I03 → ✅ BE-I01 shipped in PR [#72](https://github.com/fenrix-ai/FenriX/pull/72); `test-multi-team-costs.js` added and green.
+2. **Day 2:** ✅ BE-I04 + ✅ BE-I13 shipped in PR [#77](https://github.com/fenrix-ai/FenriX/pull/77). **Still open: BE-I02 (chef cap enforcement).**
 3. **Day 3:** BE-I17 (real pause). Non-trivial because it touches `phaseEndsAt` bookkeeping plus six submit callables. Slot it after I04 so the "solo-fallback" guard already exists everywhere you'd be adding the paused guard.
 4. **Day 4 (pre-launch cleanup):** BE-I05 / I06 / I07 / I08 / I09 / DOC-I10 — all small. Group into one PR titled something like "schema and doc cleanup before live session".
 
 **Frontend track (AB / Kavin)**
-1. **Day 1:** FE-I16 (leading-zero bid input, 1-line fix) → FE-I18 (submission grid — verify prof claim path, surface the banner) → FE-I15 client side (enable submit when roles unfilled, reading `roleAssignments`).
-2. **Day 2:** FE-I14 (rewrite role-picker briefing copy) → FE-I20 (drop duplicate metric labels on results).
+1. **Day 1:** FE-I16 (leading-zero bid input, 1-line fix) → FE-I18 (submission grid — verify prof claim path, surface the banner) → ✅ FE-I15 client side shipped in PR [#77](https://github.com/fenrix-ai/FenriX/pull/77).
+2. **Day 2:** ✅ FE-I14 shipped in PR [#77](https://github.com/fenrix-ai/FenriX/pull/77). Still open: FE-I20 (drop duplicate metric labels on results).
 3. **Day 3+:** FE-I21 (Conclusion polish). Needs design time with Mia.
 
 **Game-design track (Dylan M. / Mia)**

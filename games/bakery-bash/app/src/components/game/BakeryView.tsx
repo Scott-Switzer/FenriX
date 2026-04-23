@@ -242,9 +242,12 @@ export function BakeryView({ readOnly = false }: BakeryViewProps) {
     totalRounds,
     pendingDecision,
     role,
+    teamRoleAssignments,
   } = useGame();
   const dispatch = useGameDispatch();
-  const canEditPrices = roleOwnsPricing(role);
+  // FE-I15: let any teammate edit prices when no one on the team
+  // holds finance.
+  const canEditPrices = roleOwnsPricing(role, teamRoleAssignments);
 
   const { staffCounts } = pendingDecision;
   const chefCountForStation = (s: StationId): number => {

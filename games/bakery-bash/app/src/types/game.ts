@@ -489,18 +489,64 @@ export const PLAYER_ROLE_LABELS: Record<PlayerRole, string> = {
   solo: "Solo (all roles)",
 };
 
-/** Phase-owning role mapping per DEC-21. `solo` always passes. */
-export function roleOwnsDecide(role: PlayerRole): boolean {
-  return role === "operations" || role === "solo";
+/**
+ * FE-I15 team-fallback — returns true when *nobody on the team* currently
+ * holds any of the required specialist roles. Lets us relax the role-gate
+ * helpers below (and mirrors the backend's `assertRoleAllowed` fallback
+ * in `backend/functions/index.js`).
+ *
+ * Pass the team's `roleAssignments` map (uid → role | null) and the list
+ * of specialist roles the caller is checking against. Returns `true` if
+ * no assignment equals any of those roles. An empty / missing assignments
+ * map is treated as "no one holds the role" so a team that hasn't
+ * hydrated yet still unlocks the submit button.
+ */
+function teamRoleIsVacant(
+  teamRoleAssignments: Record<string, PlayerRole | null> | undefined | null,
+  requiredRoles: PlayerRole[],
+): boolean {
+  if (!teamRoleAssignments) return true;
+  const held = Object.values(teamRoleAssignments).filter(
+    (r): r is PlayerRole => !!r,
+  );
+  return !held.some((r) => requiredRoles.includes(r));
 }
-export function roleOwnsAdBids(role: PlayerRole): boolean {
-  return role === "advertising" || role === "solo";
+
+/**
+ * Phase-owning role mapping per DEC-21. `solo` always passes. The
+ * optional `teamRoleAssignments` argument (FE-I15) additionally lets
+ * any teammate submit when no one on the team holds the specialist
+ * role — covers 2-player teams, cleared roles, and mid-game
+ * disconnects. Call sites that don't yet plumb team state through fall
+ * back to the strict role-only check.
+ */
+export function roleOwnsDecide(
+  role: PlayerRole,
+  teamRoleAssignments?: Record<string, PlayerRole | null> | null,
+): boolean {
+  if (role === "operations" || role === "solo") return true;
+  return teamRoleIsVacant(teamRoleAssignments ?? null, ["operations"]);
 }
-export function roleOwnsChefBids(role: PlayerRole): boolean {
-  return role === "finance" || role === "solo";
+export function roleOwnsAdBids(
+  role: PlayerRole,
+  teamRoleAssignments?: Record<string, PlayerRole | null> | null,
+): boolean {
+  if (role === "advertising" || role === "solo") return true;
+  return teamRoleIsVacant(teamRoleAssignments ?? null, ["advertising"]);
 }
-export function roleOwnsPricing(role: PlayerRole): boolean {
-  return role === "finance" || role === "solo";
+export function roleOwnsChefBids(
+  role: PlayerRole,
+  teamRoleAssignments?: Record<string, PlayerRole | null> | null,
+): boolean {
+  if (role === "finance" || role === "solo") return true;
+  return teamRoleIsVacant(teamRoleAssignments ?? null, ["finance"]);
+}
+export function roleOwnsPricing(
+  role: PlayerRole,
+  teamRoleAssignments?: Record<string, PlayerRole | null> | null,
+): boolean {
+  if (role === "finance" || role === "solo") return true;
+  return teamRoleIsVacant(teamRoleAssignments ?? null, ["finance"]);
 }
 /**
  * Roster (lay-off + continue) is owned by Operations per the backend
@@ -509,8 +555,12 @@ export function roleOwnsPricing(role: PlayerRole): boolean {
  * blurb read as "Finance owns … roster"; the shipped backend disagrees. If
  * the backend realigns to Finance later, flip this helper to match.
  */
-export function roleOwnsRoster(role: PlayerRole): boolean {
-  return role === "operations" || role === "solo";
+export function roleOwnsRoster(
+  role: PlayerRole,
+  teamRoleAssignments?: Record<string, PlayerRole | null> | null,
+): boolean {
+  if (role === "operations" || role === "solo") return true;
+  return teamRoleIsVacant(teamRoleAssignments ?? null, ["operations"]);
 }
 
 /**
@@ -606,6 +656,15 @@ export interface GameState {
    * `displayName` in that case.
    */
   teamName: string | null;
+  /**
+   * Live uid → role map for the local player's team (FE-I15). Mirrored
+   * from `/games/{gameId}/teams/{teamId}.roleAssignments`. Used by the
+   * role-gate helpers (`roleOwnsDecide`, etc.) to relax the gate when
+   * nobody on the team holds the required specialist role — for 2-
+   * player teams, cleared roles, or mid-game disconnects. Empty map
+   * before the listener has read the doc (strict gate until then).
+   */
+  teamRoleAssignments: Record<string, PlayerRole | null>;
   /**
    * Server-driven phase end Timestamp (epoch ms) mirrored from
    * `/games/{gameId}.phaseEndsAt`. `null` while the game is paused or

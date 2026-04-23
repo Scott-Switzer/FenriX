@@ -131,6 +131,7 @@ export function RoundHeader() {
     player,
     role,
     teamId,
+    teamRoleAssignments,
     phase,
   } = useGame();
 
@@ -155,11 +156,13 @@ export function RoundHeader() {
   const phaseBannerLabel = PHASE_LABELS[parsed.base] ?? phase ?? "";
 
   const roleLabel = PLAYER_ROLE_LABELS[role];
+  // FE-I15: pass team roleAssignments so the "active role" pip also
+  // lights up for teammates filling a vacant specialist role.
   const isActiveRole =
-    (parsed.base === "decide" && roleOwnsDecide(role)) ||
-    (parsed.base === "bid_ad" && roleOwnsAdBids(role)) ||
-    (parsed.base === "bid_chef" && roleOwnsChefBids(role)) ||
-    (parsed.base === "roster" && roleOwnsRoster(role));
+    (parsed.base === "decide" && roleOwnsDecide(role, teamRoleAssignments)) ||
+    (parsed.base === "bid_ad" && roleOwnsAdBids(role, teamRoleAssignments)) ||
+    (parsed.base === "bid_chef" && roleOwnsChefBids(role, teamRoleAssignments)) ||
+    (parsed.base === "roster" && roleOwnsRoster(role, teamRoleAssignments));
 
   return (
     <header className="round-header">

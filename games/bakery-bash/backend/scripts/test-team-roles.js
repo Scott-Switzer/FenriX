@@ -240,6 +240,50 @@ async function main() {
     "non-member role claim",
   );
 
+  // BE-I13: clear → reclaim round-trip. Player 1 currently holds
+  // "CMO" (set earlier). Clearing with `role: null` should drop the
+  // assignment and set the player doc's `role` to 'solo'. Player 2
+  // (who holds "CEO") should then be free to take "CMO".
+  console.log("\n── BE-I13: clear role round-trip ──");
+  await setTeamRole({ gameId: GAME_ID, teamId: TEAM_ID, role: null });
+  const teamSnap6 = await adminDb.doc(`games/${GAME_ID}/teams/${TEAM_ID}`).get();
+  assert(
+    teamSnap6.get(`roleAssignments.${uid1}`) === null,
+    `roleAssignments[uid1] should be null after clear`,
+  );
+  const playerSnap1Cleared = await adminDb.doc(`games/${GAME_ID}/players/${uid1}`).get();
+  assert(
+    playerSnap1Cleared.get("role") === "solo",
+    `players/${uid1}.role should fall back to 'solo' after clear`,
+  );
+  console.log(`  ✓ roleAssignments[${uid1.slice(0, 6)}] cleared, player.role -> solo`);
+
+  // Player 2 can now reclaim "CMO" (previously held by player 1).
+  await setTeamRole2({ gameId: GAME_ID, teamId: TEAM_ID, role: "CMO" });
+  const teamSnap7 = await adminDb.doc(`games/${GAME_ID}/teams/${TEAM_ID}`).get();
+  assert(
+    teamSnap7.get(`roleAssignments.${uid2}`) === "CMO",
+    `uid2 should now hold "CMO" after player 1 cleared`,
+  );
+  console.log(`  ✓ player 2 reclaimed "CMO" after player 1 cleared`);
+
+  // Alternate clear spellings must also work.
+  await setTeamRole({ gameId: GAME_ID, teamId: TEAM_ID, role: "" });
+  const teamSnap8 = await adminDb.doc(`games/${GAME_ID}/teams/${TEAM_ID}`).get();
+  assert(
+    teamSnap8.get(`roleAssignments.${uid1}`) === null,
+    `empty-string clear should also null the assignment`,
+  );
+  console.log(`  ✓ clear via empty-string role also works`);
+
+  await setTeamRole({ gameId: GAME_ID, teamId: TEAM_ID, role: "unassigned" });
+  const teamSnap9 = await adminDb.doc(`games/${GAME_ID}/teams/${TEAM_ID}`).get();
+  assert(
+    teamSnap9.get(`roleAssignments.${uid1}`) === null,
+    `"unassigned" clear should also null the assignment`,
+  );
+  console.log(`  ✓ clear via "unassigned" role also works`);
+
   console.log("\nAll team-roles tests passed.");
 }
 

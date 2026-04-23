@@ -110,6 +110,7 @@ const initialState: GameState = {
   role: "solo",
   teamId: null,
   teamName: null,
+  teamRoleAssignments: {},
   phaseEndsAtMs: null,
   leaderboard: [],
   leaderboardError: null,
@@ -129,6 +130,10 @@ type GameAction =
   | { type: "SET_ROLE"; payload: PlayerRole }
   | { type: "SET_TEAM_ID"; payload: string | null }
   | { type: "SET_TEAM_NAME"; payload: string | null }
+  | {
+      type: "SET_TEAM_ROLE_ASSIGNMENTS";
+      payload: Record<string, PlayerRole | null>;
+    }
   | { type: "SET_PHASE_ENDS_AT"; payload: number | null }
   | { type: "SET_PHASE"; payload: GamePhaseString }
   | { type: "SET_ROUND"; payload: number }
@@ -199,6 +204,28 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       return state.teamName === action.payload
         ? state
         : { ...state, teamName: action.payload };
+
+    case "SET_TEAM_ROLE_ASSIGNMENTS": {
+      // Skip the render if the map is structurally identical. Cheap
+      // shallow compare — the listener writes a fresh object on every
+      // snapshot, so reference equality alone isn't enough to avoid
+      // re-rendering every role-gated component on every team update.
+      const prev = state.teamRoleAssignments;
+      const next = action.payload;
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(next);
+      if (prevKeys.length === nextKeys.length) {
+        let identical = true;
+        for (const k of nextKeys) {
+          if (prev[k] !== next[k]) {
+            identical = false;
+            break;
+          }
+        }
+        if (identical) return state;
+      }
+      return { ...state, teamRoleAssignments: next };
+    }
 
     case "SET_PHASE_ENDS_AT":
       return state.phaseEndsAtMs === action.payload

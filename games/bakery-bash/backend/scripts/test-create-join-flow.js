@@ -106,17 +106,20 @@ async function main() {
   assert.ok(teamASnap.exists, 'team doc created');
   assert.strictEqual(teamASnap.get('name'), 'Sourdough Squad');
   assert.strictEqual(teamASnap.get('memberCount'), 1);
+  // BE-I04: teams with ≤2 members get `solo` so the sole creator can
+  // still submit everything. The role flips to finance/advertising/
+  // operations when the 3rd teammate joins.
   assert.strictEqual(
     teamASnap.get('roleAssignments')[CREATOR_A_UID],
-    'finance',
-    'creator gets finance role'
+    'solo',
+    'creator of a one-person team gets the solo role'
   );
 
   const playerASnap = await gameRef.collection('players').doc(CREATOR_A_UID).get();
   assert.ok(playerASnap.exists, 'player A doc created');
   assert.strictEqual(playerASnap.get('teamId'), 'sourdough-squad');
   assert.strictEqual(playerASnap.get('bakeryName'), 'Sourdough Squad');
-  assert.strictEqual(playerASnap.get('role'), 'finance');
+  assert.strictEqual(playerASnap.get('role'), 'solo');
   assert.strictEqual(playerASnap.get('pendingDecision').submitted, false);
   assert.strictEqual(playerASnap.get('pendingBids').ad, null);
 
@@ -179,14 +182,17 @@ async function main() {
     2,
     'member count bumped on explicit-team join'
   );
-  assert.ok(
-    teamAfterJoin.get('roleAssignments')[JOINER_UID],
-    'joiner added to roleAssignments'
+  // BE-I04: both members of a ≤2-member team get `solo` so either one
+  // can submit any decision while the team is short-staffed.
+  assert.strictEqual(
+    teamAfterJoin.get('roleAssignments')[CREATOR_A_UID],
+    'solo',
+    'creator still solo while team is 2 members'
   );
-  assert.notStrictEqual(
+  assert.strictEqual(
     teamAfterJoin.get('roleAssignments')[JOINER_UID],
-    'finance',
-    'second member does not take the creator slot'
+    'solo',
+    '2nd joiner also gets solo — no specialist role yet'
   );
 
   const joinerPlayer = await gameRef.collection('players').doc(JOINER_UID).get();
@@ -196,6 +202,47 @@ async function main() {
     'Sourdough Squad',
     'joiner bakeryName mirrors team name'
   );
+
+  // ------- 4b. BE-I04: 2 → 3 transition flips solo → specialists -------
+  const THIRD_JOINER_UID = 'create-join-third';
+  await signIn(auth, adminAuth, THIRD_JOINER_UID);
+  await joinGame({
+    joinCode: JOIN_CODE,
+    displayName: 'Erin',
+    teamId: 'sourdough-squad',
+  });
+
+  const teamAfterThird = await gameRef.collection('teams').doc('sourdough-squad').get();
+  assert.strictEqual(
+    teamAfterThird.get('memberCount'),
+    3,
+    'member count reaches 3 after third join'
+  );
+  const assignmentsAfterThird = teamAfterThird.get('roleAssignments');
+  const assignedRoles = [
+    assignmentsAfterThird[CREATOR_A_UID],
+    assignmentsAfterThird[JOINER_UID],
+    assignmentsAfterThird[THIRD_JOINER_UID],
+  ];
+  const specialistRoles = ['finance', 'advertising', 'operations'].sort();
+  assert.deepStrictEqual(
+    [...assignedRoles].sort(),
+    specialistRoles,
+    'every seat flips to a distinct specialist role when team hits 3 members'
+  );
+  // Mirror on the player docs too.
+  for (const [uid, expected] of [
+    [CREATOR_A_UID, assignmentsAfterThird[CREATOR_A_UID]],
+    [JOINER_UID, assignmentsAfterThird[JOINER_UID]],
+    [THIRD_JOINER_UID, assignmentsAfterThird[THIRD_JOINER_UID]],
+  ]) {
+    const pSnap = await gameRef.collection('players').doc(uid).get();
+    assert.strictEqual(
+      pSnap.get('role'),
+      expected,
+      `players/${uid}.role mirrors team roleAssignment after flip`
+    );
+  }
 
   // ------- 5. joinGame with bogus teamId → not-found -------
   try {

@@ -13,6 +13,8 @@
     "test:round-reset": "firebase emulators:exec --only auth,firestore,functions \"node scripts/test-round-reset-flow.js\" --project bakery-bash-54d12",
     "test:create-join": "firebase emulators:exec --only auth,firestore,functions \"node scripts/test-create-join-flow.js\" --project bakery-bash-54d12",
     "test:team-roles": "firebase emulators:exec --only auth,firestore,functions \"node scripts/test-team-roles.js\" --project bakery-bash-54d12",
+    "test:fallback-roles": "firebase emulators:exec --only auth,firestore,functions \"node scripts/test-fallback-roles.js\" --project bakery-bash-54d12",
+    "test:apr23-e2e": "firebase emulators:exec --only auth,firestore,functions \"node scripts/test-apr23-e2e.js\" --project bakery-bash-54d12",
     "test:multi-team-costs": "firebase emulators:exec --only auth,firestore,functions \"node scripts/test-multi-team-costs.js\" --project bakery-bash-54d12",
     "seed:emulator": "node scripts/seed-emulator.js",
     "seed:catalogs": "node scripts/seed-catalogs.js",

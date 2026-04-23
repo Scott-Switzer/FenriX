@@ -219,6 +219,7 @@ export function AuctionPage() {
     adBidsSubmitted,
     chefBidsSubmitted,
     role,
+    teamRoleAssignments,
   } = useGame();
   const dispatch = useGameDispatch();
   // Backend writes leader keys as `teamId || playerId` — match that here so
@@ -584,10 +585,12 @@ export function AuctionPage() {
     : isChefPhase
     ? ownerOfChefBids()
     : null;
+  // FE-I15: relax the role gate when nobody on the team holds the
+  // specialist role — otherwise a 2-player team can't bid.
   const canSubmitForPhase = isAdPhase
-    ? roleOwnsAdBids(role)
+    ? roleOwnsAdBids(role, teamRoleAssignments)
     : isChefPhase
-    ? roleOwnsChefBids(role)
+    ? roleOwnsChefBids(role, teamRoleAssignments)
     : true;
   const submitTooltip =
     !canSubmitForPhase && ownerLabel

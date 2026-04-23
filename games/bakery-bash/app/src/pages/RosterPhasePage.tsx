@@ -77,7 +77,8 @@ const SPECIALTY_CAP = 3;
 
 export function RosterPhasePage() {
   useGamePhaseNav();
-  const { gameId, playerId, currentRound, phase, role } = useGame();
+  const { gameId, playerId, currentRound, phase, role, teamRoleAssignments } =
+    useGame();
   const navigate = useNavigate();
 
   const [specialtyChefs, setSpecialtyChefs] = useState<RosterChef[]>([]);
@@ -124,7 +125,9 @@ export function RosterPhasePage() {
     else if (parsed.base === "game_over") navigate("/game/conclusion");
   }, [phase, currentRound, navigate]);
 
-  const canAct = roleOwnsRoster(role);
+  // FE-I15: any teammate can act when no one on the team holds
+  // operations (2-player team, cleared role, etc.).
+  const canAct = roleOwnsRoster(role, teamRoleAssignments);
   const ownerLabel = ownerOfRoster();
   const overCap = specialtyChefs.length > SPECIALTY_CAP;
   const continueDisabled =
