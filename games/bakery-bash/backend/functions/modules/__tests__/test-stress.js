@@ -1075,6 +1075,60 @@ function runRaceConditionAnalysis() {
   );
 
   // -------------------------------------------------------------------------
+  // RC-9: retryStuckSimulation cumulativeRevenue double-increment
+  // -------------------------------------------------------------------------
+  // HISTORY: runSimulationAndPersist writes
+  //   cumulativeRevenue: FieldValue.increment(r.revenueNet)
+  // per player. FieldValue.increment is additive — deterministic noiseSeed
+  // (RC-8) does NOT save this. If the first run crashed after some per-player
+  // batches committed, retryStuckSimulation's 'rerun' path re-invokes
+  // runSimulationAndPersist and those players get +revenueNet a second time.
+  // FIX: gate the cumulativeRevenue increment on whether the player's round
+  // doc was already present (which means the batch containing the first
+  // increment committed). On rerun, omit the field for those players.
+  // Extract the runSimulationAndPersist function body and verify the
+  // increment is inside a conditional that consults a prior-round-doc map.
+  const simStart = indexSrc.indexOf('async function runSimulationAndPersist');
+  const simEnd = indexSrc.indexOf('\n}\n', simStart);
+  const simBody = simStart >= 0 && simEnd > simStart ? indexSrc.slice(simStart, simEnd) : '';
+  const hasPriorRoundRead = /priorRoundByUid|priorRoundSnaps|existingRoundByUid/.test(simBody);
+  const hasGatedIncrement =
+    /alreadyPersisted|alreadyWritten|priorRoundExists|priorRoundByUid/.test(simBody) &&
+    /FieldValue\.increment\(r\.revenueNet\)/.test(simBody);
+  ok(hasPriorRoundRead && hasGatedIncrement,
+    '[RC-9] runSimulationAndPersist gates cumulativeRevenue increment on prior-round-doc existence',
+    'cumulativeRevenue increment is unconditional — a rerun double-counts revenue for partially-committed players'
+  );
+
+  // -------------------------------------------------------------------------
+  // RC-10: budgetBefore snapshot on player round doc
+  // -------------------------------------------------------------------------
+  // HISTORY: runSimulationAndPersist reads canonicalData.budgetCurrent as the
+  // sim input, then overwrites that same field with r.budgetAfter in the per-
+  // player batch. On rerun, players whose first-run batch committed have
+  // budgetCurrent === budgetAfter, so the second sim pass sees mutated input
+  // and produces divergent loan/budget math.
+  // FIX: snapshot the pre-sim budget as `budgetBefore` on the player round
+  // doc. On rerun, use that value instead of the mutated budgetCurrent.
+  const hasBudgetBeforeWrite = /budgetBefore\s*:/.test(simBody);
+  ok(hasBudgetBeforeWrite,
+    '[RC-10] runSimulationAndPersist writes budgetBefore on the player round doc',
+    'No pre-sim budget snapshot — a rerun reads mutated budgetCurrent as sim input'
+  );
+
+  // -------------------------------------------------------------------------
+  // RC-11: rerun uses budgetBefore as sim input
+  // -------------------------------------------------------------------------
+  // Counterpart to RC-10: the sim-input assembly must consult budgetBefore
+  // from an existing round doc (when present) instead of the mutated
+  // canonicalData.budgetCurrent.
+  const hasBudgetBeforeRead = /budgetBefore/.test(simBody) && /budgetCurrent:\s*/.test(simBody);
+  ok(hasBudgetBeforeRead,
+    '[RC-11] runSimulationAndPersist reads budgetBefore as sim input when a prior round doc exists',
+    'Sim input ignores budgetBefore — a rerun sees mutated starting budget'
+  );
+
+  // -------------------------------------------------------------------------
   // Summary of race condition findings — all previously-flagged items remediated
   // -------------------------------------------------------------------------
   console.log('\n  Race Condition Summary (all previously-flagged items now remediated):');
@@ -1082,6 +1136,7 @@ function runRaceConditionAnalysis() {
   console.log('    FIXED:    submittedCount desync (onDecisionSubmitted is observational-only)');
   console.log('    FIXED:    noiseSeed determinism (`${gameId}:${round}:${playerId}`)');
   console.log('    FIXED:    simulating-phase limbo (retryStuckSimulation callable)');
+  console.log('    FIXED:    retryStuckSimulation rerun idempotency (RC-9/RC-10/RC-11)');
   console.log('    FIXED:    continueFromRoster missing phase validation (MED-05)');
   console.log('    LOW:      submitDecision double-submit (correctly guarded)');
   console.log('    LOW:      submitBids ad+chef race (correctly handled by retry)');

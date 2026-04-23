@@ -1700,6 +1700,21 @@ async function runSimulationAndPersist(gameRef, round, config) {
     )
   );
 
+  // RC-9/10/11: read any existing player round docs for THIS round so
+  // retryStuckSimulation can rerun idempotently. If a doc exists, it means
+  // the first run's batch for that player committed — we must (a) skip the
+  // cumulativeRevenue FieldValue.increment to avoid double-counting, and
+  // (b) use the doc's budgetBefore as sim input since budgetCurrent was
+  // already overwritten with budgetAfter.
+  const priorRoundSnaps = await Promise.all(
+    playerDocs.map((pd) =>
+      pd.ref.collection('rounds').doc(roundId).get()
+    )
+  );
+  const priorRoundByUid = new Map(
+    playerDocs.map((pd, i) => [pd.id, priorRoundSnaps[i]])
+  );
+
   // POST-01: load prior-round decisions for each player so pricing carry-over
   // can walk back through rounds 1..round-1.
   const priorRoundIds = [];
@@ -1804,6 +1819,19 @@ async function runSimulationAndPersist(gameRef, round, config) {
     const priorSubmittedPrices = (priorDecisionSnapsByUid.get(financeUid) || [])
       .map((s) => (s && s.exists && s.data()) ? (s.data().productPrices || null) : null);
 
+    // RC-11: on a retryStuckSimulation rerun, the canonical player's
+    // budgetCurrent may have been overwritten with budgetAfter by the first
+    // (crashed) run. Prefer the pre-sim snapshot from the round doc when it
+    // exists, so the rerun sees the same input as the original run.
+    const canonicalRoundSnap = priorRoundByUid.get(team.canonicalUid);
+    const snapshotBudget =
+      canonicalRoundSnap && canonicalRoundSnap.exists
+        ? canonicalRoundSnap.get('budgetBefore')
+        : undefined;
+    const simInputBudget = typeof snapshotBudget === 'number'
+      ? snapshotBudget
+      : numberOrDefault(canonicalData.budgetCurrent, 0);
+
     return {
       playerId: team.key,
       displayName: cleanString(canonicalData.displayName) || team.bakeryName || 'Team',
@@ -1818,7 +1846,7 @@ async function runSimulationAndPersist(gameRef, round, config) {
         productPrices: Object.keys(financePrices).length > 0 ? financePrices : opsPrices,
       },
       specialtyChefs: Array.isArray(canonicalData.specialtyChefs) ? canonicalData.specialtyChefs : [],
-      budgetCurrent: numberOrDefault(canonicalData.budgetCurrent, 0),
+      budgetCurrent: simInputBudget,
       returningCustomersPending: numberOrDefault(canonicalData.returningCustomersPending, 0),
       auctionResults: aggregatedAuction,
       priorSubmittedPrices,
@@ -1838,6 +1866,11 @@ async function runSimulationAndPersist(gameRef, round, config) {
   // Pure sim
   // -----------------------------------------------------------------------
   const results = runSimulation(players, prefs, config, { gameId: gameRef.id, round });
+
+  // Per-team sim-input budget, keyed by playerId (== team.key). Used below to
+  // write budgetBefore alongside budgetAfter on each player round doc, which
+  // powers RC-10/11 rerun idempotency.
+  const simInputBudgetByTeam = new Map(players.map((p) => [p.playerId, p.budgetCurrent]));
 
   // -----------------------------------------------------------------------
   // Write phase — chunked batches
@@ -1873,9 +1906,13 @@ async function runSimulationAndPersist(gameRef, round, config) {
         opsInBatch = 0;
       }
 
-      batch.update(playerRef, {
+      // RC-9: on a rerun, if this member's round doc already exists, the
+      // first run's batch committed and cumulativeRevenue was already
+      // incremented. Skip the increment to avoid double-counting.
+      const priorRoundSnap = priorRoundByUid.get(memberDoc.id);
+      const alreadyPersisted = !!(priorRoundSnap && priorRoundSnap.exists);
+      const playerUpdate = {
         budgetCurrent: r.budgetAfter,
-        cumulativeRevenue: FieldValue.increment(r.revenueNet),
         returningCustomersPending: r.returningCustomersEarned,
         sousChefCount: numberOrDefault(
           (r.csvRow && r.csvRow.sous_chef_count),
@@ -1903,7 +1940,11 @@ async function runSimulationAndPersist(gameRef, round, config) {
           burglaryAmount: r.burglaryAmount || 0,
         },
         updatedAt: FieldValue.serverTimestamp(),
-      });
+      };
+      if (!alreadyPersisted) {
+        playerUpdate.cumulativeRevenue = FieldValue.increment(r.revenueNet);
+      }
+      batch.update(playerRef, playerUpdate);
 
       const perProductSold = {};
       const selloutFlags = {};
@@ -1922,6 +1963,14 @@ async function runSimulationAndPersist(gameRef, round, config) {
         amountBorrowed: r.amountBorrowed,
         interestCharged: r.interestCharged,
         totalSpent: r.totalSpent,
+        // RC-10: pre-sim budget snapshot, consulted by a retryStuckSimulation
+        // rerun to restore the sim input that was already overwritten with
+        // budgetAfter by the first (crashed) run's batch. If the round doc
+        // already had a budgetBefore from a prior run, preserve it; otherwise
+        // snapshot the sim-input budget we just passed in.
+        budgetBefore: alreadyPersisted && typeof priorRoundSnap.get('budgetBefore') === 'number'
+          ? priorRoundSnap.get('budgetBefore')
+          : numberOrDefault(simInputBudgetByTeam.get(r.playerId), 0),
         budgetAfter: r.budgetAfter,
         customerCount: r.customerCount,
         perProductCustomers: r.perProductCustomers,
