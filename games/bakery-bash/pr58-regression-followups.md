@@ -1,17 +1,19 @@
-# PR #58 Regression Follow-ups
+# PR #58 Regression Follow-ups — COMPLETE
 
-> **Context:** PR #58 merged on a stale `main` and its conflict resolution silently reverted parts of PR #57. PR #62 (`fix/csv-inbox-types`) restored the type exports + `GameState.acquiredCsvs` to get `tsc -b` and `eslint` clean again — but the **runtime features** those types supported are still missing. This file tracks the feature-level regressions that need to be restored, each as its own auditable PR.
+> **Context:** PR #58 merged on a stale `main` and its conflict resolution silently reverted parts of PR #57. PR #62 (`fix/csv-inbox-types`) restored the type exports + `GameState.acquiredCsvs` to get `tsc -b` and `eslint` clean again — but the **runtime features** those types supported were still missing. This file tracked the feature-level regressions that needed to be restored, each as its own auditable PR.
+>
+> **All actionable items shipped as of 2026-04-23.** Item 8c closed without implementation — see its section for why.
 
 **Baseline:** Compare `c348aed` (PR #57 merged) vs current `main` for any item below.
 **Opened by:** PR #62 comment at <https://github.com/fenrix-ai/FenriX/pull/62#issuecomment-4302991939>
-**Last updated:** 2026-04-23 (post-#66)
+**Last updated:** 2026-04-23 (post-#75, 8c closed)
 
 ---
 
 ## How to read
 
 - Each item is an **independent PR**. Do not bundle.
-- **Status** values: `todo`, `in-progress (branch)`, `in-review (PR#)`, `shipped (PR#)`.
+- **Status** values: `todo`, `in-progress (branch)`, `in-review (PR#)`, `shipped (PR#)`, `closed (won't-do)`.
 - Before starting any item, `git diff c348aed main -- <path>` to see exactly what PR #58's merge dropped.
 
 ---
@@ -90,11 +92,10 @@
 
 ### 8a. How-to-Play page copy refresh
 
-**Status:** in-progress (`fix/howtoplay-copy-refresh`)
-**Files:** `games/bakery-bash/app/src/pages/HowToPlayPage.tsx`.
+**Status:** shipped (PR #73)
+**Files:** `games/bakery-bash/app/src/pages/HowToPlayPage.tsx`, `games/bakery-bash/app/src/styles/global.css` (chef-tiers rules).
 **What broke:** Round order, Bidder copy, chef-tier table, new Simulation Round entry, Results CSV note, and CSV Inbox entry were reverted to a shorter, less accurate version.
 **Acceptance:** Round order reads **Ad Auction → Chef Auction → Decisions → Simulation → Results**; Ad Auction card calls out the Bidder + foot-traffic variation; Chef Auction card explains the sous-chef-station distinction and links to the CSV tiers; CSV Inbox entry exists.
-**Size:** ~90 line diff.
 
 ### 8b. Conclusion page podium + confetti
 
@@ -106,13 +107,20 @@
 
 ### 8c. Landing page — Create/Join Team modal flow
 
-**Status:** todo (deferred; needs extra care)
-**Files:** `games/bakery-bash/app/src/pages/LandingPage.tsx`, associated CSS.
-**What broke:** The modal-based team create/join flow with logo upload + "team registered" confirmation was flattened to a single-page form.
-**Caveat:** PR #53 ("Named team create/join flow") already lives on main with its own design. Re-landing PR #57's modal flow would need to coexist with PR #53's data contract — this is the highest-risk sub-item and should be scoped separately (possibly a design decision, not just a restoration).
-**Size:** ~520 line diff.
+**Status:** closed (won't-do)
+**Files (hypothetical):** `games/bakery-bash/app/src/pages/LandingPage.tsx`, associated CSS.
+**What PR #57 had:** A modal-based team create/join flow — each primary button opened a popup (modal) with its form. After creating a team the main card displayed the new team's logo + name as confirmation before the player committed to "Join Game".
+**What's on main instead:** PR #53's named-team flow — a single-page Create/Join **toggle** with the forms inline. For Join, it calls a `getTeamsInLobby` server function and renders a selectable grid of teams with their logos + member counts. Create is a `createTeam` transaction that seats the creator as Finance in one write.
+**Why closed:** Not a drop-in restoration. PR #57's modal JSX was written against the old backend that PR #53 has since replaced. Re-landing the modals would require rewriting them against PR #53's `createTeam` / `getTeamsInLobby` callables — effectively a UX redesign on top of a new data layer, not a restoration. The current toggle UI on main is functional; modals-vs-toggles is a design preference best decided from scratch if/when desired, not by reverting mid-stack.
 
-**Approach:** One sub-item per PR. Do **not** attempt to re-land PR #57 wholesale — conflicts with subsequent PRs would be massive.
+### 8d. Remaining Conclusion page CSS (stats / leaderboard / rounds)
+
+**Status:** shipped (PR #75)
+**Files:** `games/bakery-bash/app/src/styles/global.css`.
+**What broke:** The Your-bakery stat-card grid, Leaderboard table card, and Per-round expansion list lost all their styling (`__yours-grid`, `__stat*`, `__leaderboard`, `__board-table*`, `__board-row--you`, `__round-*`, `__mini-kpi*`, `__footer` — 19 selectors in total). With #74 restoring only the hero + confetti + podium, the rest of the page rendered unstyled.
+**Acceptance:** All sections below the podium render with the cream/caramel card styling and pixel-font labels; current-player row in the leaderboard is highlighted; warn variant on mini-KPI chips turns red.
+
+**Approach:** One sub-item per PR.
 
 ---
 
