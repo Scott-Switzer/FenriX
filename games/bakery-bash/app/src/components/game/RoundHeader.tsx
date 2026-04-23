@@ -125,7 +125,6 @@ export function RoundHeader() {
     currentRound,
     totalRounds,
     timeRemaining,
-    roundResults,
     teamName,
     player,
     role,
@@ -164,14 +163,6 @@ export function RoundHeader() {
       <div className="round-header__phase-banner">
         {phaseBannerLabel}
       </div>
-
-      <button
-        className="round-header__email"
-        onClick={() => downloadResultsCsv(roundResults)}
-        title="Download results CSV"
-      >
-        <img src="/assets/ui/email.svg" alt="Download CSV" />
-      </button>
 
       <div className="round-header__round">
         Round {currentRound} of {totalRounds}

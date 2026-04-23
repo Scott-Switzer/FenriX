@@ -1308,7 +1308,7 @@ describe('decision-validation.js', () => {
 
   it('validateChefBids — below floor throws', () => {
     const pool = [{ id: 'c1', minBidFloor: 100 }];
-    throws(() => validation.validateChefBids([{ chefId: 'c1', amount: 50 }], pool), /below minBidFloor/);
+    throws(() => validation.validateChefBids([{ chefId: 'c1', amount: 50 }], pool), /below the Minimum Ask/);
   });
 
   it('validateChefBids — unknown chef throws', () => {

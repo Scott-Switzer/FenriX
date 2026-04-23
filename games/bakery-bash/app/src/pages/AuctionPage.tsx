@@ -702,13 +702,16 @@ export function AuctionPage() {
               </p>
             )}
             <div className="auction-chefs__grid">
-              {chefPool.map((chef) => {
+              {chefPool.map((chef, chefIndex) => {
                 const skillCfg = SKILL_CONFIG[chef.skill];
                 return (
                   <div
                     key={chef.id}
                     className={`auction-chef ${skillCfg.cssClass}`}
                   >
+                    <span className="auction-chef__number chef-card__number">
+                      #{chefIndex + 1}
+                    </span>
                     <div className="auction-chef__portrait">
                       <img
                         src={chefIcon(chef.nationality, chef.gender)}

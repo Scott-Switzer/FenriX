@@ -24,6 +24,8 @@ interface ChefCardBaseProps {
   chef: ChefCardInput;
   mode: ChefCardMode;
   className?: string;
+  /** Sequential position of this chef in the round's pool (0-indexed). */
+  cardIndex?: number;
 }
 
 interface ChefCardBidProps extends ChefCardBaseProps {
@@ -82,7 +84,7 @@ function formatMoney(n: number | null | undefined): string {
 }
 
 export function ChefCard(props: ChefCardProps) {
-  const { chef, mode, className } = props;
+  const { chef, mode, className, cardIndex } = props;
   const portraitSrc = `/assets/chefs/${chef.nationality}-${chef.gender}.svg`;
 
   return (
@@ -98,6 +100,9 @@ export function ChefCard(props: ChefCardProps) {
       data-chef-id={chef.id}
       data-mode={mode}
     >
+      {typeof cardIndex === "number" && (
+        <span className="chef-card__number">#{cardIndex + 1}</span>
+      )}
       <div className="chef-card__portrait">
         <img
           src={portraitSrc}

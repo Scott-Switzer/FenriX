@@ -470,30 +470,6 @@ h3 { font-size: 0.7rem; }
   margin-bottom: 1.5rem;
 }
 
-.round-header__email {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  flex-shrink: 0;
-  line-height: 0;
-  transition: transform 0.1s;
-}
-
-.round-header__email:hover {
-  transform: scale(1.15);
-}
-
-.round-header__email:active {
-  transform: scale(0.95);
-}
-
-.round-header__email img {
-  width: 28px;
-  height: 28px;
-  image-rendering: pixelated;
-}
-
 .round-header__round {
   font-family: var(--font-pixel);
   font-size: 0.6rem;
@@ -1114,6 +1090,30 @@ h3 { font-size: 0.7rem; }
   border-top: 2px solid var(--dough);
 }
 
+/* Section headings split Sous Chef Hires from Maintenance Crew. */
+.staff-tab__section-heading {
+  font-family: var(--font-pixel);
+  font-size: 0.65rem;
+  color: var(--espresso);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin: 0.5rem 0 0.25rem;
+}
+
+.staff-tab__section-sub {
+  font-family: var(--font-pixel);
+  font-size: 0.45rem;
+  color: var(--dark-roast);
+  margin: 0 0 0.6rem;
+  line-height: 1.4;
+}
+
+.staff-tab__maintenance-divider {
+  border: 0;
+  border-top: 2px solid var(--cream);
+  margin: 1rem 0 0.5rem;
+}
+
 /* Station stepper card (three sous-chef stations + maintenance guy). */
 .staff-tab__stations {
   display: flex;
@@ -1449,6 +1449,7 @@ h3 { font-size: 0.7rem; }
 }
 
 .auction-chef {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1458,6 +1459,24 @@ h3 { font-size: 0.7rem; }
   border: 3px solid var(--dough);
   text-align: center;
   transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.chef-card {
+  position: relative;
+}
+
+.chef-card__number {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  font-family: var(--font-pixel);
+  font-size: 0.55rem;
+  background: var(--caramel, #a0522d);
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  z-index: 2;
+  letter-spacing: 0.05em;
 }
 
 .auction-chef--low {

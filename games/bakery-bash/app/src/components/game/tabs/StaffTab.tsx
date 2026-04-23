@@ -186,10 +186,14 @@ export function StaffTab({ readOnly = false }: StaffTabProps) {
           : "Hire sous chefs per station and maintenance guys to keep the kitchen running. Crowded kitchens slow production — watch your head chef for signs of strain. Check the Status tab for machine health."}
       </p>
 
-      {/* Three sous chef station steppers */}
+      {/* Sous Chef Hires */}
+      <h3 className="staff-tab__section-heading">Sous Chef Hires</h3>
+      <p className="staff-tab__section-sub">
+        One sous chef per station boosts that station's throughput.
+      </p>
       <div className="staff-tab__stations">
         <RoleStepper
-          title="Bakery Station"
+          title="Sous Chef — Bakery (Croissant · Cookie)"
           subtitle="Croissant · Cookie"
           count={staffCounts.bakerySousChefs}
           nextCost={getHireCost(sousBase, staffCounts.bakerySousChefs)}
@@ -203,7 +207,7 @@ export function StaffTab({ readOnly = false }: StaffTabProps) {
           readOnly={readOnly}
         />
         <RoleStepper
-          title="Deli"
+          title="Sous Chef — Deli (Bagel · Sandwich)"
           subtitle="Bagel · Sandwich"
           count={staffCounts.deliSousChefs}
           nextCost={getHireCost(sousBase, staffCounts.deliSousChefs)}
@@ -217,7 +221,7 @@ export function StaffTab({ readOnly = false }: StaffTabProps) {
           readOnly={readOnly}
         />
         <RoleStepper
-          title="Barista Station"
+          title="Sous Chef — Barista (Coffee · Matcha)"
           subtitle="Coffee · Matcha"
           count={staffCounts.baristaSousChefs}
           nextCost={getHireCost(sousBase, staffCounts.baristaSousChefs)}
@@ -238,6 +242,11 @@ export function StaffTab({ readOnly = false }: StaffTabProps) {
         </p>
       )}
 
+      <hr className="staff-tab__maintenance-divider" />
+      <h3 className="staff-tab__section-heading">Maintenance Crew</h3>
+      <p className="staff-tab__section-sub">
+        Maintenance guys clean the store and repair station equipment.
+      </p>
       {/* Maintenance Guy stepper + per-guy task assignment */}
       <div className="staff-tab__maintenance">
         <RoleStepper
