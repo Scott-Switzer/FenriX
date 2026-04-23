@@ -434,6 +434,28 @@ export interface RoundResult {
   burglary?: boolean;
   burglaryAmount?: number;
   burglaryDays?: number[];
+  /**
+   * Curveball events that landed on this team during the round. Optional
+   * because not every round will have one, and older round docs might
+   * predate the event system entirely. The frontend renders these as
+   * cards in the Events section of the Results screen.
+   */
+  events?: RoundEvent[];
+}
+
+/** One row of the curveball-events feed shown on the Results screen. */
+export type RoundEventKind = "burglary" | "food-safety-inspection";
+
+export interface RoundEvent {
+  kind: RoundEventKind;
+  /** Day-of-month numbers (1–31) when the event occurred this round. */
+  days?: number[];
+  /** Dollars stolen across all burglaries in `days` (burglary only). */
+  amount?: number;
+  /** Inspection cleanliness reading 0–100 (inspection only). */
+  cleanlinessPct?: number;
+  /** Inspection rating label (Poor / Sufficient / Good / Excellent). */
+  rating?: "Poor" | "Sufficient" | "Good" | "Excellent";
 }
 
 /**

@@ -40,13 +40,13 @@
 **Acceptance:** Finance role sees three purchase buttons with visible costs; clicking charges the team budget, dispatches `ADD_ACQUIRED_CSV`, and the newly acquired CSV appears in the inbox within the same render pass.
 **Bundled with:** items 1 + 2.
 
-## 4. `RoundEvent` / `RoundEventKind` / `AdWin` types + events system
+## 4. `RoundEvent` / `RoundEventKind` types + events system
 
-**Status:** todo
-**Files:** `games/bakery-bash/app/src/types/game.ts`, backend emitters in `games/bakery-bash/backend/functions/`, any `ResultsPhase`/`SimulatePhase` event-card renderers that used to read them.
-**What broke:** The per-round event feed (typed as `RoundEvent`) and multi-ad win typing (`AdWin`) are gone. Backend may still be writing the shape; frontend can't type it.
-**Acceptance:** Server-emitted round events are consumed and rendered on the results phase (burglary, sold-out, ad-hit, etc.); `AdWin[]` typing drives the multi-ad wins display on ResultsPhase/ConclusionPage.
-**Note:** PR #62 already patched the `any`-cast regressions on `burglary*` fields in `ResultsPhase` by adding optional fields to `RoundResult` — that's a transitional shim; this task should migrate those reads to `RoundEvent[]`.
+**Status:** in-progress (`fix/restore-round-events-system`)
+**Files:** `games/bakery-bash/app/src/types/game.ts`, `games/bakery-bash/app/src/pages/phases/ResultsPhase.tsx`, `games/bakery-bash/app/src/pages/phases/SimulatePhase.tsx`, `games/bakery-bash/app/src/styles/global.css` (`.event-card*` rules).
+**What broke:** The `RoundEvent` type + the `events?: RoundEvent[]` field on `RoundResult` were dropped; the `EventCard` renderer + "Events" section + legacy-burglary synthesizer were dropped from `ResultsPhase`; all `.event-card*` CSS was dropped. `ResultsPhase` + `SimulatePhase` currently fall through to an inline `latest?.burglary && <div>` banner with an `any`-cast to read `burglaryAmount` — PR #62's transitional shim. Backend continues to emit the flat `burglary` / `burglaryAmount` fields at both baseline `c348aed` and current `main` (checked `backend/functions/modules/simulation.js`), so the synthesizer is the correct permanent pattern — no backend change required.
+**Acceptance:** Server-emitted round events (via legacy flat fields OR explicit `events[]`) are consumed and rendered as `EventCard`s on the Results screen.
+**Scope clarification:** The doc originally listed `AdWin` as a missing type. On audit, no top-level `AdWin` type ever existed — `AdWinnerBanner.tsx` has a local `AdWinnerEntry` interface that is identical between `c348aed` and `main` (`git diff c348aed main -- .../AdWinnerBanner.tsx` returns empty). So there is nothing to restore on the ad-winners side; item 4 is just the round-events system.
 
 ## 5. `ChefListing.minBidFloor`
 
@@ -58,14 +58,14 @@
 
 ## 6. `PLAYER_ROLE_LABELS`-delegating owner-copy helpers
 
-**Status:** in-progress (`fix/restore-owner-copy-helpers`)
+**Status:** shipped (PR #70)
 **Files:** `games/bakery-bash/app/src/types/game.ts`.
 **What broke:** The 4 `ownerOf*` helpers exist but return hardcoded strings instead of delegating to `PLAYER_ROLE_LABELS`. Most visibly, `ownerOfAdBids()` returns `"Advertising"` while `PLAYER_ROLE_LABELS.advertising` is `"Bidder"` — so the auction page tooltip says "Your Advertising teammate submits this decision" while the lobby role-picker and How-to-Play page call that same role "Bidder".
 **Acceptance:** All owner-copy strings (e.g., "Your Bidder is…", "Finance owns pricing", etc.) derive from one source of truth.
 
 ## 7. `GameProgressBar` component + mount in `RoundHeader`
 
-**Status:** in-progress (`fix/restore-progress-bar-and-doc-refresh`)
+**Status:** shipped (PR #69)
 **Files:** `games/bakery-bash/app/src/components/game/RoundHeader.tsx` (remount), `games/bakery-bash/app/src/styles/global.css` (`.round-header__progress` + `.game-progress*` rules).
 **What broke:** PR #62 restored the `GameProgressBar.tsx` component file but not the mount or its CSS. With no mount the round-progress visualization strip inside `RoundHeader` is absent; with no CSS it'd render unstyled.
 **Acceptance:** Progress bar renders below the phase banner; `currentRound / totalRounds` filled portion is visible; matches `c348aed` design.

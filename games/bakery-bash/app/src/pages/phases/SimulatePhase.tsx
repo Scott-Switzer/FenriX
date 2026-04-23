@@ -93,8 +93,8 @@ export function SimulatePhase() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const burglary = Boolean((latest as { burglary?: boolean } | undefined)?.burglary);
-  const burglaryAmount = Number((latest as { burglaryAmount?: number } | undefined)?.burglaryAmount ?? 0);
+  const burglary = Boolean(latest?.burglary);
+  const burglaryAmount = Number(latest?.burglaryAmount ?? 0);
 
   return (
     <section className={`simulate-phase ${isNight ? "simulate-phase--night" : "simulate-phase--day"}`}>

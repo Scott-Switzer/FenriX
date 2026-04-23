@@ -3,7 +3,8 @@ import { doc, onSnapshot, type DocumentData } from "firebase/firestore";
 import { useGame } from "../../contexts/GameContext";
 import { LoanSharkCallout } from "../../components/game/LoanSharkCallout";
 import { downloadResultsCsv } from "../../components/game/RoundHeader";
-import type { MaintenanceBars, ProductKey } from "../../types/game";
+import type { MaintenanceBars, ProductKey, RoundEvent } from "../../types/game";
+import { formatDaysInRound } from "../../lib/dateSystem";
 import { db } from "../../lib/firebase";
 
 /**
@@ -68,6 +69,103 @@ function presentChefName(
 ): string {
   if (value && !looksLikeInternalChefId(value)) return value;
   return typeof fallbackIndex === "number" ? `Chef ${fallbackIndex + 1}` : "Chef";
+}
+
+const BURGLAR_ASSET = "/assets/events/burglar.svg";
+const INSPECTOR_ASSET = "/assets/events/food-inspector.svg";
+
+/**
+ * Curveball event card. One card per event. Burglary cards show the
+ * burglar asset + the date(s) + amount lost; food-safety inspection
+ * cards show the inspector asset + date(s) + cleanliness reading +
+ * rating tier (Poor / Sufficient / Good / Excellent).
+ */
+function EventCard({
+  event,
+  round,
+}: {
+  event: RoundEvent;
+  round: number | null;
+}) {
+  if (event.kind === "burglary") {
+    const daysLabel = formatDaysInRound(round, event.days ?? []);
+    return (
+      <article
+        className="event-card event-card--burglary"
+        aria-label="Burglary event"
+      >
+        <img
+          src={BURGLAR_ASSET}
+          alt=""
+          aria-hidden
+          className="event-card__asset"
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = "none";
+          }}
+        />
+        <div className="event-card__body">
+          <h4 className="event-card__title">🔓 Burglary</h4>
+          {daysLabel && (
+            <p className="event-card__meta">
+              <strong>When:</strong> {daysLabel}
+            </p>
+          )}
+          {typeof event.amount === "number" && event.amount > 0 && (
+            <p className="event-card__meta event-card__meta--loss">
+              <strong>Stolen:</strong> ${event.amount.toLocaleString()}
+            </p>
+          )}
+          <p className="event-card__hint">
+            Keep maintenance crews busy to deter thieves next round.
+          </p>
+        </div>
+      </article>
+    );
+  }
+
+  const daysLabel = formatDaysInRound(round, event.days ?? []);
+  const rating = event.rating ?? null;
+  const pct =
+    typeof event.cleanlinessPct === "number"
+      ? Math.round(event.cleanlinessPct)
+      : null;
+
+  return (
+    <article
+      className={`event-card event-card--inspection${
+        rating ? ` event-card--inspection-${rating.toLowerCase()}` : ""
+      }`}
+      aria-label="Food safety inspection"
+    >
+      <img
+        src={INSPECTOR_ASSET}
+        alt=""
+        aria-hidden
+        className="event-card__asset"
+        onError={(e) => {
+          (e.currentTarget as HTMLImageElement).style.display = "none";
+        }}
+      />
+      <div className="event-card__body">
+        <h4 className="event-card__title">🧼 Food Safety Inspection</h4>
+        {daysLabel && (
+          <p className="event-card__meta">
+            <strong>When:</strong> {daysLabel}
+          </p>
+        )}
+        {pct !== null && (
+          <p className="event-card__meta">
+            <strong>Cleanliness:</strong> {pct}%
+          </p>
+        )}
+        {rating && (
+          <p className="event-card__meta">
+            <strong>Rating:</strong> {rating}
+          </p>
+        )}
+      </div>
+    </article>
+  );
 }
 
 export function ResultsPhase() {
@@ -192,6 +290,27 @@ export function ResultsPhase() {
   const endBars: MaintenanceBars | null =
     latest?.maintenanceBars ?? null;
 
+  // Events derived from the result payload. Future backend work may write
+  // these explicitly as `events: RoundEvent[]`; today the backend still
+  // writes the flat `burglary` / `burglaryAmount` / `burglaryDays` fields,
+  // so we synthesize a burglary RoundEvent from those when no explicit
+  // events array is present.
+  const events: RoundEvent[] = (() => {
+    if (Array.isArray(latest?.events) && latest!.events!.length > 0) {
+      return latest!.events!;
+    }
+    if (latest?.burglary) {
+      return [
+        {
+          kind: "burglary",
+          amount: latest.burglaryAmount,
+          days: latest.burglaryDays,
+        },
+      ];
+    }
+    return [];
+  })();
+
   return (
     <section className="results-phase">
       <header className="results-phase__header">
@@ -232,11 +351,22 @@ export function ResultsPhase() {
             </div>
           </div>
 
-          {latest?.burglary && (
-            <div className="results-phase__burglar-banner">
-              🔓 Your bakery was broken into! A maintenance deficit left you vulnerable.
-              {latest.burglaryAmount ? ` –$${latest.burglaryAmount.toLocaleString()}` : ""}
-            </div>
+          {events.length > 0 && (
+            <section
+              className="results-phase__events"
+              aria-label="Curveball events"
+            >
+              <h3 className="results-phase__section-title">Events</h3>
+              <div className="results-phase__event-cards">
+                {events.map((event, idx) => (
+                  <EventCard
+                    key={`${event.kind}-${idx}`}
+                    event={event}
+                    round={currentRound}
+                  />
+                ))}
+              </div>
+            </section>
           )}
 
           <div className="results-phase__kpis">

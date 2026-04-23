@@ -3470,8 +3470,91 @@ h3 { font-size: 0.7rem; }
 .results-phase__rank            { font-weight: bold; width: 2rem; }
 .results-phase__team-name       { flex: 1; }
 .results-phase__team-revenue    { font-weight: bold; }
-/* ── Burglar banner ─────────────────────────────────────────────────── */
-.results-phase__burglar-banner  { background: #fee2e2; border: 2px solid #ef4444; border-radius: 6px; padding: 0.75rem 1rem; color: #991b1b; font-weight: bold; margin: 1rem 0; }
+
+/* ── Curveball event cards (burglary, food-safety inspection) ──────── */
+.results-phase__event-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.event-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  border: 2px solid var(--caramel);
+  background: var(--cream);
+}
+
+.event-card--burglary {
+  border-color: #ef4444;
+  background: #fff1f1;
+}
+
+.event-card--inspection {
+  border-color: var(--caramel);
+  background: rgba(255, 244, 214, 0.9);
+}
+
+.event-card--inspection-poor {
+  border-color: #ef4444;
+  background: #fff1f1;
+}
+
+.event-card--inspection-sufficient {
+  border-color: var(--honey);
+  background: #fff7e6;
+}
+
+.event-card--inspection-good {
+  border-color: var(--lime);
+  background: #f0fff4;
+}
+
+.event-card--inspection-excellent {
+  border-color: var(--sage);
+  background: #ecfdf5;
+}
+
+.event-card__asset {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  image-rendering: pixelated;
+}
+
+.event-card__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.event-card__title {
+  font-family: var(--font-pixel);
+  font-size: 0.7rem;
+  color: var(--dark-roast);
+  margin: 0 0 0.3rem;
+}
+
+.event-card__meta {
+  margin: 0.15rem 0;
+  font-size: 0.85rem;
+  color: var(--espresso);
+}
+
+.event-card__meta--loss {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.event-card__hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  color: #6b4b28;
+  font-style: italic;
+}
 
 /* ── Simulate phase ─────────────────────────────────────────────────── */
 .simulate-phase__burglar-banner { background: #fee2e2; border: 2px solid #ef4444; border-radius: 6px; padding: 0.75rem 1rem; color: #991b1b; font-weight: bold; margin: 0.75rem 1rem; }
