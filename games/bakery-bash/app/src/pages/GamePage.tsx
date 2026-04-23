@@ -109,6 +109,7 @@ export function GamePage() {
   const {
     gameId,
     playerId,
+    teamId,
     phase,
     currentRound,
     pendingDecision,
@@ -117,6 +118,9 @@ export function GamePage() {
     role,
     config,
   } = useGame();
+  // BE-I03: auction result docs are keyed by team slug; fall back to the
+  // player uid for solo teams, whose `team.key` on the backend is the uid.
+  const auctionResultKey = teamId || playerId;
   const dispatch = useGameDispatch();
   const navigate = useNavigate();
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -486,7 +490,7 @@ export function GamePage() {
   }, [gameId, currentRound, rosterByUid]);
 
   useEffect(() => {
-    if (!gameId || !playerId || !currentRound) {
+    if (!gameId || !auctionResultKey || !currentRound) {
       setWonAuctionCosts({ ad: 0, chef: 0 });
       return;
     }
@@ -499,12 +503,12 @@ export function GamePage() {
           return;
         }
         const data = snap.data() as DocumentData;
-        const adEntry = (data.adAuctionResults?.[playerId] ?? null) as DocumentData | null;
+        const adEntry = (data.adAuctionResults?.[auctionResultKey] ?? null) as DocumentData | null;
         const ad =
           adEntry && typeof adEntry.totalPaid === "number"
             ? adEntry.totalPaid
             : 0;
-        const chefEntry = (data.chefAuctionResults?.[playerId] ?? null) as DocumentData | null;
+        const chefEntry = (data.chefAuctionResults?.[auctionResultKey] ?? null) as DocumentData | null;
         const chef =
           chefEntry && typeof chefEntry.totalPaid === "number"
             ? chefEntry.totalPaid
@@ -516,7 +520,7 @@ export function GamePage() {
       },
     );
     return unsubscribe;
-  }, [gameId, playerId, currentRound]);
+  }, [gameId, auctionResultKey, currentRound]);
 
   // Redirect into the dedicated phase page when backend says so. This is
   // phase-driven (not a manual navigation after submit).

@@ -78,7 +78,11 @@ export function ResultsPhase() {
     leaderboard,
     gameId,
     playerId,
+    teamId,
   } = useGame();
+  // BE-I03: auction result docs are keyed by team slug (or the player uid for
+  // solo players, which is also `team.key` on the backend).
+  const auctionResultKey = teamId || playerId;
   const latest = roundResults[roundResults.length - 1];
   const [liveAuctionResult, setLiveAuctionResult] = useState<{
     adWins: string[];
@@ -93,7 +97,7 @@ export function ResultsPhase() {
   });
 
   useEffect(() => {
-    if (!gameId || !playerId || !currentRound) return;
+    if (!gameId || !auctionResultKey || !currentRound) return;
     const roundRef = doc(db, "games", gameId, "rounds", `round_${currentRound}`);
     const unsubscribe = onSnapshot(roundRef, (snap) => {
       if (!snap.exists()) {
@@ -106,8 +110,8 @@ export function ResultsPhase() {
         return;
       }
       const data = snap.data() as DocumentData;
-      const adEntry = (data.adAuctionResults?.[playerId] ?? null) as DocumentData | null;
-      const chefEntry = (data.chefAuctionResults?.[playerId] ?? null) as DocumentData | null;
+      const adEntry = (data.adAuctionResults?.[auctionResultKey] ?? null) as DocumentData | null;
+      const chefEntry = (data.chefAuctionResults?.[auctionResultKey] ?? null) as DocumentData | null;
       setLiveAuctionResult({
         adWins:
           adEntry && Array.isArray(adEntry.adTypes)
@@ -128,7 +132,7 @@ export function ResultsPhase() {
       });
     });
     return unsubscribe;
-  }, [gameId, playerId, currentRound]);
+  }, [gameId, auctionResultKey, currentRound]);
 
   const scores: Record<string, number> =
     latest?.chefSatisfactionScores ?? chefSatisfactionScores;

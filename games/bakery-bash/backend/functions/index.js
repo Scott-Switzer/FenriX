@@ -489,7 +489,6 @@ async function resolveAndApplyAdAuction(gameRef, round) {
   const roundId = `round_${round}`;
   const roundRef = gameRef.collection('rounds').doc(roundId);
   const playersSnap = await gameRef.collection('players').get();
-  const teamGroups = buildTeamGroupsFromPlayerDocs(playersSnap.docs);
   const playerToTeamKey = new Map(
     playersSnap.docs.map((pd) => [pd.id, getPlayerTeamKey(pd)])
   );
@@ -544,16 +543,6 @@ async function resolveAndApplyAdAuction(gameRef, round) {
     }
     adAuctionResults[winnerKey].adTypes.push(adType);
     adAuctionResults[winnerKey].totalPaid += winningBid;
-
-    const winnerGroup = teamGroups.get(winnerKey);
-    if (winnerGroup) {
-      for (const memberUid of winnerGroup.memberUids) {
-        adAuctionResults[memberUid] = {
-          adTypes: [...adAuctionResults[winnerKey].adTypes],
-          totalPaid: adAuctionResults[winnerKey].totalPaid,
-        };
-      }
-    }
   }
 
   await roundRef.set({
@@ -753,22 +742,16 @@ async function resolveAndApplyChefAuction(gameRef, round, config) {
   const { winners, payments } = resolveChefAuction(chefPool, allBids);
 
   // Write auction results to round doc.
+  // BE-I03: key by team slug only. Earlier code duplicated the entry under
+  // every member uid, which caused the sim aggregator to sum the cost N× for
+  // a team of N (BE-I01). Consumers read by `team.key`, which is the team
+  // slug for multi-member teams and the player uid for solo players.
   const chefAuctionResults = {};
   for (const [winnerKey, chefs] of winners) {
     chefAuctionResults[winnerKey] = {
       chefs,
       totalPaid: payments.get(winnerKey) || 0,
     };
-
-    const winnerGroup = teamGroups.get(winnerKey);
-    if (winnerGroup) {
-      for (const memberUid of winnerGroup.memberUids) {
-        chefAuctionResults[memberUid] = {
-          chefs,
-          totalPaid: payments.get(winnerKey) || 0,
-        };
-      }
-    }
   }
   await roundRef.set({
     chefAuctionResults,
@@ -1794,27 +1777,26 @@ async function runSimulationAndPersist(gameRef, round, config) {
       chefsWon: [],
       chefBidPaid: 0,
     };
-    for (const memberUid of team.memberUids) {
-      const ar = auctionByPlayer.get(memberUid) || {};
-      if (Array.isArray(ar.adWins)) {
-        for (const adType of ar.adWins) {
-          if (!aggregatedAuction.adWins.includes(adType)) {
-            aggregatedAuction.adWins.push(adType);
-          }
-        }
-      } else if (ar.adWon && !aggregatedAuction.adWins.includes(ar.adWon)) {
-        aggregatedAuction.adWins.push(ar.adWon);
-      }
-      aggregatedAuction.adBidPaid += numberOrDefault(ar.adBidPaid, 0);
-      if (Array.isArray(ar.chefsWon)) {
-        for (const chef of ar.chefsWon) {
-          if (!aggregatedAuction.chefsWon.find((c) => c.id === chef.id)) {
-            aggregatedAuction.chefsWon.push(chef);
-          }
+    // BE-I01: auction results are keyed by team slug (see BE-I03 in
+    // resolveAndApplyAdAuction / resolveAndApplyChefAuction). Read once per
+    // team — never iterate memberUids, which double-counted the cost.
+    const ar = auctionByPlayer.get(team.key) || {};
+    if (Array.isArray(ar.adWins)) {
+      for (const adType of ar.adWins) {
+        if (!aggregatedAuction.adWins.includes(adType)) {
+          aggregatedAuction.adWins.push(adType);
         }
       }
-      aggregatedAuction.chefBidPaid += numberOrDefault(ar.chefBidPaid, 0);
+    } else if (ar.adWon) {
+      aggregatedAuction.adWins.push(ar.adWon);
     }
+    aggregatedAuction.adBidPaid = numberOrDefault(ar.adBidPaid, 0);
+    if (Array.isArray(ar.chefsWon)) {
+      for (const chef of ar.chefsWon) {
+        aggregatedAuction.chefsWon.push(chef);
+      }
+    }
+    aggregatedAuction.chefBidPaid = numberOrDefault(ar.chefBidPaid, 0);
     aggregatedAuction.adWon = aggregatedAuction.adWins[0] || null;
 
     const priorSubmittedPrices = (priorDecisionSnapsByUid.get(financeUid) || [])
