@@ -1,8 +1,17 @@
-import { useState, useEffect, useCallback } from "react";
-import { doc, onSnapshot, type DocumentData } from "firebase/firestore";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  collection,
+  doc,
+  onSnapshot,
+  type DocumentData,
+} from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { PageShell } from "../components/ui/PageShell";
 import { RoundHeader } from "../components/game/RoundHeader";
+import {
+  AdWinnerBanner,
+  type AdWinnerEntry,
+} from "../components/game/AdWinnerBanner";
 import { useGame, useGameDispatch } from "../contexts/GameContext";
 import { useGamePhaseNav } from "../hooks/useGamePhaseNav";
 import { db, functions } from "../lib/firebase";
@@ -15,7 +24,6 @@ import {
   roleOwnsAdBids,
   roleOwnsChefBids,
   type AdType,
-  type AuctionTab,
   type ChefGender,
   type ChefListing,
   type ChefNationality,
@@ -227,7 +235,6 @@ export function AuctionPage() {
   // with another team" (in which case neither should be locked).
   const myTeamKey = teamId || playerId || null;
 
-  const [activeTab, setActiveTabLocal] = useState<AuctionTab>("ads");
   // FE-R09: regenerate the cosmetic placeholder each round so the pre-
   // backend-snapshot flash doesn't show last round's placeholder chefs.
   const [placeholderPool, setPlaceholderPool] = useState<ChefListing[]>(() =>
@@ -258,24 +265,144 @@ export function AuctionPage() {
   const [adBidInputs, setAdBidInputs] = useState<Partial<Record<AdType, string>>>({});
   const [showExpiredPopup, setShowExpiredPopup] = useState(false);
 
+  // A24-I05 — ad-winner banner rendered at the top of the chef phase.
+  // Reads the current round's `auctionResults.ads` — same surface
+  // GamePage/Decide already uses — and joins each winner's teamId to a
+  // bakery-name via the roster subcollection.
+  // Raw winner IDs + amounts, untouched by roster snapshots. Names are
+  // resolved at render time below so a roster update never re-subscribes
+  // the round listener (and a round doc that lands before the roster
+  // still renders correctly once the roster snapshot arrives).
+  const [adWinnersRaw, setAdWinnersRaw] = useState<
+    Partial<Record<AdType, { winnerId: string; amount: number }>> | null
+  >(null);
+  const [rosterByUid, setRosterByUid] = useState<
+    Record<string, { displayName: string; bakeryName: string }>
+  >({});
+
+  useEffect(() => {
+    if (!gameId) {
+      setRosterByUid({});
+      return;
+    }
+    const rosterRef = collection(db, "games", gameId, "roster");
+    const unsubscribe = onSnapshot(
+      rosterRef,
+      (snap) => {
+        const map: Record<string, { displayName: string; bakeryName: string }> = {};
+        snap.docs.forEach((d) => {
+          const data = d.data() as DocumentData;
+          const uid = typeof data.uid === "string" ? data.uid : d.id;
+          map[uid] = {
+            displayName:
+              typeof data.displayName === "string"
+                ? data.displayName
+                : "Player",
+            bakeryName:
+              typeof data.bakeryName === "string" &&
+              data.bakeryName.length > 0
+                ? data.bakeryName
+                : typeof data.displayName === "string"
+                ? data.displayName
+                : "Player",
+          };
+        });
+        setRosterByUid(map);
+      },
+      (err) => {
+        console.error("auction roster listener error:", { gameId, err });
+      },
+    );
+    return unsubscribe;
+  }, [gameId]);
+
+  useEffect(() => {
+    if (!gameId || !currentRound) {
+      setAdWinnersRaw(null);
+      return;
+    }
+    const roundRef = doc(
+      db,
+      "games",
+      gameId,
+      "rounds",
+      `round_${currentRound}`,
+    );
+    const unsubscribe = onSnapshot(
+      roundRef,
+      (snap) => {
+        if (!snap.exists()) {
+          setAdWinnersRaw(null);
+          return;
+        }
+        const data = snap.data() as DocumentData;
+        const auction = data.auctionResults as DocumentData | undefined;
+        const adsRaw = (auction?.ads ?? null) as DocumentData | null;
+        if (!adsRaw || typeof adsRaw !== "object") {
+          setAdWinnersRaw(null);
+          return;
+        }
+        const out: Partial<Record<AdType, { winnerId: string; amount: number }>> = {};
+        AD_TYPES.forEach((t) => {
+          const entry = adsRaw[t];
+          if (!entry || typeof entry !== "object") return;
+          const winnerId =
+            typeof entry.winnerId === "string" ? entry.winnerId : null;
+          const winningBid =
+            typeof entry.winningBid === "number" ? entry.winningBid : undefined;
+          if (!winnerId || !winningBid) return;
+          out[t] = { winnerId, amount: winningBid };
+        });
+        setAdWinnersRaw(Object.keys(out).length > 0 ? out : null);
+      },
+      (err) => {
+        console.error(
+          "auction current-round ad-winner listener error:",
+          { gameId, currentRound, err },
+        );
+      },
+    );
+    return unsubscribe;
+  }, [gameId, currentRound]);
+
+  // Resolve winner IDs to bakery/display names at render time. Recomputes
+  // when either the raw round data or the roster map changes — so the
+  // banner updates naturally whichever snapshot arrives second.
+  const adWinners = useMemo<Partial<Record<AdType, AdWinnerEntry>> | null>(
+    () => {
+      if (!adWinnersRaw) return null;
+      const out: Partial<Record<AdType, AdWinnerEntry>> = {};
+      AD_TYPES.forEach((t) => {
+        const raw = adWinnersRaw[t];
+        if (!raw) return;
+        const rosterEntry = rosterByUid[raw.winnerId];
+        out[t] = {
+          adType: t,
+          amount: raw.amount,
+          bakeryName: rosterEntry?.bakeryName,
+          displayName: rosterEntry?.displayName,
+        };
+      });
+      return Object.keys(out).length > 0 ? out : null;
+    },
+    [adWinnersRaw, rosterByUid],
+  );
+
   const parsed = parseGamePhase(phase, currentRound);
   const basePhase = parsed.base;
   const isAdPhase = basePhase === "bid_ad";
   const isChefPhase = basePhase === "bid_chef";
 
-  const setActiveTab = useCallback(
-    (tab: AuctionTab) => {
-      setActiveTabLocal(tab);
-      dispatch({ type: "SET_AUCTION_TAB", payload: tab });
-    },
-    [dispatch]
-  );
-
-  // Keep the visible tab in sync with the backend-driven phase.
+  // A24-I05: AuctionPage used to carry a tab bar that let users click
+  // into the non-active auction (chef UI visible during bid_ad was
+  // confusing). We now render ONLY the block for the current phase.
+  // `SET_AUCTION_TAB` is still dispatched so DevNav's "auction tab:"
+  // readout stays accurate — it reflects the phase rather than a user
+  // click.
   useEffect(() => {
-    if (isAdPhase) setActiveTab("ads");
-    else if (isChefPhase) setActiveTab("chefs");
-  }, [isAdPhase, isChefPhase, setActiveTab]);
+    if (isAdPhase) dispatch({ type: "SET_AUCTION_TAB", payload: "ads" });
+    else if (isChefPhase) dispatch({ type: "SET_AUCTION_TAB", payload: "chefs" });
+  }, [isAdPhase, isChefPhase, dispatch]);
 
   // Subscribe to the authoritative chef pool for the current round. The
   // backend writes `chefPool` as a field on `games/{gameId}/rounds/{round}`
@@ -494,18 +621,21 @@ export function AuctionPage() {
     dispatch,
   ]);
 
-  const isDev = !import.meta.env.PROD;
-
+  // A24-I05 — reset and tick the local `remaining` timer whenever the
+  // phase flips (bid_ad → bid_chef). Previously this keyed off
+  // `activeTab` (local tab state); now that the tab bar is gone, drive
+  // it off `basePhase` directly so the "auction expired" popup still
+  // fires at the right moment.
   useEffect(() => {
     setRemaining(TAB_DURATION_SECONDS);
-  }, [activeTab]);
+  }, [basePhase]);
 
   useEffect(() => {
     const tick = setInterval(() => {
       setRemaining((prev) => Math.max(0, prev - 1));
     }, 1000);
     return () => clearInterval(tick);
-  }, [activeTab]);
+  }, [basePhase]);
 
   useEffect(() => {
     if (timerExpired) {
@@ -618,40 +748,34 @@ export function AuctionPage() {
       )}
       <RoundHeader />
 
-      <div className="auction-page__header">
-        <div className="auction-page__tabs">
-          <button
-            className={`auction-page__tab ${
-              activeTab === "ads" ? "auction-page__tab--active" : ""
-            } ${activeTab !== "ads" ? "auction-page__tab--locked" : ""}`}
-            onClick={isDev ? () => setActiveTab("ads") : undefined}
-          >
-            Advertisements
-          </button>
-          <button
-            className={`auction-page__tab ${
-              activeTab === "chefs" ? "auction-page__tab--active" : ""
-            } ${activeTab !== "chefs" ? "auction-page__tab--locked" : ""}`}
-            onClick={isDev ? () => setActiveTab("chefs") : undefined}
-          >
-            Chef Hiring
-          </button>
-        </div>
-        {/* Phase countdown is owned by <RoundHeader />. The AuctionPage
-            used to render a second local timer here which duplicated the
-            header clock on bid pages; removed so players see exactly one. */}
-        {alreadySubmitted && !hasEditableBid && (
+      {/* A24-I05: the old tab-bar `auction-page__header` was removed in
+          favour of a phase-conditional render. The phase label lives in
+          <RoundHeader /> already (PHASE_LABELS map), so no duplicate title
+          is rendered here. A "Bids Locked" badge still appears once the
+          team has locked in every slot. */}
+      {alreadySubmitted && !hasEditableBid && (
+        <div className="auction-page__locked-row">
           <span
             className="tab__badge tab__badge--submitted auction-page__locked-badge"
             role="status"
           >
             Bids Locked
           </span>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* A24-I05 — surface "you won / you didn't" before the chef auction
+          opens so students don't have to wait until Results to find out. */}
+      {isChefPhase && (
+        <AdWinnerBanner
+          round={currentRound}
+          winners={adWinners}
+          hideWhenEmpty={false}
+        />
+      )}
 
       <div className="auction-page__content">
-        {activeTab === "ads" && (
+        {isAdPhase && (
           <div className="auction-ads">
             <p className="auction-page__hint">
               Bid on advertisement slots to attract more customers to your
@@ -723,7 +847,7 @@ export function AuctionPage() {
           </div>
         )}
 
-        {activeTab === "chefs" && (
+        {isChefPhase && (
           <div className="auction-chefs">
             <p className="auction-page__hint">
               Bid on chefs to boost your bakery's output.

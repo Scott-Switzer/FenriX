@@ -12,12 +12,18 @@ import { useGamePhaseNav } from "../hooks/useGamePhaseNav";
 import { PageShell } from "../components/ui/PageShell";
 import { RoundHeader } from "../components/game/RoundHeader";
 import { ChefCard } from "../components/game/ChefCard";
+import {
+  ChefWinnerBanner,
+  type ChefWinnerEntry,
+} from "../components/game/ChefWinnerBanner";
 import { SubmissionLock } from "../components/game/SubmissionLock";
 import {
   parseGamePhase,
   toChefCardInput,
   roleOwnsRoster,
   ownerOfRoster,
+  type ChefGender,
+  type ChefNationality,
   type ChefPoolEntry,
 } from "../types/game";
 import { humanizeFunctionError } from "../lib/errors";
@@ -77,13 +83,107 @@ const SPECIALTY_CAP = 3;
 
 export function RosterPhasePage() {
   useGamePhaseNav();
-  const { gameId, playerId, currentRound, phase, role, teamRoleAssignments } =
+  const { gameId, playerId, teamId, currentRound, phase, role, teamRoleAssignments } =
     useGame();
   const navigate = useNavigate();
 
   const [specialtyChefs, setSpecialtyChefs] = useState<RosterChef[]>([]);
   const [pendingRosterAction, setPendingRosterAction] = useState(false);
   const [rosterCompleted, setRosterCompleted] = useState(false);
+  // A24-I05 — chef wins just resolved for this round. Subscribed from
+  // `games/{gameId}/rounds/round_{N}.chefAuctionResults[{teamKey}]`.
+  const [chefWins, setChefWins] = useState<ChefWinnerEntry[]>([]);
+  const auctionResultKey = teamId || playerId || null;
+
+  useEffect(() => {
+    if (!gameId || !currentRound || !auctionResultKey) {
+      setChefWins([]);
+      return;
+    }
+    const roundRef = doc(
+      db,
+      "games",
+      gameId,
+      "rounds",
+      `round_${currentRound}`,
+    );
+    const unsubscribe = onSnapshot(
+      roundRef,
+      (snap) => {
+        if (!snap.exists()) {
+          setChefWins([]);
+          return;
+        }
+        const data = snap.data() as DocumentData;
+        const results =
+          (data.chefAuctionResults ?? null) as DocumentData | null;
+        const entry = results?.[auctionResultKey] as DocumentData | undefined;
+        if (!entry || !Array.isArray(entry.chefs)) {
+          setChefWins([]);
+          return;
+        }
+        const totalPaid = Number(entry.totalPaid) || 0;
+        // Per-chef price breakdown isn't stored on the round doc, so we
+        // attribute `totalPaid` across the chefs proportionally to each
+        // chef's min-bid-floor. Close enough for "you paid ~$X for this
+        // chef" visibility; players can cross-reference their finance
+        // teammate's records for the exact split.
+        const floors = entry.chefs.map((c: DocumentData) =>
+          typeof c.minBidFloor === "number" && c.minBidFloor > 0
+            ? c.minBidFloor
+            : 1,
+        );
+        const floorSum = floors.reduce((s: number, f: number) => s + f, 0) || 1;
+        const wins: ChefWinnerEntry[] = entry.chefs
+          .map((c: DocumentData, i: number): ChefWinnerEntry | null => {
+            const nat = c.nationality;
+            const validNat: ChefNationality | null =
+              nat === "american" ||
+              nat === "french" ||
+              nat === "italian" ||
+              nat === "japanese"
+                ? nat
+                : null;
+            const rawGen = c.gender;
+            const gender: ChefGender | null =
+              rawGen === "male" || rawGen === "m"
+                ? "m"
+                : rawGen === "female" || rawGen === "f"
+                ? "f"
+                : null;
+            const id = typeof c.id === "string" ? c.id : null;
+            const name = typeof c.name === "string" ? c.name : null;
+            if (!id || !name || !validNat || !gender) return null;
+            const share = floors[i] / floorSum;
+            const skillTier =
+              c.skillTier === "novel" ||
+              c.skillTier === "intermediate" ||
+              c.skillTier === "advanced" ||
+              c.skillTier === "base"
+                ? (c.skillTier as ChefWinnerEntry["skillTier"])
+                : undefined;
+            return {
+              chefId: id,
+              name,
+              nationality: validNat,
+              gender,
+              amount: Math.round(totalPaid * share),
+              skillTier,
+            };
+          })
+          .filter((c: ChefWinnerEntry | null): c is ChefWinnerEntry => c !== null);
+        setChefWins(wins);
+      },
+      (err) => {
+        console.error("roster chef-winner listener error:", {
+          gameId,
+          currentRound,
+          err,
+        });
+      },
+    );
+    return unsubscribe;
+  }, [gameId, currentRound, auctionResultKey]);
 
   const [layoffTarget, setLayoffTarget] = useState<LayoffTarget | null>(null);
   const [submitting, setSubmitting] = useState<"layoff" | "continue" | null>(
@@ -178,6 +278,13 @@ export function RosterPhasePage() {
   return (
     <PageShell className="roster-phase-page">
       <RoundHeader />
+
+      {/* A24-I05 — show who got hired in the chef auction that just resolved
+          so the team can orient themselves before the Lay-off decision. */}
+      <ChefWinnerBanner
+        round={currentRound}
+        winners={chefWins}
+      />
 
       <header className="roster-phase-page__header">
         <h1 className="roster-phase-page__title">Your Kitchen Roster</h1>

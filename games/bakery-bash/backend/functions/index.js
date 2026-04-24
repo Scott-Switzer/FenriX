@@ -1136,10 +1136,6 @@ exports.joinGame = onCall(CALLABLE_OPTS, async (request) => {
       pendingBids: { ad: null, chef: null },
       pendingRosterAction: false,
       lastRoundResult: null,
-      teamLogoUrl: typeof (request.data.logoUrl) === 'string' &&        // BE-N07
-        request.data.logoUrl.startsWith('https://firebasestorage.googleapis.com')
-        ? request.data.logoUrl
-        : null,
       updatedAt: FieldValue.serverTimestamp(),
     });
 
@@ -1209,8 +1205,8 @@ exports.joinGame = onCall(CALLABLE_OPTS, async (request) => {
 // the legacy `teamNumber → team-{N}` derivation and always produces a team
 // doc keyed by a stable slug of the team name.
 //
-// Input: { joinCode, teamName, displayName, logoUrl? }
-// Output: { gameId, playerId, teamId, teamName, logoUrl }
+// Input: { joinCode, teamName, displayName }
+// Output: { gameId, playerId, teamId, teamName }
 
 exports.createTeam = onCall(CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request, 'Sign in before creating a team.');
@@ -1219,10 +1215,6 @@ exports.createTeam = onCall(CALLABLE_OPTS, async (request) => {
   const joinCode = cleanString(data.joinCode).toUpperCase();
   const teamName = cleanString(data.teamName);
   const displayName = cleanString(data.displayName);
-  const rawLogoUrl = typeof data.logoUrl === 'string' ? data.logoUrl : null;
-  const logoUrl = rawLogoUrl && rawLogoUrl.startsWith('https://firebasestorage.googleapis.com')
-    ? rawLogoUrl
-    : null;
 
   if (!/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/.test(joinCode)) {
     throw new HttpsError('invalid-argument', 'joinCode must be a 6-character game code.');
@@ -1316,7 +1308,6 @@ exports.createTeam = onCall(CALLABLE_OPTS, async (request) => {
     transaction.set(teamRef, {
       name: teamName,
       teamId: resolvedTeamId,
-      logoUrl,
       createdBy: auth.uid,
       roleAssignments: { [auth.uid]: 'solo' },
       memberCount: 1,
@@ -1333,7 +1324,6 @@ exports.createTeam = onCall(CALLABLE_OPTS, async (request) => {
         bakeryName: teamName,
         teamId: resolvedTeamId,
         role: 'solo',
-        teamLogoUrl: logoUrl,
         updatedAt: FieldValue.serverTimestamp(),
       });
     } else {
@@ -1356,7 +1346,6 @@ exports.createTeam = onCall(CALLABLE_OPTS, async (request) => {
         pendingBids: { ad: null, chef: null },
         pendingRosterAction: false,
         lastRoundResult: null,
-        teamLogoUrl: logoUrl,
         updatedAt: FieldValue.serverTimestamp(),
       });
       transaction.set(rosterRef, {
@@ -1378,7 +1367,6 @@ exports.createTeam = onCall(CALLABLE_OPTS, async (request) => {
     playerId: auth.uid,
     teamId: resolvedTeamId,
     teamName,
-    logoUrl,
   };
 });
 
@@ -1391,7 +1379,12 @@ exports.createTeam = onCall(CALLABLE_OPTS, async (request) => {
 // lobby is public to anyone with the join code.
 //
 // Input:  { joinCode }
-// Output: { teams: [{ teamId, name, logoUrl, memberCount }] }
+// Output: { gameId, teams: [{ teamId, name, memberCount }] }
+//
+// The response includes `gameId` so the client can set up a live
+// Firestore subscription to `games/{gameId}/teams` and see member
+// counts update in real time without having to re-invoke this
+// callable on every keystroke.
 
 exports.getTeamsInLobby = onCall(CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request, 'Sign in before browsing teams.');
@@ -1431,12 +1424,11 @@ exports.getTeamsInLobby = onCall(CALLABLE_OPTS, async (request) => {
     return {
       teamId: d.id,
       name: typeof data.name === 'string' ? data.name : d.id,
-      logoUrl: typeof data.logoUrl === 'string' ? data.logoUrl : null,
       memberCount: numberOrDefault(data.memberCount, Object.keys(roleAssignments).length),
     };
   });
 
-  return { teams };
+  return { gameId: gameRef.id, teams };
 });
 
 // ===========================================================================

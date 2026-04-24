@@ -1,9 +1,3 @@
-// NOTE (BE-N07): Firebase Storage rules are managed separately in the Firebase
-// console (Storage > Rules). Firestore rules do not cover Firebase Storage.
-// Team logo URLs are validated server-side in the joinGame callable: only URLs
-// beginning with "https://firebasestorage.googleapis.com" are accepted and
-// stored in players/{playerId}.teamLogoUrl.
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {

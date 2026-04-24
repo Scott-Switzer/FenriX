@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useGame } from "../../contexts/GameContext";
+import { usePhaseCountdownSeconds } from "../../hooks/usePhaseCountdownSeconds";
 import { CsvInboxModal } from "./CsvInboxModal";
 import { GameProgressBar } from "./GameProgressBar";
 import {
@@ -98,28 +99,6 @@ export function downloadResultsCsv(results: RoundResult[]) {
   a.download = "bakery-bash-results.csv";
   a.click();
   URL.revokeObjectURL(url);
-}
-
-/**
- * Live phase countdown derived from `games/{gameId}.phaseEndsAt`.
- *
- * Re-ticks every 500ms (sub-second granularity for smooth final-10s feel)
- * and clamps at zero. Returns `null` whenever the backend hasn't set an
- * end time (lobby / paused / between phases) so the header can hide the
- * timer entirely instead of rendering `0:00`.
- */
-function usePhaseCountdownSeconds(): number | null {
-  const { phaseEndsAtMs } = useGame();
-  const [now, setNow] = useState<number>(() => Date.now());
-
-  useEffect(() => {
-    if (phaseEndsAtMs === null) return;
-    const tick = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(tick);
-  }, [phaseEndsAtMs]);
-
-  if (phaseEndsAtMs === null) return null;
-  return Math.max(0, Math.ceil((phaseEndsAtMs - now) / 1000));
 }
 
 export function RoundHeader() {

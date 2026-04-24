@@ -339,7 +339,7 @@ export function ResultsPhase() {
           <div className="results-phase__metric-cards">
             <div className="results-phase__metric-card results-phase__metric-card--revenue">
               <span className="results-phase__metric-value">{formatMoney(revenueDisplay)}</span>
-              <span className="results-phase__metric-label">Revenue</span>
+              <span className="results-phase__metric-label">Profit</span>
             </div>
             <div className="results-phase__metric-card results-phase__metric-card--customer">
               <span className="results-phase__metric-value">{latest?.customerCount ?? "—"}</span>

@@ -1384,52 +1384,11 @@ h3 { font-size: 0.7rem; }
   width: 100%;
 }
 
-.auction-page__header {
+/* A24-I05 — "Bids Locked" badge row when the whole phase is locked. */
+.auction-page__locked-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--espresso);
-  border: var(--border);
-  box-shadow: var(--shadow-pixel-sm);
-  padding: 0;
-  margin-bottom: 1.25rem;
-  overflow: hidden;
-}
-
-.auction-page__tabs {
-  display: flex;
-}
-
-.auction-page__tab {
-  font-family: var(--font-pixel);
-  font-size: 0.55rem;
-  padding: 0.75rem 1.25rem;
-  border: none;
-  background: transparent;
-  color: var(--dough);
-  cursor: pointer;
-  text-transform: uppercase;
-  position: relative;
-  transition: background 0.1s, color 0.1s;
-}
-
-.auction-page__tab--active {
-  background: var(--cream);
-  color: var(--espresso);
-}
-
-.auction-page__tab--active::after {
-  content: "";
-  position: absolute;
-  bottom: -3px;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: var(--cream);
-}
-
-.auction-page__tab--locked {
-  opacity: 0.4;
+  justify-content: flex-end;
+  margin-bottom: 0.75rem;
 }
 
 .auction-page__timer {
@@ -2665,6 +2624,32 @@ h3 { font-size: 0.7rem; }
   color: var(--espresso);
 }
 
+/* A24-I03a — per-team-size role status banners */
+.team-page__roles-status--solo,
+.team-page__roles-status--pair,
+.team-page__roles-status--full {
+  display: block;
+  margin: 0.5rem 0 0.25rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 6px;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  border: 2px solid var(--outline, #1a1a1a);
+}
+.team-page__roles-status--solo {
+  background: var(--honey, #F5C96A);
+  color: var(--espresso, #1a1a1a);
+}
+.team-page__roles-status--pair {
+  background: color-mix(in srgb, var(--caramel) 20%, #fff);
+  color: var(--espresso, #1a1a1a);
+}
+.team-page__roles-status--full {
+  background: color-mix(in srgb, var(--sage) 18%, #fff);
+  color: var(--espresso, #1a1a1a);
+}
+
 .team-page__role-list {
   list-style: none;
   margin: 0;
@@ -3304,6 +3289,42 @@ h3 { font-size: 0.7rem; }
 .round-briefing__panel::before { top: -8px; left: -8px; }
 .round-briefing__panel::after  { bottom: -8px; right: -8px; }
 
+/* A24-I07 — starting-budget chip, round 1 only. */
+.round-briefing__starter-chip {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--espresso, #1a1a1a);
+  background: var(--honey, #F5C96A);
+  border: 2px solid var(--outline, #1a1a1a);
+  padding: 0.5rem 0.9rem;
+  border-radius: 6px;
+  margin-top: 0.25rem;
+  box-shadow: 2px 2px 0 var(--dough, #e9dfc9);
+}
+
+/* A24-I04 — phase countdown on the email briefing. */
+.round-briefing__timer {
+  font-family: var(--font-pixel);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--espresso, #1a1a1a);
+  background: var(--cream, #fff7e6);
+  border: 2px solid var(--caramel, #C4873B);
+  padding: 0.45rem 0.9rem;
+  border-radius: 4px;
+  margin-top: 0.25rem;
+}
+.round-briefing__timer--urgent {
+  background: color-mix(in srgb, var(--berry) 14%, #fff);
+  border-color: var(--berry, #B54B6C);
+  color: var(--berry, #B54B6C);
+  animation: round-briefing-urgent-pulse 600ms ease-in-out infinite alternate;
+}
+@keyframes round-briefing-urgent-pulse {
+  to { box-shadow: 0 0 0 3px color-mix(in srgb, var(--berry) 30%, transparent); }
+}
+
 .round-briefing__eyebrow {
   font-family: var(--font-pixel);
   font-size: 0.6rem;
@@ -3459,10 +3480,30 @@ h3 { font-size: 0.7rem; }
 }
 
 /* ── How to Play page ───────────────────────────────────────────────── */
-.how-to-play { max-width: 640px; margin: 0 auto; padding: 2rem 1rem; }
+.how-to-play { max-width: 720px; margin: 0 auto; padding: 2rem 1rem; }
 .how-to-play__header { display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; }
 .how-to-play__title  { font-size: 1.5rem; font-weight: bold; margin: 0; }
 .how-to-play__back   { font-size: 0.9rem; }
+.how-to-play__section-title { font-size: 1.05rem; font-weight: bold; margin: 2rem 0 0.75rem; color: var(--espresso, #1a1a1a); }
+
+/* Intro hero — single wide card, warm honey tint */
+.how-to-play__intro { background: var(--honey, #F5C96A); border: 3px solid var(--caramel, #C4873B); border-radius: 12px; padding: 1.4rem 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+.how-to-play__intro-headline { font-size: 1.15rem; font-weight: 800; color: var(--espresso, #1a1a1a); margin-bottom: 0.5rem; letter-spacing: 0.01em; }
+.how-to-play__intro-body { font-size: 0.95rem; line-height: 1.55; color: var(--espresso, #1a1a1a); margin: 0; }
+
+/* Role cards — colored per canonical role color */
+.how-to-play__role-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+.how-to-play__role-card { padding: 1.1rem 1.2rem; border-radius: 10px; border: 3px solid var(--outline, #1a1a1a); color: #fff; }
+.how-to-play__role-card--operations { background: var(--sage, #7A9E7E); }
+.how-to-play__role-card--advertising { background: var(--caramel, #C4873B); }
+.how-to-play__role-card--finance { background: var(--berry, #B54B6C); }
+.how-to-play__role-card--solo { background: var(--honey, #F5C96A); color: var(--espresso, #1a1a1a); }
+.how-to-play__role-label { display: inline-block; background: rgba(0,0,0,0.2); color: #fff; font-size: 0.7rem; font-weight: bold; padding: 0.2rem 0.6rem; border-radius: 4px; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.how-to-play__role-card--solo .how-to-play__role-label { background: rgba(0,0,0,0.15); color: var(--espresso, #1a1a1a); }
+.how-to-play__role-tagline { font-size: 1rem; font-weight: 700; margin: 0 0 0.4rem; }
+.how-to-play__role-body { font-size: 0.88rem; line-height: 1.55; margin: 0; }
+
+/* Stages (unchanged visual treatment, just wrapped under a section) */
 .how-to-play__stages { display: flex; flex-direction: column; gap: 1.25rem; }
 .how-to-play__card   { background: var(--cream, #fff7e6); border-radius: 10px; padding: 1.5rem; border: 2px solid var(--honey, #f59e0b); }
 .how-to-play__card-label   { display: inline-block; background: var(--caramel, #d97706); color: #fff; font-size: 0.75rem; font-weight: bold; padding: 0.2rem 0.6rem; border-radius: 4px; margin-bottom: 0.6rem; text-transform: uppercase; letter-spacing: 0.05em; }
@@ -3850,6 +3891,113 @@ h3 { font-size: 0.7rem; }
     align-items: baseline;
     gap: 0.5rem;
   }
+}
+
+/* ── Chef Winner Banner (A24-I05, Roster page) ───────────────────────── */
+.chef-winner-banner {
+  display: flex;
+  align-items: stretch;
+  gap: 0.75rem;
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.75rem;
+  background: var(--dough);
+  border: 2px solid var(--berry);
+  border-radius: 8px;
+  box-shadow: var(--shadow-pixel);
+  flex-wrap: wrap;
+}
+
+.chef-winner-banner__header {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 108px;
+  padding-right: 0.6rem;
+  border-right: 2px dashed var(--berry);
+}
+
+.chef-winner-banner__eyebrow {
+  font-family: var(--font-pixel);
+  font-size: 0.5rem;
+  color: var(--dark-roast);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.chef-winner-banner__title {
+  font-family: var(--font-pixel);
+  font-size: 0.75rem;
+  color: var(--espresso);
+  margin: 0.15rem 0 0;
+}
+
+.chef-winner-banner__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.5rem;
+  flex: 1;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.chef-winner-banner__cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.55rem;
+  background: var(--cream);
+  border: 1.5px solid var(--berry);
+  border-radius: 6px;
+  min-width: 0;
+}
+
+.chef-winner-banner__icon img {
+  width: 32px;
+  height: 32px;
+  display: block;
+  image-rendering: pixelated;
+}
+
+.chef-winner-banner__content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.chef-winner-banner__name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--espresso);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chef-winner-banner__tier {
+  font-family: var(--font-pixel);
+  font-size: 0.48rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dark-roast);
+}
+
+.chef-winner-banner__amount {
+  font-size: 0.72rem;
+  color: var(--sage);
+  font-weight: 600;
+}
+
+.chef-winner-banner__empty {
+  margin: 0;
+  padding: 0.4rem 0.55rem;
+  flex: 1;
+  font-size: 0.85rem;
+  font-style: italic;
+  color: #666;
 }
 
 /* ── Chef Card (<ChefCard> component, used on Kitchen Roster page) ─────

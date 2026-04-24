@@ -13,11 +13,11 @@ import { PageShell } from "../components/ui/PageShell";
  * local re-sort.
  *
  * Columns:
- *   - Rank             (from backend `rank`)
- *   - Bakery           (`bakeryName` || `displayName`)
- *   - Revenue (Round)  (`lastRoundRevenue`) — FE-7 new column
- *   - Revenue (Total)  (`revenueNet` → `cumulativeRevenue`)
- *   - Δ                (`rankChange` indicator) — FE-7 new column
+ *   - Rank            (from backend `rank`)
+ *   - Bakery          (`bakeryName` || `displayName`)
+ *   - Profit (Round)  (`lastRoundRevenue`) — label A24-I09; field unchanged.
+ *   - Profit (Total)  (`revenueNet` → `cumulativeRevenue`)
+ *   - Δ               (`rankChange` indicator)
  *
  * Both the per-round revenue and rank-change columns render `—` when the
  * backend hasn't shipped BE-7 yet, so the page degrades gracefully during
@@ -90,8 +90,8 @@ export function LeaderboardPage() {
           <tr>
             <th>Rank</th>
             <th>Bakery</th>
-            <th>Revenue (Round)</th>
-            <th>Revenue (Total)</th>
+            <th>Profit (Round)</th>
+            <th>Profit (Total)</th>
             <th aria-label="Rank change">Δ</th>
           </tr>
         </thead>

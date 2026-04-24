@@ -341,15 +341,28 @@ export function ProfessorPage() {
   const callCallableRef = useRef(callCallable);
   useEffect(() => { callCallableRef.current = callCallable; });
 
-  // Auto-advance 15 s after phase timer expires (5 s grace + 10 s freeze).
-  // Re-runs when phase, phaseEndsAtMs, or gameId changes. Passes
-  // expectedFromPhase so the backend's CRIT-02 guard rejects double-advances
-  // when multiple professor tabs (or remounts) each fire their own timer.
+  // Auto-advance. Two modes:
+  //   * Submission phases (bid_ad, bid_chef, roster, decide): wait the full
+  //     15s (5s grace + 10s freeze) after phaseEndsAtMs, matching the
+  //     GamePhaseListener's overlay. Gives stragglers a last-chance window.
+  //   * Non-submission phases (email, simulating, results_ready, etc.):
+  //     fire at phaseEndsAtMs + 0 — A24-I04 wanted "within 1s of 0" on the
+  //     email briefing; there's nothing to submit, so the grace+freeze is
+  //     not useful here.
+  // Passes `expectedFromPhase` so the backend's CRIT-02 guard rejects
+  // double-advances when multiple professor tabs each fire their own timer.
   useEffect(() => {
     if (!phaseEndsAtMs || !gameId || !phase) return;
     const msUntilExpiry = phaseEndsAtMs - Date.now();
     if (msUntilExpiry < -30_000) return;
-    const delay = Math.max(0, msUntilExpiry) + 15_000;
+    const base = parseGamePhase(phase, currentRound).base;
+    const submissionPhase =
+      base === "bid_ad" ||
+      base === "bid_chef" ||
+      base === "roster" ||
+      base === "decide";
+    const extraDelay = submissionPhase ? 15_000 : 0;
+    const delay = Math.max(0, msUntilExpiry) + extraDelay;
     const expectedFromPhase = phase;
     const t = setTimeout(() => {
       void callCallableRef.current(
@@ -360,7 +373,7 @@ export function ProfessorPage() {
       );
     }, delay);
     return () => clearTimeout(t);
-  }, [phaseEndsAtMs, gameId, phase]);
+  }, [phaseEndsAtMs, gameId, phase, currentRound]);
 
   const rosterByUid = useMemo(
     () =>

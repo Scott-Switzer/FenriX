@@ -17,6 +17,7 @@
     "test:apr23-e2e": "firebase emulators:exec --only auth,firestore,functions \"node scripts/test-apr23-e2e.js\" --project bakery-bash-54d12",
     "test:multi-team-costs": "firebase emulators:exec --only auth,firestore,functions \"node scripts/test-multi-team-costs.js\" --project bakery-bash-54d12",
     "test:chef-cap": "firebase emulators:exec --only auth,firestore,functions \"node scripts/test-chef-cap-enforcement.js\" --project bakery-bash-54d12",
+    "test:ad-bonus-gate": "node scripts/test-ad-bonus-gate.js",
     "seed:emulator": "node scripts/seed-emulator.js",
     "seed:catalogs": "node scripts/seed-catalogs.js",
     "set:professor-claim": "node scripts/set-professor-claim.js"

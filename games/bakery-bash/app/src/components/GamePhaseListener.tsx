@@ -11,6 +11,11 @@ const GRACE_SECONDS = 5;
 const FREEZE_SECONDS = 10;
 const TOTAL_WINDOW_MS = (GRACE_SECONDS + FREEZE_SECONDS) * 1000; // 15 s
 
+// A24-I08: only show the "last chance to submit" banner + freeze overlay
+// during phases where students actually have something to submit. Email,
+// simulating, results_ready, lobby, and game_over don't need the overlay.
+const SUBMISSION_PHASE_BASES = new Set(["bid_ad", "bid_chef", "roster", "decide"]);
+
 /**
  * App-level listener that stays mounted regardless of route.
  *
@@ -26,7 +31,7 @@ const TOTAL_WINDOW_MS = (GRACE_SECONDS + FREEZE_SECONDS) * 1000; // 15 s
  *   15 s   → overlay clears; professor's auto-advance fires via ProfessorPage
  */
 export function GamePhaseListener() {
-  const { gameId, playerId, phaseEndsAtMs } = useGame();
+  const { gameId, playerId, phase, phaseEndsAtMs } = useGame();
   const dispatch = useGameDispatch();
   const navigate = useNavigate();
   const location = useLocation();
@@ -165,6 +170,12 @@ export function GamePhaseListener() {
   }, [gameId, dispatch]);
 
   // ── Timer-expiry sequence ──────────────────────────────────────────────────
+  //
+  // Stage transitions (grace → freeze → cleared) are driven by setTimeouts,
+  // but the *displayed* countdown is derived each tick from the absolute
+  // `phaseEndsAtMs` timestamp (A24-I06) so a backgrounded tab never drifts
+  // out of sync with the RoundHeader clock. Both widgets now read the same
+  // absolute time and converge on 0 at the same instant.
   const clearAll = () => {
     [t1Ref, t2Ref, t3Ref].forEach(r => {
       if (r.current) { clearTimeout(r.current); r.current = null; }
@@ -174,29 +185,53 @@ export function GamePhaseListener() {
     setCountdown(0);
   };
 
-  const startTick = (from: number) => {
+  const startTick = () => {
     if (tickRef.current) clearInterval(tickRef.current);
-    setCountdown(from);
+    const compute = () => {
+      const ends = phaseEndsAtMsRef.current;
+      if (ends === null) return 0;
+      const msPastEnd = Date.now() - ends;
+      // During grace (first GRACE_SECONDS after phaseEndsAtMs), count down
+      // GRACE_SECONDS → 0. During freeze (next FREEZE_SECONDS), count down
+      // FREEZE_SECONDS → 0. Clamped to [0, window].
+      if (msPastEnd < GRACE_SECONDS * 1000) {
+        return Math.max(
+          0,
+          Math.ceil((GRACE_SECONDS * 1000 - msPastEnd) / 1000),
+        );
+      }
+      const freezeMs = msPastEnd - GRACE_SECONDS * 1000;
+      return Math.max(
+        0,
+        Math.ceil((FREEZE_SECONDS * 1000 - freezeMs) / 1000),
+      );
+    };
+    setCountdown(compute());
     tickRef.current = setInterval(() => {
-      setCountdown(prev => (prev <= 1 ? 0 : prev - 1));
-    }, 1000);
+      setCountdown(compute());
+    }, 250);
   };
 
   useEffect(() => {
     clearAll();
     if (!phaseEndsAtMs || !gameId) return;
 
+    // A24-I08 — only arm the overlay on phases where students can submit.
+    // Use the current `phase` from context (not the ref) so a phase flip
+    // re-runs this effect and tears down any in-flight overlay immediately.
+    const base = parseGamePhase(phase).base;
+    if (!SUBMISSION_PHASE_BASES.has(base)) return;
+
     const msUntilExpiry = phaseEndsAtMs - Date.now();
     if (msUntilExpiry < -30_000) return;
 
     t1Ref.current = setTimeout(() => {
       setStage("grace");
-      startTick(GRACE_SECONDS);
+      startTick();
 
       t2Ref.current = setTimeout(() => {
-        if (tickRef.current) { clearInterval(tickRef.current); tickRef.current = null; }
         setStage("freeze");
-        startTick(FREEZE_SECONDS);
+        startTick();
 
         t3Ref.current = setTimeout(() => {
           if (tickRef.current) { clearInterval(tickRef.current); tickRef.current = null; }
@@ -222,9 +257,43 @@ export function GamePhaseListener() {
 
     return clearAll;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phaseEndsAtMs, gameId]);
+  }, [phaseEndsAtMs, gameId, phase]);
+
+  // A24-I04 / A24-I08 — non-submission phases (email, simulating,
+  // results_ready) still need the professor's browser to auto-advance
+  // when the phase timer expires. The submission-phase effect above owns
+  // the grace+freeze overlay; this one fires at phaseEndsAtMs + 0 (no
+  // overlay, no grace window) so phases like the round-1 email don't
+  // stall waiting for a manual click when the professor has navigated
+  // away from /professor.
+  useEffect(() => {
+    if (!phaseEndsAtMs || !gameId) return;
+    const base = parseGamePhase(phase).base;
+    if (SUBMISSION_PHASE_BASES.has(base)) return;
+    if (base === "lobby" || base === "game_over") return;
+    const msUntilExpiry = phaseEndsAtMs - Date.now();
+    if (msUntilExpiry < -30_000) return;
+    const t = setTimeout(() => {
+      const gid = gameIdRef.current;
+      const pid = playerIdRef.current;
+      const profUid = professorUidRef.current;
+      const expectedFromPhase = phaseNameRef.current ?? undefined;
+      if (gid && pid && profUid && pid === profUid) {
+        void httpsCallable(functions, "advanceGamePhase")({
+          gameId: gid,
+          expectedFromPhase,
+        }).catch(() => { /* CRIT-02 rejection is expected and safe */ });
+      }
+    }, Math.max(0, msUntilExpiry));
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phaseEndsAtMs, gameId, phase]);
 
   if (stage === null) return null;
+  // A24-I08 — final render gate, belt-and-suspenders with the useEffect
+  // gate above. Covers the window where a phase flips from submission to
+  // non-submission while `stage` is still set.
+  if (!SUBMISSION_PHASE_BASES.has(parseGamePhase(phase).base)) return null;
 
   if (stage === "grace") {
     return (

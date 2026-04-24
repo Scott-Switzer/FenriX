@@ -2,7 +2,9 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGame } from "../contexts/GameContext";
 import { useGamePhaseNav } from "../hooks/useGamePhaseNav";
+import { usePhaseCountdownSeconds } from "../hooks/usePhaseCountdownSeconds";
 import { PageShell } from "../components/ui/PageShell";
+import { formatMoney } from "../lib/cost";
 import { parseGamePhase } from "../types/game";
 
 /**
@@ -10,6 +12,14 @@ import { parseGamePhase } from "../types/game";
  *
  * Shows a big "Round N" hero while the game is in a `round_N_email` phase;
  * when the professor advances to `round_N_decide`, this page auto-navigates.
+ *
+ * A24-I04 — surfaces a visible countdown driven by the shared
+ * `usePhaseCountdownSeconds` hook so students can see how long they have
+ * before the phase flips. Auto-advance is handled by ProfessorPage +
+ * GamePhaseListener so no advance callable is fired from here.
+ *
+ * A24-I07 — on Round 1, displays a "your team starts with $X" chip so
+ * players know their starting budget before the first auction begins.
  */
 
 const FLOATS = [
@@ -21,10 +31,16 @@ const FLOATS = [
   "sandwich",
 ] as const;
 
+// Backend default; mirrored here so the chip renders something useful even
+// before the game's config sub-doc has synced. See
+// backend/functions/modules/config.js DEFAULT_GAME_CONFIG.startingBudget.
+const DEFAULT_STARTING_BUDGET = 500000;
+
 export function EmailPhasePage() {
   useGamePhaseNav();
-  const { gameId, currentRound, phase } = useGame();
+  const { gameId, currentRound, phase, config } = useGame();
   const navigate = useNavigate();
+  const secondsLeft = usePhaseCountdownSeconds();
 
   useEffect(() => {
     if (!gameId || !phase) return;
@@ -39,6 +55,11 @@ export function EmailPhasePage() {
   }, [phase, currentRound, gameId, navigate]);
 
   const roundLabel = currentRound && currentRound > 0 ? currentRound : "—";
+  const isRound1 = currentRound === 1;
+  const startingBudget =
+    typeof config?.startingBudget === "number" && config.startingBudget > 0
+      ? config.startingBudget
+      : DEFAULT_STARTING_BUDGET;
 
   return (
     <PageShell className="round-briefing">
@@ -62,6 +83,29 @@ export function EmailPhasePage() {
           <div className="round-briefing__tagline">
             Ovens hot. Beans ground. Let's go.
           </div>
+
+          {isRound1 && (
+            <div
+              className="round-briefing__starter-chip"
+              aria-label="Starting budget"
+            >
+              Your team starts with{" "}
+              <strong>{formatMoney(startingBudget)}</strong> — spend wisely.
+            </div>
+          )}
+
+          {secondsLeft !== null && (
+            <div
+              className={`round-briefing__timer${
+                secondsLeft <= 5 ? " round-briefing__timer--urgent" : ""
+              }`}
+              aria-live="polite"
+            >
+              {secondsLeft > 0
+                ? `${secondsLeft}s until briefing closes`
+                : "Briefing closing…"}
+            </div>
+          )}
         </div>
       </div>
     </PageShell>

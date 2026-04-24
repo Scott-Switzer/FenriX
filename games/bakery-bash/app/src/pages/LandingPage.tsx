@@ -1,11 +1,15 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { httpsCallable, type FunctionsError } from "firebase/functions";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import {
+  collection,
+  onSnapshot,
+  type DocumentData,
+} from "firebase/firestore";
 import { useGameDispatch } from "../contexts/GameContext";
 import { useAuth } from "../contexts/AuthContext";
 import { PageShell } from "../components/ui/PageShell";
-import { functions, storage } from "../lib/firebase";
+import { db, functions } from "../lib/firebase";
 
 interface JoinGameResponse {
   gameId: string;
@@ -17,17 +21,16 @@ interface CreateTeamResponse {
   playerId: string;
   teamId: string;
   teamName: string;
-  logoUrl: string | null;
 }
 
 interface LobbyTeam {
   teamId: string;
   name: string;
-  logoUrl: string | null;
   memberCount: number;
 }
 
 interface GetTeamsInLobbyResponse {
+  gameId: string;
   teams: LobbyTeam[];
 }
 
@@ -67,13 +70,14 @@ export function LandingPage() {
 
   // Create-path fields
   const [teamName, setTeamName] = useState("");
-  const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   // Join-path fields
   const [lobbyTeams, setLobbyTeams] = useState<LobbyTeam[] | null>(null);
   const [lobbyLoading, setLobbyLoading] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  // Resolved gameId for the current joinCode. Cached so the onSnapshot
+  // subscription attaches without re-invoking the callable on every keystroke.
+  const [resolvedGameId, setResolvedGameId] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -82,17 +86,19 @@ export function LandingPage() {
   const dispatch = useGameDispatch();
   const { user, loading: authLoading } = useAuth();
 
-  // Fetch the lobby team list whenever the code becomes valid while the
-  // user is on the join path. Debounced lightly so each keystroke doesn't
-  // fire a callable.
+  // A24-I03b — resolve joinCode → gameId once per valid code, then let
+  // the Firestore subscription below handle live updates. The callable
+  // also enforces "game not already started" before subscribing.
   useEffect(() => {
     if (path !== "join") {
       setLobbyTeams(null);
+      setResolvedGameId(null);
       return;
     }
     const normalized = gameCode.trim().toUpperCase();
     if (!JOIN_CODE_REGEX.test(normalized)) {
       setLobbyTeams(null);
+      setResolvedGameId(null);
       return;
     }
     if (authLoading || !user) return;
@@ -107,10 +113,14 @@ export function LandingPage() {
           GetTeamsInLobbyResponse
         >(functions, "getTeamsInLobby");
         const result = await getTeamsInLobby({ joinCode: normalized });
-        if (!cancelled) setLobbyTeams(result.data.teams ?? []);
+        if (!cancelled) {
+          setLobbyTeams(result.data.teams ?? []);
+          setResolvedGameId(result.data.gameId ?? null);
+        }
       } catch (err) {
         if (!cancelled) {
           setLobbyTeams([]);
+          setResolvedGameId(null);
           setError(humanizeJoinError(err));
         }
       } finally {
@@ -122,6 +132,46 @@ export function LandingPage() {
       window.clearTimeout(timer);
     };
   }, [path, gameCode, authLoading, user]);
+
+  // A24-I03b — live subscription to the teams subcollection so member
+  // counts update within ~1s of any teammate's join. Attaches once the
+  // callable above has resolved `resolvedGameId`; the initial callable
+  // result seeds the list so there's no "Loading teams…" flash during
+  // the subscription handshake.
+  useEffect(() => {
+    if (path !== "join" || !resolvedGameId) return;
+    const teamsRef = collection(db, "games", resolvedGameId, "teams");
+    const unsubscribe = onSnapshot(
+      teamsRef,
+      (snap) => {
+        const teams: LobbyTeam[] = snap.docs.map((d) => {
+          const data = d.data() as DocumentData;
+          const roleAssignments =
+            data.roleAssignments &&
+            typeof data.roleAssignments === "object"
+              ? (data.roleAssignments as Record<string, unknown>)
+              : {};
+          const memberCount =
+            typeof data.memberCount === "number"
+              ? data.memberCount
+              : Object.keys(roleAssignments).length;
+          return {
+            teamId: d.id,
+            name:
+              typeof data.name === "string" && data.name.length > 0
+                ? data.name
+                : d.id,
+            memberCount,
+          };
+        });
+        setLobbyTeams(teams);
+      },
+      (err) => {
+        console.error("lobby teams listener error:", { resolvedGameId, err });
+      },
+    );
+    return unsubscribe;
+  }, [path, resolvedGameId]);
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -152,35 +202,14 @@ export function LandingPage() {
 
     setSubmitting(true);
     try {
-      let logoUrl: string | undefined;
-      if (logoFile) {
-        const ext = logoFile.name.split(".").pop() || "png";
-        // teamName slug mirrors the backend's slugifier so the storage path
-        // is stable across create retries. Collisions are fine — upload
-        // overwrites.
-        const slug = trimmedTeam
-          .toLowerCase()
-          .replace(/[^a-z0-9\s-]/g, "")
-          .trim()
-          .replace(/\s+/g, "-")
-          .slice(0, 50);
-        const storageRef = ref(
-          storage,
-          `teams/${normalizedCode}/${slug || "team"}/logo.${ext}`,
-        );
-        await uploadBytes(storageRef, logoFile);
-        logoUrl = await getDownloadURL(storageRef);
-      }
-
       const createTeam = httpsCallable<
-        { joinCode: string; teamName: string; displayName: string; logoUrl?: string },
+        { joinCode: string; teamName: string; displayName: string },
         CreateTeamResponse
       >(functions, "createTeam");
       const result = await createTeam({
         joinCode: normalizedCode,
         teamName: trimmedTeam,
         displayName: trimmedPlayer,
-        ...(logoUrl ? { logoUrl } : {}),
       });
       const { gameId, playerId, teamId } = result.data;
 
@@ -334,34 +363,6 @@ export function LandingPage() {
             </label>
 
             <label className="form-field">
-              <span className="form-field__label">Team Logo (optional)</span>
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="form-field__input"
-                disabled={disabled}
-                onChange={(e) => {
-                  const file = e.target.files?.[0] ?? null;
-                  setLogoFile(file);
-                  if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => setLogoPreview(ev.target?.result as string);
-                    reader.readAsDataURL(file);
-                  } else {
-                    setLogoPreview(null);
-                  }
-                }}
-              />
-              {logoPreview && (
-                <img
-                  src={logoPreview}
-                  className="join-form__logo-preview"
-                  alt="Team logo preview"
-                />
-              )}
-            </label>
-
-            <label className="form-field">
               <span className="form-field__label">Your Name</span>
               <input
                 type="text"
@@ -449,13 +450,9 @@ export function LandingPage() {
                         onClick={() => setSelectedTeamId(t.teamId)}
                         disabled={disabled}
                       >
-                        {t.logoUrl ? (
-                          <img src={t.logoUrl} alt="" className="team-select__logo" />
-                        ) : (
-                          <div className="team-select__logo team-select__logo--placeholder" aria-hidden>
-                            🥐
-                          </div>
-                        )}
+                        <div className="team-select__logo team-select__logo--placeholder" aria-hidden>
+                          🥐
+                        </div>
                         <span className="team-select__name">{t.name}</span>
                         <span className="team-select__count">
                           {t.memberCount} {t.memberCount === 1 ? "member" : "members"}

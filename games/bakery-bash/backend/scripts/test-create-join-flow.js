@@ -90,17 +90,11 @@ async function main() {
     joinCode: JOIN_CODE,
     teamName: 'Sourdough Squad',
     displayName: 'Alice',
-    logoUrl: 'https://firebasestorage.googleapis.com/alice-logo.png',
   });
   assert.strictEqual(createA.data.gameId, GAME_ID, 'createTeam: gameId');
   assert.strictEqual(createA.data.playerId, CREATOR_A_UID, 'createTeam: playerId');
   assert.strictEqual(createA.data.teamId, 'sourdough-squad', 'createTeam: slug teamId');
   assert.strictEqual(createA.data.teamName, 'Sourdough Squad', 'createTeam: echoes name');
-  assert.strictEqual(
-    createA.data.logoUrl,
-    'https://firebasestorage.googleapis.com/alice-logo.png',
-    'createTeam: echoes logoUrl'
-  );
 
   const teamASnap = await gameRef.collection('teams').doc('sourdough-squad').get();
   assert.ok(teamASnap.exists, 'team doc created');
@@ -161,10 +155,6 @@ async function main() {
   assert.ok(sourdough && croissant, 'both teams present');
   assert.strictEqual(sourdough.name, 'Sourdough Squad');
   assert.strictEqual(sourdough.memberCount, 1);
-  assert.strictEqual(
-    sourdough.logoUrl,
-    'https://firebasestorage.googleapis.com/alice-logo.png'
-  );
   assert.strictEqual(croissant.memberCount, 1);
 
   // ------- 4. joinGame with explicit teamId -------

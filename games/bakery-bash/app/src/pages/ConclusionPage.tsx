@@ -23,7 +23,8 @@ import { formatMoney } from "../lib/cost";
  *
  * The page renders:
  *   - Winner banner (from final `leaderboard/latest`)
- *   - Your final budget + net revenue
+ *   - Your final budget + profit (labeled "Profit" post-A24-I09; field
+ *     remains `revenueNet` / `cumulativeRevenue`)
  *   - Per-round expansion (click to expand each round's KPIs)
  *   - Download CSV button (full history)
  */
@@ -323,7 +324,7 @@ export function ConclusionPage() {
             </div>
             <div className="conclusion-page__winner-revenue">
               {formatMoney(winner.cumulativeRevenue ?? winner.revenueNet)}{" "}
-              in cumulative net revenue
+              in cumulative profit
             </div>
           </div>
         </section>
@@ -381,7 +382,7 @@ export function ConclusionPage() {
               value={String(classHighlights.bakeryCount)}
             />
             <StatCard
-              label="Class net revenue"
+              label="Class profit"
               value={formatMoney(classHighlights.totalClassRevenue)}
             />
             {classHighlights.totalCustomers > 0 && (
@@ -407,7 +408,7 @@ export function ConclusionPage() {
         <h2 className="conclusion-page__section-title">Your bakery</h2>
         <div className="conclusion-page__yours-grid">
           <StatCard
-            label="Final net revenue"
+            label="Final profit"
             value={formatMoney(finalRevenue)}
           />
           <StatCard
@@ -432,7 +433,7 @@ export function ConclusionPage() {
               <tr>
                 <th>#</th>
                 <th>Bakery</th>
-                <th>Net revenue</th>
+                <th>Profit</th>
                 <th>Budget remaining</th>
               </tr>
             </thead>

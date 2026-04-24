@@ -62,7 +62,7 @@ const ROLE_DESCRIPTIONS: Record<PlayerRole, string> = {
   operations:
     "Submits the Decide screen — menu, quantities, sous chef hires, maintenance.",
   advertising:
-    "The Bidder places all auction bids — advertisements and chef hiring.",
+    "The Bidder places ad-auction bids — TV, billboard, radio, newspaper.",
   finance:
     "Submits the Chef Bid screen + roster decisions — specialty chef hires & layoffs.",
   solo: "All three buttons enabled — used automatically when you're playing alone.",
@@ -344,7 +344,11 @@ export function TeamPage() {
   }
 
   const waitingForAssignment = !teamId || !teamReady || !team;
-  const isSolo = !!team && Object.keys(team.roleAssignments).length <= 1;
+  const memberCount = team ? Object.keys(team.roleAssignments).length : 0;
+  // "Solo" for UX purposes is "fewer than 3 members on the team" — while
+  // both 1- and 2-member teams carry the `solo` backend role, the role
+  // cards should only unlock once the cascade (2→3) flips specialists.
+  const isSolo = !!team && memberCount <= 2;
 
   return (
     <PageShell className="team-page">
@@ -441,19 +445,30 @@ export function TeamPage() {
             <section className="team-page__roles">
               <h2 className="team-page__roles-title">Pick Your Role</h2>
               <p className="team-page__roles-intro">
-                Every teammate sees every screen. For each decision,
-                only <em>the teammate who picked that role</em> can
-                press <em>Submit</em> — so pick together, and each
-                role can only be held by one person. If a role is
-                left unfilled, any teammate can submit for it.
+                Every teammate sees every screen. See the{" "}
+                <a href="/how-to-play">How to Play</a> page for what
+                each role does.
               </p>
 
-              {isSolo && (
-                <p className="team-page__roles-solo">
-                  You're the only one on this team right now — every
-                  submit button is enabled for you. Role picks here are
-                  optional until teammates join; whatever's left
-                  unfilled, you can still do.
+              {memberCount === 1 && (
+                <p className="team-page__roles-status team-page__roles-status--solo">
+                  You're the first on your team — you have all three
+                  roles until teammates join. Grab the role you want;
+                  you'll keep it once teammates arrive.
+                </p>
+              )}
+              {memberCount === 2 && (
+                <p className="team-page__roles-status team-page__roles-status--pair">
+                  Both of you share all three roles right now. When a
+                  third teammate joins, the roles will split
+                  automatically so each of you has one.
+                </p>
+              )}
+              {memberCount >= 3 && (
+                <p className="team-page__roles-status team-page__roles-status--full">
+                  Your team is full. Each teammate now owns one role —
+                  the teammate who picked a role is the only one who
+                  can press Submit on that screen.
                 </p>
               )}
 

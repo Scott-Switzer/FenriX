@@ -415,9 +415,18 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
     const chefsWon = getChefsWon(p);
 
     // DEC-03/DEC-04: flat ad-winner bonus added to gross revenue.
-    const adWinnerBonus = adWins.reduce((sum, adType) => {
-      return sum + ((config && config.adBonuses && config.adBonuses[adType]) || 0);
-    }, 0);
+    // A24-I10: only award the bonus if the team actually stocked product
+    // this round — an ad that points customers at a dark storefront
+    // earns nothing. Prevents the "win TV, stock nothing, collect $50k"
+    // exploit where a team guaranteed a $15k-plus profit with zero risk.
+    const stockedAnything = Object.values(pp.perProduct).some(
+      (stats) => stats && Number(stats.qtyStocked) > 0,
+    );
+    const adWinnerBonus = stockedAnything
+      ? adWins.reduce((sum, adType) => {
+          return sum + ((config && config.adBonuses && config.adBonuses[adType]) || 0);
+        }, 0)
+      : 0;
 
     let revenueGross = computeGrossRevenue({
       sousChefCount,

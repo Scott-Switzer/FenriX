@@ -145,7 +145,6 @@ async function seedBaseGame(db, professorUid) {
   // for realism and to mirror production state.
   await db.doc(`games/${GAME_ID}/teams/${TEAM_MULTI}`).set({
     name: "Multi Bakery",
-    logoUrl: null,
     memberCount: 3,
     roleAssignments: {
       [PLAYER_M_FIN]: "finance",

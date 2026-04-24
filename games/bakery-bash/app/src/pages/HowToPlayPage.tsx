@@ -2,46 +2,83 @@ import { useNavigate } from "react-router-dom";
 import { PageShell } from "../components/ui/PageShell";
 
 /**
- * How-to-play content (refreshed Apr 22).
+ * How-to-play content (refreshed Apr 24, A24-I02).
  *
- * Round order now reflects the live flow: **Ad Auction → Chef Auction →
- * Decisions → Simulation → Results**. Copy tweaks per the Apr 22 bugfix
- * spec:
- *   - Ad Auction card is owned by the "Bidder" (not Advertising) and
- *     explicitly calls out that each ad type yields different foot
- *     traffic.
- *   - Chef Auction card clarifies specialty chefs don't have station
- *     assignments; only sous chefs do. Tier multipliers are shown in a
- *     table that also ties into the purchasable chef-data CSV.
- *   - New Simulation Round card.
- *   - Results card calls out the per-day CSV + curveball events.
- *   - New "CSV Inbox" card explains the header button.
+ * Page layout, top to bottom:
+ *   1. Hero intro box — one-line headline + "what this game is" paragraph.
+ *   2. Role boxes — 4 cards in canonical role colors (sage / caramel /
+ *      berry / honey) explaining what each teammate owns.
+ *   3. Stages — 7 cards matching the shipped phase order:
+ *      Email → Ad Auction → Chef Auction → Roster → Decide →
+ *      Simulate → Results (+ standing CSV Inbox reminder).
+ *   4. Chef Tiers table — kept unchanged, ties into purchasable chef CSV.
  */
+const HOW_TO_PLAY_ROLES = [
+  {
+    key: "operations",
+    label: "Operations",
+    tagline: "Runs the kitchen.",
+    body:
+      "Submits the round's Decide screen: product quantities, menu, sous-chef hires, maintenance. Also hits Continue on the kitchen roster. The last call on what your bakery will actually produce.",
+  },
+  {
+    key: "advertising",
+    label: "Advertising",
+    tagline: "Wins the crowd.",
+    body:
+      "Submits ad bids in the Ad Auction. Wins advertising slots that pay a flat bonus and pull extra foot traffic to the bakery.",
+  },
+  {
+    key: "finance",
+    label: "Finance",
+    tagline: "Staffs the team.",
+    body:
+      "Submits chef bids in the Chef Auction. Keeps the team's balance sheet alive by picking the right specialty chefs at the right price.",
+  },
+  {
+    key: "solo",
+    label: "Solo",
+    tagline: "Default with <3 people.",
+    body:
+      "When your team has 1 or 2 people, everyone runs as Solo — any teammate can submit anything. Once a third teammate joins, roles auto-assign to Operations / Advertising / Finance.",
+  },
+] as const;
+
 const HOW_TO_PLAY_STAGES = [
+  {
+    label: "Round Briefing",
+    tagline: "Read the morning email.",
+    body: "Every round opens on a brief that tells you which round you're in and how much time remains before the next phase. You don't do anything here — use the time to talk strategy with your team before bids start flying.",
+  },
   {
     label: "Ad Auction",
     tagline: "The loudest bakery wins the crowd.",
-    body: "Your Bidder Teammate submits this. Teams bid competitively for four advertising slots: TV, Radio, Newspaper, and Billboard. The highest bidder holds that ad for the entire round — ownership resets every auction. Keep in mind, each advertisement type yields a different level of foot traffic, something your team will need to figure out from your predictive model.",
+    body: "Your Advertising teammate submits ad bids. Teams compete for four slots — TV, Radio, Newspaper, Billboard — and the highest bidder locks that slot for the whole round. Each ad type gives a different foot-traffic bump; figure out which is worth what from your data model.",
   },
   {
     label: "Chef Auction",
     tagline: "Great chefs don't come cheap.",
-    body: "Each round a fresh chef pool goes up for auction. Specialty chefs are not assigned to a station — their production contributes to the overall output of your bakery. Only sous chefs are assigned to specific stations. Specialty chefs specialize in different foods; you can discover which nationality is strong at which products by purchasing the Tier 1 specialty-chef CSV.",
+    body: "Your Finance teammate submits chef bids. A fresh pool of specialty chefs goes up for auction each round. Specialty chefs don't have station assignments — they boost the whole bakery's output. Sous chefs still live on stations. Nationality + tier hints at who's great at what.",
   },
   {
-    label: "Decisions",
+    label: "Kitchen Roster",
+    tagline: "Three specialty chefs max.",
+    body: "After the chef auction, your team reviews who's in your kitchen. You can keep up to three specialty chefs — if you picked up a fourth, your Operations teammate lays one off before continuing.",
+  },
+  {
+    label: "Decide",
     tagline: "Your bakery, your call.",
     body: "Assign sous chefs to stations, set your menu quantities, price each product, and schedule maintenance. Every hire and every unit ordered costs money — spend wisely, because it all comes out of your revenue.",
   },
   {
-    label: "Simulation Round",
+    label: "Simulate",
     tagline: "Lights on — customers incoming.",
     body: "See your bakery come to life! Spectate a simulation of your bakery over the course of a month. Watch the menu sell down in real time; sold-out products get stamped so you can see what ran short.",
   },
   {
     label: "Results",
     tagline: "The receipts don't lie.",
-    body: "After every round, see your revenue, costs, customer count, maintenance state, and leaderboard position. This is also where you can download a CSV containing the round's daily data — one row per day of the simulation. Curveball events like burglaries and food safety inspections will show up here as cards so you can see exactly when and how they hit.",
+    body: "After every round, see your profit, customer count, satisfaction, maintenance state, and leaderboard position. Download a CSV of the round's daily data — one row per day. Curveball events like burglaries and inspections show up as cards so you can see exactly when and how they hit.",
   },
   {
     label: "CSV Inbox",
@@ -81,15 +118,49 @@ export function HowToPlayPage() {
         </button>
         <h1 className="how-to-play__title">How to Play</h1>
       </div>
-      <div className="how-to-play__stages">
-        {HOW_TO_PLAY_STAGES.map((stage) => (
-          <div key={stage.label} className="how-to-play__card">
-            <span className="how-to-play__card-label">{stage.label}</span>
-            <h2 className="how-to-play__card-tagline">{stage.tagline}</h2>
-            <p className="how-to-play__card-body">{stage.body}</p>
-          </div>
-        ))}
-      </div>
+
+      <section className="how-to-play__intro" aria-label="Game overview">
+        <div className="how-to-play__intro-headline">
+          Run a bakery. Read the market. Beat the class.
+        </div>
+        <p className="how-to-play__intro-body">
+          You run a bakery. Each round, you make data-driven decisions about
+          what to bake, how to price it, what to advertise, and which chefs
+          to hire. You're competing against the other bakeries in the class —
+          whoever reads the market best and out-strategizes the room wins.
+          The game is 5 rounds; your cumulative net profit decides the
+          champion.
+        </p>
+      </section>
+
+      <section className="how-to-play__roles" aria-label="Team roles">
+        <h2 className="how-to-play__section-title">Roles on your team</h2>
+        <div className="how-to-play__role-grid">
+          {HOW_TO_PLAY_ROLES.map((role) => (
+            <div
+              key={role.key}
+              className={`how-to-play__role-card how-to-play__role-card--${role.key}`}
+            >
+              <span className="how-to-play__role-label">{role.label}</span>
+              <h3 className="how-to-play__role-tagline">{role.tagline}</h3>
+              <p className="how-to-play__role-body">{role.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="how-to-play__stages-section" aria-label="Round stages">
+        <h2 className="how-to-play__section-title">Round flow</h2>
+        <div className="how-to-play__stages">
+          {HOW_TO_PLAY_STAGES.map((stage) => (
+            <div key={stage.label} className="how-to-play__card">
+              <span className="how-to-play__card-label">{stage.label}</span>
+              <h2 className="how-to-play__card-tagline">{stage.tagline}</h2>
+              <p className="how-to-play__card-body">{stage.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section className="how-to-play__chef-tiers">
         <h2 className="how-to-play__chef-tiers-title">Chef Tiers</h2>
