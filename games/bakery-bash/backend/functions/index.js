@@ -2500,9 +2500,21 @@ exports.submitPrices = onCall(CALLABLE_OPTS, async (request) => {
       pricesSubmittedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
 
+    // Propagate optional menu choices from Finance so Operations sees newly
+    // unlocked products without needing to reload. Base-menu items are always
+    // true and need no propagation; we only sync optional products.
+    const OPTIONAL = ['sandwich', 'coffee', 'matcha'];
+    const rawMenu = objectOrDefault(data.menu, {});
+    const menuUpdate = {};
+    for (const p of OPTIONAL) {
+      menuUpdate[`pendingDecision.menu.${p}`] = rawMenu[p] === true;
+    }
+
     for (const teamPlayerDoc of teamPlayerDocs) {
       transaction.update(teamPlayerDoc.ref, {
         'pendingDecision.productPrices': validated,
+        'pendingDecision.pricesSubmitted': true,
+        ...menuUpdate,
         updatedAt: FieldValue.serverTimestamp(),
       });
     }
@@ -2845,11 +2857,33 @@ async function setPausedFlag(request, paused) {
       throw new HttpsError('permission-denied', 'Only the professor can pause/resume.');
     }
 
-    transaction.update(gameRef, {
+    const update = {
       paused,
-      pausedAt: paused ? FieldValue.serverTimestamp() : null,
       updatedAt: FieldValue.serverTimestamp(),
-    });
+    };
+
+    if (paused) {
+      // Snapshot current deadline so we can restore remaining time on resume.
+      const currentEndsAt = snap.get('phaseEndsAt');
+      update.pausedAt = FieldValue.serverTimestamp();
+      update.pausedPhaseEndsAt = currentEndsAt || null;
+      // Null out the deadline so the frontend timer stops.
+      update.phaseEndsAt = null;
+    } else {
+      // Restore remaining time: new deadline = now + (pausedPhaseEndsAt - pausedAt).
+      const pausedAt = snap.get('pausedAt');
+      const pausedEndsAt = snap.get('pausedPhaseEndsAt');
+      if (pausedAt && pausedEndsAt) {
+        const pausedAtMs = pausedAt.toMillis();
+        const endsAtMs = pausedEndsAt.toMillis();
+        const remainingMs = Math.max(0, endsAtMs - pausedAtMs);
+        update.phaseEndsAt = Timestamp.fromMillis(Date.now() + remainingMs);
+      }
+      update.pausedAt = null;
+      update.pausedPhaseEndsAt = null;
+    }
+
+    transaction.update(gameRef, update);
   });
 
   return { gameId, paused };

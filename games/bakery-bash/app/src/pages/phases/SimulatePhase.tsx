@@ -100,7 +100,7 @@ export function SimulatePhase() {
           {reducedMotion ? "Simulating round…" : `Day ${day} / ${TOTAL_DAYS}`}
         </div>
         <div className="simulate-phase__revenue-counter">
-          Revenue: <strong>${displayRevenue.toLocaleString()}</strong>
+          Revenue: <strong>{targetRevenue > 0 ? `$${displayRevenue.toLocaleString()}` : "Calculating…"}</strong>
         </div>
       </div>
 

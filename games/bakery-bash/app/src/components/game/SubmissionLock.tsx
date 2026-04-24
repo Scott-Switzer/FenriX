@@ -50,6 +50,7 @@ export function SubmissionLock({
   const { gameId, currentRound, phaseEndsAtMs, players } = useGame();
 
   const [submittedUids, setSubmittedUids] = useState<string[]>([]);
+  const [canReadCount, setCanReadCount] = useState(true);
   const [now, setNow] = useState(() => Date.now());
 
   // Tick once a second for the countdown.
@@ -87,14 +88,16 @@ export function SubmissionLock({
       },
       (err) => {
         // Most players can't read /submissions (BE-22 scoped to professors);
-        // stay silent and just hide the counter if we get permission-denied.
+        // hide the count rather than showing a misleading 0.
         console.debug("SubmissionLock snapshot error:", err);
         setSubmittedUids([]);
+        setCanReadCount(false);
       },
     );
     return () => {
       unsubscribe();
       setSubmittedUids([]);
+      setCanReadCount(true);
     };
   }, [gameId, currentRound, phase]);
 
@@ -124,7 +127,7 @@ export function SubmissionLock({
       <div className="submission-lock__counts">
         <span className="submission-lock__counts-label">Submitted:</span>{" "}
         <span className="submission-lock__counts-value">
-          {submittedUids.length}
+          {canReadCount ? submittedUids.length : "—"}
           {expected !== null && ` / ${expected}`}
         </span>
       </div>

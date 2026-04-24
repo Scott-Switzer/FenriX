@@ -583,7 +583,10 @@ export function ProfessorPage() {
   const isRunning = phase !== null && !inLobby && !inGameOver;
   const busy = pendingAction !== null;
   const isOwner = user !== null && professorUid !== null && user.uid === professorUid;
-  const ownerGate = gameId !== null && user !== null && !isOwner;
+  // Only gate when we positively know the user is NOT the professor.
+  // While professorUid is still loading (null), let them try — the backend
+  // will reject with permission-denied if they aren't actually the professor.
+  const ownerGate = gameId !== null && user !== null && professorUid !== null && !isOwner;
   const controlsDisabled = ownerGate || busy;
 
   return (

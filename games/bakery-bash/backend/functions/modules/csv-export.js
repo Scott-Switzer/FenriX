@@ -102,6 +102,14 @@ const CSV_COLUMNS = [
   { key: 'sellout_sandwich',  header: 'sellout_sandwich',  type: 'bool' },
   { key: 'sellout_coffee',    header: 'sellout_coffee',    type: 'bool' },
   { key: 'sellout_matcha',    header: 'sellout_matcha',    type: 'bool' },
+
+  // Staff and maintenance
+  { key: 'avg_cleanliness_pct',     header: 'avg_cleanliness_pct',     type: 'pct'   },
+  { key: 'avg_machine_health_pct',  header: 'avg_machine_health_pct',  type: 'pct'   },
+  { key: 'bakery_sous_chef_count',  header: 'bakery_sous_chef_count',  type: 'int'   },
+  { key: 'deli_sous_chef_count',    header: 'deli_sous_chef_count',    type: 'int'   },
+  { key: 'barista_sous_chef_count', header: 'barista_sous_chef_count', type: 'int'   },
+  { key: 'maintenance_guy_count',   header: 'maintenance_guy_count',   type: 'int'   },
 ];
 
 /**

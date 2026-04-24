@@ -324,6 +324,10 @@ export function GamePage() {
             type: "SET_DECISION_SUBMITTED",
             payload: incomingPending.submitted === true,
           });
+          dispatch({
+            type: "SET_PRICES_SUBMITTED",
+            payload: incomingPending.pricesSubmitted === true,
+          });
         }
 
         // lastRoundResult → dispatch ADD_RESULT so ResultsPhase + the CSV
@@ -444,17 +448,17 @@ export function GamePage() {
     return unsubscribe;
   }, [gameId]);
 
-  // FE-11 — read last round's ad winners for the banner (only shown on
-  // decide after round 1). Parses `auctionResults.ads.{adType}` out of
-  // the aggregate `rounds/round_{N-1}` doc (firestore-schema.js). The
-  // `winnerId` is resolved against the roster-derived name map above.
+  // FE-11 — read this round's ad winners for the banner on the decide screen.
+  // Ad bidding now happens BEFORE decisions in the same round, so we read
+  // `rounds/round_{N}.auctionResults.ads` (not the previous round's doc).
+  // `hideWhenEmpty` on the banner hides it gracefully on round 1 before
+  // any bids have been placed.
   useEffect(() => {
-    if (!gameId || !currentRound || currentRound <= 1) {
+    if (!gameId || !currentRound) {
       setAdWinners(null);
       return;
     }
-    const prevRound = currentRound - 1;
-    const prevRoundRef = doc(db, "games", gameId, "rounds", `round_${prevRound}`);
+    const prevRoundRef = doc(db, "games", gameId, "rounds", `round_${currentRound}`);
     const unsubscribe = onSnapshot(
       prevRoundRef,
       (snap) => {
@@ -488,7 +492,7 @@ export function GamePage() {
         setAdWinners(Object.keys(out).length > 0 ? out : null);
       },
       (err) => {
-        console.error("game prev-round listener error:", { gameId, prevRound, err });
+        console.error("game current-round ad-winner listener error:", { gameId, currentRound, err });
       },
     );
     return unsubscribe;
@@ -636,10 +640,10 @@ export function GamePage() {
     setSubmittingPrices(true);
     try {
       const callable = httpsCallable<
-        { gameId: string; productPrices: Record<ProductKey, number> },
+        { gameId: string; productPrices: Record<ProductKey, number>; menu: Record<ProductKey, boolean> },
         { submitted: boolean }
       >(functions, "submitPrices");
-      await callable({ gameId, productPrices: pendingDecision.productPrices });
+      await callable({ gameId, productPrices: pendingDecision.productPrices, menu: pendingDecision.menu });
       dispatch({ type: "SET_PRICES_SUBMITTED", payload: true });
     } catch (err) {
       setSubmitError(
@@ -714,26 +718,33 @@ export function GamePage() {
   // any teammate can submit.
   const canSubmit = roleOwnsDecide(role, teamRoleAssignments);
   const ownerLabel = ownerOfDecide();
+  // Gate operations on finance price submission. Only applies when someone
+  // on the team actually holds the finance role (solo players self-submit).
+  const teamHasFinance = Object.values(teamRoleAssignments).includes("finance");
+  const waitingForPrices = canSubmit && role !== "solo" && teamHasFinance && !pricesSubmitted;
   const submitDisabled =
-    submitting || decisionSubmitted || !gameId || !canSubmit;
+    submitting || decisionSubmitted || !gameId || !canSubmit || waitingForPrices;
   const submitLabel = !canSubmit
     ? `Your ${ownerLabel} teammate submits`
-    : submitting
-      ? "Submitting…"
-      : decisionSubmitted
-        ? "✓ Submitted"
-        : "Submit Decisions";
+    : waitingForPrices
+      ? "Waiting for Finance prices…"
+      : submitting
+        ? "Submitting…"
+        : decisionSubmitted
+          ? "✓ Submitted"
+          : "Submit Decisions";
 
   return (
     <PageShell className="game-page game-page--wide">
       <RoundHeader />
 
-      {/* FE-11 — previous-round ad winners banner (round 2+). */}
-      {currentRound && currentRound > 1 && (
+      {/* FE-11 — this round's ad winners banner (from bid_ad which now runs
+          before decide). Hidden automatically when no bids landed yet. */}
+      {currentRound && (
         <AdWinnerBanner
-          round={currentRound - 1}
+          round={currentRound}
           winners={adWinners}
-          hideWhenEmpty={false}
+          hideWhenEmpty={true}
         />
       )}
 
@@ -789,7 +800,9 @@ export function GamePage() {
         hint={
           !canSubmit
             ? `Your ${ownerLabel} teammate submits this decision.`
-            : undefined
+            : waitingForPrices
+              ? "Waiting for your Finance teammate to submit prices first."
+              : undefined
         }
         action={
           <>

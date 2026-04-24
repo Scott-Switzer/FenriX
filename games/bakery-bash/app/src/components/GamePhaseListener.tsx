@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { doc, onSnapshot, type DocumentData } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 import { useGame, useGameDispatch } from "../contexts/GameContext";
 import { useGameListener } from "../hooks/useGameListener";
-import { db } from "../lib/firebase";
+import { db, functions } from "../lib/firebase";
 import { parseGamePhase } from "../types/game";
 
 const GRACE_SECONDS = 5;
@@ -29,6 +30,16 @@ export function GamePhaseListener() {
   const dispatch = useGameDispatch();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Refs so the freeze-end callback always reads the latest values without
+  // being listed as effect dependencies (avoids re-arming the timer on every
+  // phase or playerId change).
+  const playerIdRef = useRef(playerId);
+  const professorUidRef = useRef<string | null>(null);
+  const gameIdRef = useRef(gameId);
+  const phaseNameRef = useRef<string | null>(null);
+  useEffect(() => { playerIdRef.current = playerId; });
+  useEffect(() => { gameIdRef.current = gameId; });
 
   // FE-5 — centralize the app-wide Firestore listeners. Mounting this hook
   // inside `GamePhaseListener` (which itself renders at the root of the
@@ -84,7 +95,19 @@ export function GamePhaseListener() {
           : null;
       const ends = data.phaseEndsAt;
 
-      if (typeof phase === "string") dispatch({ type: "SET_PHASE", payload: phase });
+      if (typeof phase === "string") {
+        dispatch({ type: "SET_PHASE", payload: phase });
+        phaseNameRef.current = phase;
+      }
+      // Track professor uid so the freeze-end handler can fire the auto-advance
+      // when this browser belongs to the professor (mirrors ProfessorPage logic
+      // but runs globally so the professor doesn't have to stay on /professor).
+      const profUid = typeof data.professorUid === "string"
+        ? data.professorUid
+        : typeof data.professorId === "string"
+          ? data.professorId
+          : null;
+      professorUidRef.current = profUid;
       if (round !== null) dispatch({ type: "SET_ROUND", payload: round });
       if (ends && typeof ends.toMillis === "function") {
         dispatch({ type: "SET_PHASE_ENDS_AT", payload: ends.toMillis() });
@@ -179,6 +202,20 @@ export function GamePhaseListener() {
           if (tickRef.current) { clearInterval(tickRef.current); tickRef.current = null; }
           setStage(null);
           setCountdown(0);
+          // If this browser is the professor's, fire the auto-advance here so
+          // the phase advances even when the professor isn't on /professor.
+          // The backend CRIT-02 guard (expectedFromPhase) prevents doubles when
+          // ProfessorPage's own timer also fires.
+          const gid = gameIdRef.current;
+          const pid = playerIdRef.current;
+          const profUid = professorUidRef.current;
+          const expectedFromPhase = phaseNameRef.current ?? undefined;
+          if (gid && pid && profUid && pid === profUid) {
+            void httpsCallable(functions, "advanceGamePhase")({
+              gameId: gid,
+              expectedFromPhase,
+            }).catch(() => { /* CRIT-02 rejection is expected and safe */ });
+          }
         }, FREEZE_SECONDS * 1000);
       }, GRACE_SECONDS * 1000);
     }, Math.max(0, msUntilExpiry));
