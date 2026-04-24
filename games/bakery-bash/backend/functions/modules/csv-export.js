@@ -287,6 +287,25 @@ function buildCsvRow(roundResult) {
     row[`sellout_${p}`]          = onMenu ? isSellout : null;
   }
 
+  // --- Staff + maintenance columns ---
+  //
+  // POST-01 follow-up: populate per-station sous-chef counts + maintenance
+  // guy count from `decision.staffCounts`. Previously these columns were
+  // blank because nothing in the write path forwarded `staffCounts` into the
+  // csvRow — the validator strips it and index.js never reattached it.
+  //
+  // `avg_cleanliness_pct` / `avg_machine_health_pct` remain blank by design:
+  // the simulation doesn't yet track those bars (feature not implemented),
+  // so filling in a fake 100 here would be misleading.
+  const staffCounts = (decision && decision.staffCounts) || {};
+  const intOrNull = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
+  row.avg_cleanliness_pct     = firstDefined(r.avg_cleanliness_pct);
+  row.avg_machine_health_pct  = firstDefined(r.avg_machine_health_pct);
+  row.bakery_sous_chef_count  = intOrNull(staffCounts.bakerySousChefs);
+  row.deli_sous_chef_count    = intOrNull(staffCounts.deliSousChefs);
+  row.barista_sous_chef_count = intOrNull(staffCounts.baristaSousChefs);
+  row.maintenance_guy_count   = intOrNull(staffCounts.maintenanceGuys);
+
   return row;
 }
 

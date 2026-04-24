@@ -349,9 +349,28 @@ async function main() {
     return uid === operationsUid;
   });
   const opsSubmit = httpsCallable(operationsClient.functions, "submitDecision");
+
+  // POST-01 gate: when a Finance teammate exists, Operations cannot submit
+  // until Finance has posted prices for this round. Reproduces and locks in
+  // the regression where Operations submits silently went through (or worse,
+  // surfaced as a generic "internal" error in earlier builds).
+  await expectError(
+    () => opsSubmit(validDecision(2)),
+    "failed-precondition",
+    "operations blocked before finance submits prices",
+  );
+
+  // Now Finance posts prices for round 2 — afterwards Operations may submit.
+  const financeSubmitPrices = httpsCallable(financeClient.functions, "submitPrices");
+  await financeSubmitPrices({
+    gameId: GAME_ID,
+    productPrices: { croissant: 5, cookie: 3, bagel: 4, coffee: 4 },
+    menu: { croissant: true, cookie: true, bagel: true, sandwich: false, coffee: true, matcha: false },
+  });
+
   const opsResult = await opsSubmit(validDecision(2));
   assert(opsResult.data.submitted === true, "operations teammate submits decision");
-  console.log("  ✓ operations submits; finance blocked (strict gate preserved)");
+  console.log("  ✓ operations submits after finance posts prices; finance still blocked from submitDecision");
 
   // =========================================================================
   // BE-I13 scenario — clear role round-trip via setTeamRole

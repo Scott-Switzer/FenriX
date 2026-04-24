@@ -728,6 +728,12 @@ async function resetPendingPlayerStateForRound(gameRef) {
       'pendingDecision.quantities': {},
       'pendingDecision.sousChefCount': 0,
       'pendingDecision.sousChefAssignments': {},
+      // POST-01 follow-up: clear the per-round Finance flag so the
+      // "Operations waits for Finance prices" gate re-arms each round.
+      // Without this, `pendingDecision.pricesSubmitted` carries over from
+      // the previous round and Operations can submit before Finance posts
+      // prices for the new round.
+      'pendingDecision.pricesSubmitted': false,
       'pendingBids.ad': null,
       'pendingBids.chef': null,
       pendingRosterAction: false,
@@ -2017,6 +2023,21 @@ async function runSimulationAndPersist(gameRef, round, config) {
           : numberOrDefault(decision.sousChefCount, canonicalData.sousChefCount || 0),
         sousChefAssignments: objectOrDefault(decision.sousChefAssignments, {}),
         productPrices: Object.keys(financePrices).length > 0 ? financePrices : opsPrices,
+        // POST-01 follow-up: forward station-based counts so the CSV export
+        // can fill in the bakery/deli/barista sous-chef columns + the
+        // maintenance-guy column. Falls back to the canonical player's
+        // `pendingDecision.staffCounts` when the decision doc pre-dates
+        // this change.
+        staffCounts: objectOrDefault(
+          decision.staffCounts,
+          objectOrDefault(
+            (canonicalData.pendingDecision && canonicalData.pendingDecision.staffCounts) || {},
+            {},
+          ),
+        ),
+        maintenanceTasks: Array.isArray(decision.maintenanceTasks)
+          ? decision.maintenanceTasks
+          : [],
       },
       specialtyChefs: Array.isArray(canonicalData.specialtyChefs) ? canonicalData.specialtyChefs : [],
       budgetCurrent: simInputBudget,
@@ -2112,6 +2133,23 @@ async function runSimulationAndPersist(gameRef, round, config) {
           chefBidPaid: r.chefBidPaid || 0,
           burglary: r.burglary || false,
           burglaryAmount: r.burglaryAmount || 0,
+          // POST-01 follow-up: surface submitted staff counts so the
+          // frontend CSV download (RoundHeader.tsx / serializeRow) fills
+          // in the per-station sous-chef + maintenance-guy columns
+          // instead of leaving them blank.
+          staffCounts:
+            (r.csvRow && typeof r.csvRow === 'object'
+              ? {
+                  bakerySousChefs: r.csvRow.bakery_sous_chef_count || 0,
+                  deliSousChefs: r.csvRow.deli_sous_chef_count || 0,
+                  baristaSousChefs: r.csvRow.barista_sous_chef_count || 0,
+                  maintenanceGuys: r.csvRow.maintenance_guy_count || 0,
+                }
+              : null)
+            || objectOrDefault(
+              (memberData.pendingDecision && memberData.pendingDecision.staffCounts) || {},
+              {},
+            ),
         },
         updatedAt: FieldValue.serverTimestamp(),
       };
@@ -2320,96 +2358,151 @@ exports.submitDecision = onCall(CALLABLE_OPTS, async (request) => {
   let _submitDecision_role = null;
   let _submitDecision_displayName = '';
 
-  await db.runTransaction(async (transaction) => {
-    const [gSnap, pSnap, cfgSnap] = await Promise.all([
-      transaction.get(gameRef),
-      transaction.get(playerRef),
-      transaction.get(gameRef.collection('config').doc('params')),
-    ]);
+  try {
+    await db.runTransaction(async (transaction) => {
+      const [gSnap, pSnap, cfgSnap] = await Promise.all([
+        transaction.get(gameRef),
+        transaction.get(playerRef),
+        transaction.get(gameRef.collection('config').doc('params')),
+      ]);
 
-    if (!gSnap.exists) throw new HttpsError('not-found', 'Game not found.');
-    if (!pSnap.exists) throw new HttpsError('failed-precondition', 'Join the game before submitting.');
+      if (!gSnap.exists) throw new HttpsError('not-found', 'Game not found.');
+      if (!pSnap.exists) throw new HttpsError('failed-precondition', 'Join the game before submitting.');
 
-    // BE-21 / FE-I15: operations role (or solo) required to submit
-    // decisions — or any teammate when nobody on the team holds
-    // operations (2-player team, cleared role, etc.).
-    await assertRoleAllowedWithTeam(transaction, gameRef, pSnap, ['operations']);
-    _submitDecision_role = pSnap.get('role') || null;
-    _submitDecision_displayName = pSnap.get('displayName') || '';
+      // BE-21 / FE-I15: operations role (or solo) required to submit
+      // decisions — or any teammate when nobody on the team holds
+      // operations (2-player team, cleared role, etc.).
+      await assertRoleAllowedWithTeam(transaction, gameRef, pSnap, ['operations']);
+      _submitDecision_role = pSnap.get('role') || null;
+      _submitDecision_displayName = pSnap.get('displayName') || '';
 
-    const game = gSnap.data();
-    if (!canSubmitDecision(game.phase)) {
-      throw new HttpsError('failed-precondition', 'Decisions can only be submitted during the decide phase.');
-    }
-
-    const currentRound = numberOrDefault(game.currentRound || game.round, 1);
-    const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
-    const teamId = getPlayerTeamId(pSnap.data());
-    const teamPlayerDocs = teamId
-      ? (await transaction.get(gameRef.collection('players').where('teamId', '==', teamId))).docs
-      : [pSnap];
-
-    // Validate using the decision-validation module (pure).
-    // ValidationError is a plain JS error — convert to HttpsError so the
-    // Firebase Functions runtime surfaces the right code to the client.
-    let validated;
-    try {
-      validated = decisionValidation.validateDecision(data, currentRound, config);
-    } catch (vErr) {
-      if (ValidationError && vErr instanceof ValidationError) {
-        throw new HttpsError(vErr.code || 'invalid-argument', vErr.message);
+      const game = gSnap.data();
+      if (!canSubmitDecision(game.phase)) {
+        throw new HttpsError('failed-precondition', 'Decisions can only be submitted during the decide phase.');
       }
-      throw vErr;
-    }
 
-    roundId = `round_${currentRound}`;
-    const decisionRef = playerRef.collection('decisions').doc(roundId);
-    const dSnap = await transaction.get(decisionRef);
-    // POST-01: `submitPrices` may have created this doc already with just
-    // `productPrices + pricesSubmittedAt`. We only block duplicate Operations
-    // submissions — presence of `submittedAt` is the Operations marker.
-    if (dSnap.exists && dSnap.get('submittedAt')) {
-      throw new HttpsError('already-exists', 'Decision already submitted for this round.');
-    }
+      const currentRound = numberOrDefault(game.currentRound || game.round, 1);
+      const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
+      const teamId = getPlayerTeamId(pSnap.data());
 
-    // Merge so an existing Finance-written `productPrices` survives.
-    transaction.set(decisionRef, {
-      round: currentRound,
-      submittedAt: FieldValue.serverTimestamp(),
-      ...validated,
-    }, { merge: true });
+      // POST-01 gate: when the team has a Finance teammate, Operations may
+      // not submit until Finance has posted prices for this round. Mirrors
+      // the frontend gate in GamePage.tsx so a stale frontend cache (or a
+      // direct callable invocation) can't bypass it. Skipped for solo
+      // players and teams with no Finance seat — those paths submit prices
+      // implicitly via `submitPrices`'s solo / fallback handling.
+      let teamRoleAssignmentsForGate = null;
+      if (teamId) {
+        const teamSnap = await transaction.get(gameRef.collection('teams').doc(teamId));
+        if (teamSnap.exists) {
+          teamRoleAssignmentsForGate = (teamSnap.data() || {}).roleAssignments || null;
+        }
+      }
+      const teamHasFinance = teamRoleAssignmentsForGate
+        && Object.values(teamRoleAssignmentsForGate).some((r) => r === 'finance');
+      if (
+        teamHasFinance
+        && _submitDecision_role !== 'solo'
+        && _submitDecision_role !== 'finance'
+      ) {
+        const pending = pSnap.get('pendingDecision') || {};
+        if (pending.pricesSubmitted !== true) {
+          throw new HttpsError(
+            'failed-precondition',
+            'Waiting for your Finance teammate to submit prices for this round.',
+          );
+        }
+      }
 
-    // BUG-1 fix: FieldValue.serverTimestamp() is invalid inside a nested
-    // map — Firestore only allows sentinels at top-level fields. Use
-    // Timestamp.now() for the nested submittedAt.
-    //
-    // POST-01: use dot-paths rather than replacing the whole `pendingDecision`
-    // so Finance's `pendingDecision.productPrices` (written by submitPrices)
-    // isn't clobbered when Operations submits after Finance.
-    for (const teamPlayerDoc of teamPlayerDocs) {
-      transaction.update(teamPlayerDoc.ref, {
-        'pendingDecision.submitted': true,
-        'pendingDecision.submittedAt': Timestamp.now(),
-        'pendingDecision.round': currentRound,
-        'pendingDecision.menu': validated.menu || {},
-        'pendingDecision.quantities': validated.quantities || {},
-        'pendingDecision.sousChefCount': validated.sousChefCount || 0,
-        'pendingDecision.sousChefAssignments': validated.sousChefAssignments || {},
-        'pendingDecision.staffCounts': objectOrDefault(data.staffCounts, {}),
-        'pendingDecision.maintenanceTasks': Array.isArray(data.maintenanceTasks)
+      const teamPlayerDocs = teamId
+        ? (await transaction.get(gameRef.collection('players').where('teamId', '==', teamId))).docs
+        : [pSnap];
+
+      // Validate using the decision-validation module (pure).
+      // ValidationError is a plain JS error — convert to HttpsError so the
+      // Firebase Functions runtime surfaces the right code to the client.
+      let validated;
+      try {
+        validated = decisionValidation.validateDecision(data, currentRound, config);
+      } catch (vErr) {
+        if (ValidationError && vErr instanceof ValidationError) {
+          throw new HttpsError(vErr.code || 'invalid-argument', vErr.message);
+        }
+        throw vErr;
+      }
+
+      roundId = `round_${currentRound}`;
+      const decisionRef = playerRef.collection('decisions').doc(roundId);
+      const dSnap = await transaction.get(decisionRef);
+      // POST-01: `submitPrices` may have created this doc already with just
+      // `productPrices + pricesSubmittedAt`. We only block duplicate Operations
+      // submissions — presence of `submittedAt` is the Operations marker.
+      if (dSnap.exists && dSnap.get('submittedAt')) {
+        throw new HttpsError('already-exists', 'Decision already submitted for this round.');
+      }
+
+      // Merge so an existing Finance-written `productPrices` survives.
+      // POST-01 follow-up: persist `staffCounts` + `maintenanceTasks` on the
+      // decision doc so the simulation (and the professor CSV export) can
+      // read them — validateDecision doesn't touch these fields today, so we
+      // pass them through defensively here instead of inside the validator.
+      const decisionPatch = {
+        round: currentRound,
+        submittedAt: FieldValue.serverTimestamp(),
+        ...validated,
+        staffCounts: objectOrDefault(data.staffCounts, {}),
+        maintenanceTasks: Array.isArray(data.maintenanceTasks)
           ? data.maintenanceTasks
           : [],
-        consecutiveMissedRounds: 0,
-        disconnected: false,
+      };
+      transaction.set(decisionRef, decisionPatch, { merge: true });
+
+      // BUG-1 fix: FieldValue.serverTimestamp() is invalid inside a nested
+      // map — Firestore only allows sentinels at top-level fields. Use
+      // Timestamp.now() for the nested submittedAt.
+      //
+      // POST-01: use dot-paths rather than replacing the whole `pendingDecision`
+      // so Finance's `pendingDecision.productPrices` (written by submitPrices)
+      // isn't clobbered when Operations submits after Finance.
+      for (const teamPlayerDoc of teamPlayerDocs) {
+        transaction.update(teamPlayerDoc.ref, {
+          'pendingDecision.submitted': true,
+          'pendingDecision.submittedAt': Timestamp.now(),
+          'pendingDecision.round': currentRound,
+          'pendingDecision.menu': validated.menu || {},
+          'pendingDecision.quantities': validated.quantities || {},
+          'pendingDecision.sousChefCount': validated.sousChefCount || 0,
+          'pendingDecision.sousChefAssignments': validated.sousChefAssignments || {},
+          'pendingDecision.staffCounts': objectOrDefault(data.staffCounts, {}),
+          'pendingDecision.maintenanceTasks': Array.isArray(data.maintenanceTasks)
+            ? data.maintenanceTasks
+            : [],
+          consecutiveMissedRounds: 0,
+          disconnected: false,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+
+      transaction.update(gameRef, {
+        submittedCount: FieldValue.increment(1),
         updatedAt: FieldValue.serverTimestamp(),
       });
-    }
-
-    transaction.update(gameRef, {
-      submittedCount: FieldValue.increment(1),
-      updatedAt: FieldValue.serverTimestamp(),
     });
-  });
+  } catch (err) {
+    // Re-raise HttpsError untouched so Firebase Functions surfaces the
+    // intended code/message to the client. Anything else gets wrapped into
+    // a generic 'internal' AFTER being logged with enough context to make
+    // the failure debuggable from Cloud Logging — previously these escaped
+    // as opaque "internal" errors with no breadcrumbs.
+    if (err instanceof HttpsError) throw err;
+    logger.error('submitDecision unexpected error', {
+      gameId, uid,
+      role: _submitDecision_role,
+      message: err && err.message,
+      stack: err && err.stack,
+    });
+    throw new HttpsError('internal', `submitDecision failed: ${err && err.message ? err.message : err}`);
+  }
 
   // BE-22: mirror submission state for professor dashboard
   if (roundId) {
