@@ -2185,6 +2185,21 @@ h3 { font-size: 0.7rem; }
   font-weight: 400;
 }
 
+.professor-page__monitor-claim-banner {
+  margin: 0.6rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  background: #fef3c7;
+  color: #78350f;
+  border: 2px solid #f59e0b;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.professor-page__monitor-claim-banner strong {
+  font-weight: 700;
+}
+
 .professor-page__monitor-footnote {
   margin-top: 0.6rem;
   font-family: var(--font-pixel);
@@ -4288,6 +4303,24 @@ h3 { font-size: 0.7rem; }
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 0.75rem;
   margin-bottom: 2rem;
+}
+
+.conclusion-page__class-summary {
+  margin-bottom: 1.5rem;
+}
+
+.conclusion-page__class-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.75rem;
+}
+
+.conclusion-page__class-summary .conclusion-page__stat {
+  background: linear-gradient(
+    180deg,
+    rgba(245, 158, 11, 0.08),
+    var(--cream)
+  );
 }
 
 .conclusion-page__stat {

@@ -395,30 +395,71 @@ export function ProfessorPage() {
     }));
   }, [teams, roster, rosterByUid]);
 
-  const submissionOwnerUid = useCallback(
+  // FE-I18: with the FE-I15 / BE-I04 solo-fallback in place, *any* teammate
+  // can submit on behalf of a vacant specialist role. Track which members
+  // submitted (rather than the single "expected" owner uid) so the grid
+  // flips to ✓ as soon as any teammate marks the phase done.
+  const teamPhaseStatus = useCallback(
     (
       row: {
         memberUids: string[];
         roleAssignments: Record<string, string | null>;
       },
       phaseKey: BasePhase,
-    ) => {
+    ): {
+      submitted: boolean;
+      submittedBy: SubmissionEntry | null;
+      submittedByUid: string | null;
+      preferredRole: string;
+    } => {
       const preferredRole =
         phaseKey === "bid_ad"
           ? "advertising"
           : phaseKey === "bid_chef"
             ? "finance"
             : "operations";
-      const entries = Object.entries(row.roleAssignments);
-      const soloUid = entries.find(([, roleValue]) => roleValue === "solo")?.[0];
-      if (soloUid) return soloUid;
-      return (
-        entries.find(([, roleValue]) => roleValue === preferredRole)?.[0] ??
-        row.memberUids[0] ??
-        null
+      const phaseSubs = submissions[phaseKey] ?? {};
+      // Walk every member uid that exists either on the team's role
+      // assignments or its memberUids, and surface the first that has
+      // a submitted status. Prefer the canonical role-owner if they did
+      // submit so the tooltip names them; otherwise use whoever did.
+      const candidateUids = Array.from(
+        new Set([...Object.keys(row.roleAssignments), ...row.memberUids]),
       );
+      const ownerUid =
+        Object.entries(row.roleAssignments).find(
+          ([, roleValue]) => roleValue === "solo",
+        )?.[0] ??
+        Object.entries(row.roleAssignments).find(
+          ([, roleValue]) => roleValue === preferredRole,
+        )?.[0] ??
+        null;
+      if (ownerUid && phaseSubs[ownerUid]?.status === "submitted") {
+        return {
+          submitted: true,
+          submittedBy: phaseSubs[ownerUid] ?? null,
+          submittedByUid: ownerUid,
+          preferredRole,
+        };
+      }
+      for (const uid of candidateUids) {
+        if (phaseSubs[uid]?.status === "submitted") {
+          return {
+            submitted: true,
+            submittedBy: phaseSubs[uid] ?? null,
+            submittedByUid: uid,
+            preferredRole,
+          };
+        }
+      }
+      return {
+        submitted: false,
+        submittedBy: null,
+        submittedByUid: null,
+        preferredRole,
+      };
     },
-    [],
+    [submissions],
   );
 
   const onStart = () => callCallable("startGame", "start", "Game started.");
@@ -631,13 +672,17 @@ export function ProfessorPage() {
 
       {gameId && monitorRows.length > 0 && isRunning && (() => {
         const currentBasePhase = phase ? parseGamePhase(phase, currentRound).base : null;
-        const currentSubmissions: Record<string, SubmissionEntry> =
-          currentBasePhase ? (submissions[currentBasePhase] ?? {}) : {};
+        // Only "submission" phases produce a submissions doc; on other
+        // phases (email, simulating, results_ready) the readiness badge
+        // is meaningless, so suppress it.
+        if (
+          !currentBasePhase ||
+          !SUBMISSION_PHASES.some((p) => p.key === currentBasePhase)
+        ) {
+          return null;
+        }
         const submittedCount = monitorRows.filter(
-          (row) => {
-            const ownerUid = submissionOwnerUid(row, currentBasePhase ?? "decide");
-            return ownerUid ? currentSubmissions[ownerUid]?.status === "submitted" : false;
-          },
+          (row) => teamPhaseStatus(row, currentBasePhase).submitted,
         ).length;
         const allReady = monitorRows.length > 0 && submittedCount === monitorRows.length;
         const waitingCount = monitorRows.length - submittedCount;
@@ -786,9 +831,15 @@ export function ProfessorPage() {
             </p>
           )}
           {submissionsError && (
-            <p className="professor-page__monitor-footnote">
-              {submissionsError}
-            </p>
+            <div
+              className="professor-page__monitor-claim-banner"
+              role="alert"
+            >
+              <strong>⚠ Submission tracking unavailable.</strong>{" "}
+              {submissionsError} Until then, this grid will stay on ⏳ even
+              after teams submit — confirm with players directly before
+              advancing.
+            </div>
           )}
 
           <table className="professor-monitor-table">
@@ -809,29 +860,28 @@ export function ProfessorPage() {
                   <td>{row.teamName}</td>
                   <td>{row.members.join(", ") || "—"}</td>
                   {SUBMISSION_PHASES.map((p) => {
-                    const ownerUid = submissionOwnerUid(row, p.key);
-                    const sub = ownerUid ? submissions[p.key]?.[ownerUid] : undefined;
-                    const submitted = sub?.status === "submitted";
+                    const status = teamPhaseStatus(row, p.key);
+                    const sub = status.submittedBy;
                     return (
                       <td
                         key={p.key}
                         className={
                           "professor-monitor-table__cell" +
-                          (submitted
+                          (status.submitted
                             ? " professor-monitor-table__cell--ok"
                             : " professor-monitor-table__cell--pending")
                         }
                         title={
-                          submitted
-                            ? `Submitted by ${sub?.displayName ?? ownerUid ?? "assigned owner"}${
-                                sub?.role ? ` as ${sub.role}` : ""
-                              }`
-                            : ownerUid
-                              ? `Waiting on ${row.members.join(", ")}`
-                              : "No owner assigned"
+                          status.submitted
+                            ? `Submitted by ${
+                                sub?.displayName ??
+                                status.submittedByUid ??
+                                "teammate"
+                              }${sub?.role ? ` as ${sub.role}` : ""}`
+                            : `Waiting on ${row.members.join(", ")}`
                         }
                       >
-                        {submitted ? "✓" : "⏳"}
+                        {status.submitted ? "✓" : "⏳"}
                       </td>
                     );
                   })}

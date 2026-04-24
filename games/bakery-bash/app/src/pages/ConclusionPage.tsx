@@ -43,6 +43,14 @@ interface LeaderboardDocument {
   rankings: LeaderboardRanking[];
 }
 
+interface ClassRoundSnapshot {
+  round: number;
+  avgRevenueNet?: number | null;
+  avgCustomerCount?: number | null;
+  avgSatisfactionPct?: number | null;
+  playerCount?: number | null;
+}
+
 export function ConclusionPage() {
   const { gameId, playerId, roundResults, budgetCurrent } = useGame();
 
@@ -51,6 +59,10 @@ export function ConclusionPage() {
     Record<number, RoundResult>
   >({});
   const [expanded, setExpanded] = useState<number | null>(null);
+  // FE-I21: per-round classStats so the conclusion screen can highlight the
+  // class-wide story (best satisfaction round, total customers served, etc.)
+  // alongside the per-bakery rankings.
+  const [classRounds, setClassRounds] = useState<ClassRoundSnapshot[]>([]);
 
   // Subscribe to leaderboard/latest.
   useEffect(() => {
@@ -134,9 +146,88 @@ export function ConclusionPage() {
     return unsubscribe;
   }, [gameId, playerId]);
 
+  // FE-I21: subscribe to /rounds/ for class-wide summary stats. Each round
+  // doc carries a `classStats` block (BE-I05 follow-up populates it more
+  // fully); we tolerate missing fields and just hide the highlight if the
+  // data isn't available.
+  useEffect(() => {
+    if (!gameId) return;
+    const roundsCol = collection(db, "games", gameId, "rounds");
+    const unsubscribe = onSnapshot(
+      roundsCol,
+      (snap) => {
+        const next: ClassRoundSnapshot[] = [];
+        snap.forEach((d) => {
+          const data = d.data() as DocumentData;
+          const cs = (data.classStats ?? null) as DocumentData | null;
+          const m = /^round_(\d+)$/.exec(d.id);
+          const round = m ? Number(m[1]) : null;
+          if (!round) return;
+          next.push({
+            round,
+            avgRevenueNet:
+              typeof cs?.avgRevenueNet === "number" ? cs.avgRevenueNet : null,
+            avgCustomerCount:
+              typeof cs?.avgCustomerCount === "number"
+                ? cs.avgCustomerCount
+                : null,
+            avgSatisfactionPct:
+              typeof cs?.avgSatisfactionPct === "number"
+                ? cs.avgSatisfactionPct
+                : typeof cs?.aggregateSatisfactionPct === "number"
+                  ? cs.aggregateSatisfactionPct
+                  : null,
+            playerCount:
+              typeof cs?.playerCount === "number" ? cs.playerCount : null,
+          });
+        });
+        next.sort((a, b) => a.round - b.round);
+        setClassRounds(next);
+      },
+      (err) => {
+        console.error("conclusion class-stats listener error:", { gameId, err });
+      },
+    );
+    return unsubscribe;
+  }, [gameId]);
+
   const rankings = board?.rankings ?? [];
   const winner = rankings.find((r) => r.rank === 1) ?? null;
   const you = rankings.find((r) => r.playerId === playerId) ?? null;
+
+  // FE-I21: derived class-wide highlights for the summary cards.
+  const classHighlights = (() => {
+    const totalClassRevenue = rankings.reduce((sum, r) => {
+      const v = r.cumulativeRevenue ?? r.revenueNet ?? 0;
+      return typeof v === "number" ? sum + v : sum;
+    }, 0);
+    const totalCustomers = classRounds.reduce((sum, r) => {
+      if (
+        typeof r.avgCustomerCount === "number" &&
+        typeof r.playerCount === "number"
+      ) {
+        return sum + r.avgCustomerCount * r.playerCount;
+      }
+      return sum;
+    }, 0);
+    const bestSat = classRounds.reduce<{
+      round: number | null;
+      pct: number;
+    }>(
+      (best, r) =>
+        typeof r.avgSatisfactionPct === "number" && r.avgSatisfactionPct > best.pct
+          ? { round: r.round, pct: r.avgSatisfactionPct }
+          : best,
+      { round: null, pct: -1 },
+    );
+    return {
+      totalClassRevenue,
+      totalCustomers,
+      bestSatisfactionRound: bestSat.round,
+      bestSatisfactionPct: bestSat.pct >= 0 ? bestSat.pct : null,
+      bakeryCount: rankings.length,
+    };
+  })();
 
   // Fall back to the last round's running revenue if leaderboard hasn't
   // hydrated yet.
@@ -273,6 +364,40 @@ export function ConclusionPage() {
                 </div>
               );
             })}
+          </div>
+        </section>
+      )}
+
+      {/* FE-I21: class-wide summary — totals + best satisfaction round. */}
+      {rankings.length > 0 && (
+        <section
+          className="conclusion-page__class-summary"
+          aria-label="Class summary"
+        >
+          <h2 className="conclusion-page__section-title">How the class did</h2>
+          <div className="conclusion-page__class-grid">
+            <StatCard
+              label="Bakeries competing"
+              value={String(classHighlights.bakeryCount)}
+            />
+            <StatCard
+              label="Class net revenue"
+              value={formatMoney(classHighlights.totalClassRevenue)}
+            />
+            {classHighlights.totalCustomers > 0 && (
+              <StatCard
+                label="Customers served"
+                value={Math.round(classHighlights.totalCustomers).toLocaleString()}
+              />
+            )}
+            {classHighlights.bestSatisfactionRound !== null && (
+              <StatCard
+                label="Best satisfaction round"
+                value={`R${classHighlights.bestSatisfactionRound} · ${Math.round(
+                  classHighlights.bestSatisfactionPct ?? 0,
+                )}/100`}
+              />
+            )}
           </div>
         </section>
       )}

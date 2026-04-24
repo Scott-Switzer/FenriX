@@ -252,6 +252,10 @@ export function AuctionPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [chefBidInputs, setChefBidInputs] = useState<Record<string, string>>({});
+  // FE-I16: keep the ad-bid input value as a string so an empty field stays
+  // empty (placeholder "0" gives the visual affordance) instead of forcing
+  // a literal "0" character that gets prepended when the user types.
+  const [adBidInputs, setAdBidInputs] = useState<Partial<Record<AdType, string>>>({});
   const [showExpiredPopup, setShowExpiredPopup] = useState(false);
 
   const parsed = parseGamePhase(phase, currentRound);
@@ -290,6 +294,7 @@ export function AuctionPage() {
     setTopBidsLeaderAd({});
     setTopBidsLeaderChef({});
     setChefBidInputs({});
+    setAdBidInputs({});
     if (!gameId || !currentRound) {
       return;
     }
@@ -691,12 +696,24 @@ export function AuctionPage() {
                         className="auction-ad__bid-input auction-page__bid-input"
                         placeholder="0"
                         min={0}
-                        value={pendingAdBids[ad.id] ?? 0}
+                        value={
+                          adBidInputs[ad.id] ??
+                          (pendingAdBids[ad.id] ? String(pendingAdBids[ad.id]) : "")
+                        }
                         disabled={timerExpired || !isAdPhase || isLockedAdBid(ad.id)}
                         readOnly={!isAdPhase || isLockedAdBid(ad.id)}
-                        onChange={(e) =>
-                          setAdBid(ad.id, parseInt(e.target.value, 10) || 0)
-                        }
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          setAdBidInputs((prev) => ({ ...prev, [ad.id]: raw }));
+                          if (raw === "") {
+                            setAdBid(ad.id, 0);
+                            return;
+                          }
+                          const parsed = parseInt(raw, 10);
+                          if (!isNaN(parsed) && parsed >= 0) {
+                            setAdBid(ad.id, parsed);
+                          }
+                        }}
                       />
                     </div>
                   </div>

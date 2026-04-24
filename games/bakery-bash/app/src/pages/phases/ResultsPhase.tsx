@@ -369,35 +369,29 @@ export function ResultsPhase() {
             </section>
           )}
 
-          <div className="results-phase__kpis">
-            <Kpi
-              label="Net revenue"
-              value={formatMoney(revenueDisplay)}
-              // Simple "rising" animation — CSS handles the reveal.
-              animated
-            />
-            <Kpi
-              label="Customers"
-              value={latest.customerCount.toLocaleString()}
-            />
-            <Kpi
-              label="Customer satisfaction"
-              value={`${latest.customerSatisfaction}/100`}
-            />
-            {typeof latest.chefSatisfactionScore === "number" && (
-              <Kpi
-                label="Chef satisfaction"
-                value={`${Math.round(latest.chefSatisfactionScore)}/100`}
-              />
-            )}
-            {typeof latest.amountBorrowed === "number" &&
-              latest.amountBorrowed > 0 && (
+          {/* FE-I20: Net revenue / Customers / Customer satisfaction
+              already render in the metric cards above; only the values that
+              don't appear there (Chef satisfaction, Gross revenue when a
+              loan was taken out) live here. */}
+          {(typeof latest.chefSatisfactionScore === "number" ||
+            (typeof latest.amountBorrowed === "number" &&
+              latest.amountBorrowed > 0)) && (
+            <div className="results-phase__kpis">
+              {typeof latest.chefSatisfactionScore === "number" && (
                 <Kpi
-                  label="Gross revenue"
-                  value={formatMoney(latest.revenueGross)}
+                  label="Chef satisfaction"
+                  value={`${Math.round(latest.chefSatisfactionScore)}/100`}
                 />
               )}
-          </div>
+              {typeof latest.amountBorrowed === "number" &&
+                latest.amountBorrowed > 0 && (
+                  <Kpi
+                    label="Gross revenue"
+                    value={formatMoney(latest.revenueGross)}
+                  />
+                )}
+            </div>
+          )}
 
           {/* FE-4 — auction outcomes row. Rendered between the KPI cards
               and the product breakdown so players get the "what did I win
