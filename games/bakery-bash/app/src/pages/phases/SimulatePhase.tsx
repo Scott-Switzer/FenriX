@@ -9,15 +9,6 @@ const DAY_DURATION_MS = 4000; // 4 seconds per day
 const PRODUCTS = ["croissant", "cookie", "bagel", "sandwich", "coffee", "matcha"] as const;
 type Product = typeof PRODUCTS[number];
 
-const PRODUCT_LABELS: Record<Product, string> = {
-  croissant: "Croissant",
-  cookie:    "Cookie",
-  bagel:     "Bagel",
-  sandwich:  "Sandwich",
-  coffee:    "Coffee",
-  matcha:    "Matcha",
-};
-
 // Simulate which day each product sells out (days 20–28)
 function getSelloutDays(): Record<Product, number> {
   const days = {} as Record<Product, number>;
@@ -37,8 +28,8 @@ export function SimulatePhase() {
   const [isNight, setIsNight] = useState(false);
   const [displayRevenue, setDisplayRevenue] = useState(0);
   const [soldOut, setSoldOut] = useState<Set<Product>>(new Set());
-  const [cleanlinessDisplay, setCleanlinessDisplay] = useState(maintenanceBars?.cleanliness ?? 100);
-  const [ovenDisplay, setOvenDisplay] = useState(maintenanceBars?.ovenHealth ?? 100);
+  const [, setCleanlinessDisplay] = useState(maintenanceBars?.cleanliness ?? 100);
+  const [, setOvenDisplay] = useState(maintenanceBars?.ovenHealth ?? 100);
 
   const selloutDays = useRef(getSelloutDays());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);

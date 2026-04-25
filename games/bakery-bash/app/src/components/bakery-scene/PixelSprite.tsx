@@ -25,7 +25,7 @@ export function PixelSprite({ data, frame, className }: Props) {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     const image = gridToImageData(data, frame)
-    const imageData = new ImageData(image.data, image.width, image.height)
+    const imageData = new ImageData(image.data as Uint8ClampedArray<ArrayBuffer>, image.width, image.height)
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.putImageData(imageData, 0, 0)
   }, [data, frame])
