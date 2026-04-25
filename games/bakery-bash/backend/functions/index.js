@@ -567,18 +567,30 @@ async function resolveAndApplyAdAuction(gameRef, round) {
   const aggregateAds = {};
   const adAuctionResults = {};
 
+  // Balance pass 12: enforce minimum bid floor per ad type so a $1 bid
+  // can't sweep up the cash bonus uncontested. Pulled from game config
+  // so professors can tune live; falls back to the package default.
+  const cfgSnap = await gameRef.collection('config').doc('params').get();
+  const rawCfg = cfgSnap.exists ? (cfgSnap.data() || {}) : {};
+  const mergedCfg = require('./modules/config').mergeConfig(rawCfg);
+  const adBidMins = (mergedCfg && mergedCfg.adBidMinimums) || {};
+
   for (const adType of AD_TYPES) {
     let winnerId = null;
     let winnerKey = null;
     let winningBid = 0;
     let winningSubmittedAt = null;
+    const minBid = numberOrDefault(adBidMins[adType], 0);
 
     for (let i = 0; i < playersSnap.docs.length; i += 1) {
       const bidSnap = bidSnaps[i];
       if (!bidSnap.exists) continue;
       const bidData = bidSnap.data() || {};
       const amount = numberOrDefault(objectOrDefault(bidData.ad, {})[adType], 0);
-      if (amount <= 0) continue;
+      // Require strictly above zero AND meeting the minimum threshold.
+      // Bids below threshold are silently dropped — the player still
+      // pays nothing (their bid is just disqualified).
+      if (amount <= 0 || amount < minBid) continue;
       const submittedAt = bidData.adSubmittedAt || null;
       const isEarlierSubmission =
         winningSubmittedAt &&

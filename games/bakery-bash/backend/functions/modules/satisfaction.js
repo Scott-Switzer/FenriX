@@ -182,8 +182,11 @@ function calculateAggregateSatisfaction(perProductSatisfaction) {
  *        aggregateSatisfaction=100 → +0.40
  *      = (aggregate - 50) / 50 × 0.40
  *
- *   2. Premium product bonus: +10% for EACH of croissant/matcha that is on the
- *      menu at Excellent (satisfactionPct ≥ 86). Stackable (max +20%).
+ *   2. Premium product bonus: +6% for ANY product on the menu at Excellent
+ *      (satisfactionPct ≥ 86). Stackable across all 6 products (max +36%).
+ *      [Balance pass 1 (Apr 2026): was croissant + matcha only @ +10% each,
+ *       which biased foot traffic toward French and Japanese specialties.
+ *       Now any excellent product earns the bonus, reducing nationality bias.]
  *
  *   3. Product variety bonus:
  *        4 products = +5%, 5 = +10%, 6 = +15%  (fewer than 4 = 0)
@@ -191,10 +194,20 @@ function calculateAggregateSatisfaction(perProductSatisfaction) {
  *   4. Sous chef bonus (small-team boost; plateaus at 5+):
  *        1 = +5%, 2 = +10%, 3 = +14%, 4 = +17%, 5+ = +17% (no additional)
  *
+ *   5. Ad-winner bonus: per-ad-type bonus from cfg.adFootTrafficBonuses
+ *      (TV +15%, Billboard +10%, Radio +5%, Newspaper +2.5%; all stackable).
+ *      Capped at +30% total so winning all 4 ads doesn't dominate.
+ *      [Balance pass 1: ads previously had no customer-attraction effect —
+ *       they only added cash to the revenue formula, which created the
+ *       AdSpam dominant strategy. Tying ad wins to actual foot traffic
+ *       makes ads a marketing tool, not a money cannon.]
+ *
  * @param {number} aggregateSatisfactionPct
  * @param {object} perProductSatisfaction
  * @param {number} numProductsOffered
  * @param {number} sousChefCount
+ * @param {Array<string>} [adWins=[]] ad types this team won this round
+ * @param {object} [cfg] for cfg.adFootTrafficBonuses
  * @returns {number} decimal modifier (e.g. 0.35 = +35%)
  */
 function getFootTrafficModifier(
@@ -202,17 +215,20 @@ function getFootTrafficModifier(
   perProductSatisfaction,
   numProductsOffered,
   sousChefCount,
+  adWins = [],
+  cfg = null,
 ) {
   // 1. Satisfaction modifier (-0.40 .. +0.40)
   const sat = Number.isFinite(aggregateSatisfactionPct) ? aggregateSatisfactionPct : 0;
   const satMod = ((sat - 50) / 50) * 0.40;
 
-  // 2. Premium product bonus (croissant and matcha at Excellent, stackable)
+  // 2. Premium product bonus (any product at Excellent, +6% each, stackable)
   let premiumBonus = 0;
-  for (const product of ['croissant', 'matcha']) {
-    const entry = perProductSatisfaction && perProductSatisfaction[product];
-    if (entry && entry.satisfactionPct >= 86) {
-      premiumBonus += 0.10;
+  if (perProductSatisfaction && typeof perProductSatisfaction === 'object') {
+    for (const entry of Object.values(perProductSatisfaction)) {
+      if (entry && entry.satisfactionPct >= 86) {
+        premiumBonus += 0.06;
+      }
     }
   }
 
@@ -226,7 +242,18 @@ function getFootTrafficModifier(
   const sousChefTable = { 0: 0, 1: 0.05, 2: 0.10, 3: 0.14, 4: 0.17 };
   const sousChefBonus = sousChefCount >= 5 ? 0.17 : (sousChefTable[sousChefCount] || 0);
 
-  return satMod + premiumBonus + varietyBonus + sousChefBonus;
+  // 5. Ad-winner bonus (capped)
+  let adBonus = 0;
+  const adFt = (cfg && cfg.adFootTrafficBonuses) || {
+    TV: 0.15, Billboard: 0.10, Radio: 0.05, Newspaper: 0.025,
+  };
+  for (const ad of adWins || []) {
+    const v = Number(adFt[ad]);
+    if (Number.isFinite(v) && v > 0) adBonus += v;
+  }
+  adBonus = Math.min(adBonus, 0.30);
+
+  return satMod + premiumBonus + varietyBonus + sousChefBonus + adBonus;
 }
 
 // ---------------------------------------------------------------------------

@@ -9,8 +9,8 @@ const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
 // ---------- config ----------
 const cfg = config.mergeConfig({});
 assert(cfg.startingBudget === 500000, 'startingBudget default');
-assert(cfg.sousChefBaseCost === 12500, 'sousChefBaseCost default');
-assert(cfg.adBonuses.TV === 50000, 'adBonuses.TV default');
+assert(cfg.sousChefBaseCost === 500, 'sousChefBaseCost default');
+assert(cfg.adBonuses.TV === 20000, 'adBonuses.TV default');
 assert(cfg.returningCustomerBonuses.excellent === 0.15, 'returning excellent');
 
 // User overrides (and a bad value)
@@ -20,9 +20,9 @@ const cfg2 = config.mergeConfig({
   adBonuses: { TV: 999 },
 });
 assert(cfg2.startingBudget === 3000, 'override startingBudget');
-assert(cfg2.sousChefBaseCost === 12500, 'bad value → default');
+assert(cfg2.sousChefBaseCost === 500, 'bad value → default');
 assert(cfg2.adBonuses.TV === 999, 'override TV');
-assert(cfg2.adBonuses.Radio === 25000, 'untouched Radio');
+assert(cfg2.adBonuses.Radio === 7500, 'untouched Radio');
 
 assert(config.numberOrDefault('7', 0) === 7, 'numberOrDefault string');
 assert(config.numberOrDefault(undefined, 5) === 5, 'numberOrDefault undefined');
@@ -35,44 +35,44 @@ for (const r of config.CHEF_SPAWN_RATES) {
 }
 
 // ---------- chef-system ----------
-// Chef output
+// Chef output (advanced specialty=3.0×, non-specialty=1.8×)
 const frenchAdv = { skillTier: 'advanced', specialties: ['croissant', 'coffee'] };
-assert(chefSys.getChefOutputForProduct(frenchAdv, 'croissant') === 30 * 2.2, 'french adv croissant');
-assert(chefSys.getChefOutputForProduct(frenchAdv, 'bagel') === 30 * 1.6, 'french adv bagel');
+assert(chefSys.getChefOutputForProduct(frenchAdv, 'croissant') === 30 * 3.0, 'french adv croissant');
+assert(chefSys.getChefOutputForProduct(frenchAdv, 'bagel') === 30 * 1.8, 'french adv bagel');
 assert(chefSys.getChefOutputForProduct({ skillTier: 'base' }, 'croissant') === 30, 'base chef');
 
-// Total output with sous chef (head chef = advanced french on croissant → 66; sous = 0.5×66 = 33)
+// Total output with sous chef (head chef = advanced french on croissant → 90; sous = 0.5×90 = 45)
 const total = chefSys.calculateTotalProductOutput(
   'croissant',
   [frenchAdv],
   { croissant: 1 },
 );
-// base(30) + frenchAdv(66) + sous(33) = 129
-assert(near(total, 129), `croissant total = ${total}`);
+// base(30) + frenchAdv(90) + sous(45) = 165
+assert(near(total, 165), `croissant total = ${total}`);
 
 // No specialty chef → sous falls back to base chef (30) so sous = 15
 const total2 = chefSys.calculateTotalProductOutput('matcha', [frenchAdv], { matcha: 1 });
-// base(30) + frenchAdv on matcha (non-specialty, 30×1.6=48) + sous 0.5×30=15 (no matcha specialty on team) = 93
-assert(near(total2, 93), `matcha total = ${total2}`);
+// base(30) + frenchAdv on matcha (non-specialty, 30×1.8=54) + sous 0.5×30=15 (no matcha specialty on team) = 99
+assert(near(total2, 99), `matcha total = ${total2}`);
 
-// Kitchen cohesion
+// Kitchen cohesion (decay 10/chef-over-threshold-of-4, floor 35)
 assert(chefSys.calculateChefSatisfactionScore(4, cfg) === 100, 'cohesion 4');
-assert(chefSys.calculateChefSatisfactionScore(5, cfg) === 84, 'cohesion 5');
-assert(chefSys.calculateChefSatisfactionScore(8, cfg) === 36, 'cohesion 8');
-assert(chefSys.calculateChefSatisfactionScore(9, cfg) === 35, 'cohesion 9 floor');
+assert(chefSys.calculateChefSatisfactionScore(5, cfg) === 90, 'cohesion 5');
+assert(chefSys.calculateChefSatisfactionScore(8, cfg) === 60, 'cohesion 8');
+assert(chefSys.calculateChefSatisfactionScore(9, cfg) === 50, 'cohesion 9 (above floor)');
 assert(chefSys.calculateChefSatisfactionScore(100, cfg) === 35, 'cohesion huge floor');
 
 // Effective output
 assert(chefSys.calculateEffectiveOutput(200, 50) === 100, 'effective output');
 
-// Sous chef hire cost
-assert(chefSys.getSousChefCost(0, cfg) === 12500, 'sous 1 cost');         // 1.0 × 12500
-assert(chefSys.getSousChefCost(1, cfg) === 18750, 'sous 2 cost');         // 1.5 × 12500
-assert(chefSys.getSousChefCost(2, cfg) === 28125, 'sous 3 cost');         // 2.25 × 12500
-assert(chefSys.getSousChefCost(3, cfg) === 37500, 'sous 4 cost');         // 3.0 × 12500
-assert(chefSys.getSousChefCost(4, cfg) === (3.0 + 0.75) * 12500, 'sous 5 cost');
-assert(chefSys.getSousChefCost(5, cfg) === (3.0 + 1.5) * 12500, 'sous 6 cost');
-assert(near(chefSys.getTotalSousChefHireCost(4, cfg), 12500 + 18750 + 28125 + 37500), 'total hire 4');
+// Sous chef hire cost (base 500)
+assert(chefSys.getSousChefCost(0, cfg) === 500,  'sous 1 cost');          // 1.0 × 500
+assert(chefSys.getSousChefCost(1, cfg) === 750,  'sous 2 cost');          // 1.5 × 500
+assert(chefSys.getSousChefCost(2, cfg) === 1125, 'sous 3 cost');          // 2.25 × 500
+assert(chefSys.getSousChefCost(3, cfg) === 1500, 'sous 4 cost');          // 3.0 × 500
+assert(chefSys.getSousChefCost(4, cfg) === (3.0 + 0.75) * 500, 'sous 5 cost');
+assert(chefSys.getSousChefCost(5, cfg) === (3.0 + 1.5)  * 500, 'sous 6 cost');
+assert(near(chefSys.getTotalSousChefHireCost(4, cfg), 500 + 750 + 1125 + 1500), 'total hire 4');
 
 // Auction
 const chefPool = [
@@ -118,9 +118,10 @@ const surplus = sat.fillRateToSatisfactionPct(2.00);
 assert(surplus >= 86 && surplus <= 100, `fr 2.0 in excellent (got ${surplus})`);
 
 // Per product + aggregate
+// Outputs scaled to baseDemand=240 (pass 9): fill rates 1.0, 0.6, 1.0.
 const playerState = {
   menu: { croissant: true, coffee: true, cookie: true, bagel: false, sandwich: false, matcha: false },
-  effectiveOutputs: { croissant: 60, coffee: 42, cookie: 50 }, // fill rates: 1.0, 0.6, 1.0
+  effectiveOutputs: { croissant: 240, coffee: 144, cookie: 240 },
 };
 const pps = sat.calculatePerProductSatisfaction(playerState);
 // fill rate 1.0 → enters excellent band at 86
@@ -133,16 +134,14 @@ assert(pps.cookie.satisfactionPct === 86, 'cookie 86');
 assert(pps.bagel === null, 'bagel null');
 
 const agg = sat.calculateAggregateSatisfaction(pps);
-// weights: croissant 1.2, coffee 1.5, cookie 1.0 → total 3.7
-// weighted = 86×1.2 + 33×1.5 + 86×1.0
-const expectedAgg = (86 * 1.2 + 33 * 1.5 + 86 * 1.0) / 3.7;
-void expectedAgg;
+// pass 8: equal satisfactionWeight=1.0 for all products → simple average across 3 offered.
+const expectedAgg = (86 + 33 + 86) / 3;
 assert(near(agg.aggregateSatisfactionPct, expectedAgg, 1e-4), `aggregate ${agg.aggregateSatisfactionPct}`);
 
-// Foot traffic modifier — satisfaction 100%, croissant excellent (+10%), 3 products (no variety), 2 sous (+10%)
+// Foot traffic modifier — satisfaction 100%, 2 products excellent (+12%), 3 products (no variety), 2 sous (+10%)
 const ftm = sat.getFootTrafficModifier(100, pps, 3, 2);
-// satMod = (100-50)/50 * 0.4 = 0.4; premium = 0.10 (croissant at 86 = excellent); variety = 0; sous = 0.10
-assert(near(ftm, 0.4 + 0.10 + 0 + 0.10), `ftm ${ftm}`);
+// satMod 0.40; premium = 6% × 2 excellent products (croissant + cookie) = 0.12; variety = 0; sous = 0.10
+assert(near(ftm, 0.4 + 0.12 + 0 + 0.10), `ftm ${ftm}`);
 
 // Returning customers
 assert(near(sat.getReturningCustomerBonus(90, 100, cfg), 15), 'excellent returning');

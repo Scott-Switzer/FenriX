@@ -217,7 +217,10 @@ function applySelloutCap(perProductStats, product) {
   // Pass 1 data that may be referenced later.
   const cloned = { ...stats };
   cloned.satisfactionPct = Math.min(stats.satisfactionPct, SELLOUT_SAT_CAP);
-  cloned.tier = 'poor';
+  // Recompute tier from the capped satisfaction so it stays consistent.
+  // Was hardcoded to 'poor' which produced sat=8 / tier='poor' inconsistencies
+  // when the cap didn't change the underlying sat (because it was already low).
+  cloned.tier = tierForSatisfaction(cloned.satisfactionPct);
   perProductStats[product] = cloned;
   return { sellout: true };
 }
@@ -321,12 +324,16 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
     const sousChefCount = Number.isFinite(decision.sousChefCount)
       ? decision.sousChefCount
       : Number(p.sousChefCount) || 0;
+    // Balance pass 1: ad wins now contribute foot-traffic, not just cash.
+    const adWins = getAdWins(p);
     // Compute foot traffic modifier using the full signature
     const footTrafficMod = getFootTrafficModifier(
       pp.aggregateSatisfactionPct,
       pp.perProduct,
       pp.offeredProducts.length,
-      sousChefCount
+      sousChefCount,
+      adWins,
+      config
     );
 
     return {
@@ -365,9 +372,9 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
     let selloutAnywhere = false;
 
     for (const product of pp.offeredProducts) {
-      const stats = pp.perProduct[product];
+      const preStats = pp.perProduct[product];
       const allocatedCustomers = Math.max(0, Math.floor(Number(allocPerProduct[product]) || 0));
-      const qtyStocked = stats.qtyStocked;
+      const qtyStocked = preStats.qtyStocked;
 
       let sellout = false;
       if (allocatedCustomers > qtyStocked) {
@@ -376,6 +383,10 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
         selloutAnywhere = selloutAnywhere || sellout;
       }
 
+      // Read stats AFTER the potential cap so the output reflects the cap.
+      // applySelloutCap reassigns pp.perProduct[product] to a cloned entry —
+      // capturing stats before the call would surface pre-cap values.
+      const stats = pp.perProduct[product];
       const qtySold = Math.min(allocatedCustomers, qtyStocked);
 
       perProductCustomers[product] = allocatedCustomers;

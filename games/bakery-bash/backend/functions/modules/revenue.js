@@ -12,8 +12,8 @@
  *           + Σ(qtySold(P) × fixedPrice(P))
  *           + noise
  *
- * Default coefficients (spec): base=500, sousChef=12, satisfaction=8.0,
- * adSpend=0.8, numProducts=50, noise ∈ [-100, +100].
+ * Default coefficients (balance-tuned): base=500, sousChef=25, satisfaction=60,
+ * adSpend=0 (anti-arbitrage), numProducts=100, noise ∈ [-100, +100].
  *
  * All functions are pure.
  */
@@ -22,21 +22,25 @@ const { PRODUCT_CATALOG } = require('./config');
 const config = require('./config');
 
 // --- Named constants for revenue formula magic numbers ----------------------
+// Kept in sync with DEFAULT_GAME_CONFIG.revenueCoefficients in config.js.
+// Production callers always pass the merged cfg; these only fire when a
+// caller omits cfg.revenueCoefficients (e.g., legacy callers, REPL, edge
+// tests). Drift here would silently re-enable the killed adSpend exploit.
 
 /** Base revenue added every round regardless of decisions. */
 const REVENUE_BASE = 500;
 
 /** Revenue gained per sous chef hired. */
-const SOUS_CHEF_COEFFICIENT = 12;
+const SOUS_CHEF_COEFFICIENT = 25;
 
 /** Revenue multiplier applied to aggregate satisfaction percentage. */
-const SATISFACTION_COEFFICIENT = 8;
+const SATISFACTION_COEFFICIENT = 60;
 
-/** Revenue multiplier applied to ad spend (dollars). */
-const AD_SPEND_COEFFICIENT = 0.8;
+/** Revenue multiplier applied to ad spend (dollars). Zeroed to kill arbitrage. */
+const AD_SPEND_COEFFICIENT = 0;
 
 /** Revenue bonus per distinct product offered. */
-const PRODUCT_BONUS = 50;
+const PRODUCT_BONUS = 100;
 
 // --- Safe numeric helper ----------------------------------------------------
 
@@ -180,11 +184,11 @@ function computeGrossRevenue(inputs, cfg = config) {
  * dependency between revenue.js and chef-system.js.
  *
  * @param {number} count - number of sous chefs hired.
- * @param {number} baseCost - cost per "unit multiplier" (default $50).
+ * @param {number} baseCost - cost per "unit multiplier" (default $500).
  * @returns {number} total hire cost.
  */
 function _sousChefHireCost(count, baseCost) {
-  const b = baseCost != null ? baseCost : 50;
+  const b = baseCost != null ? baseCost : 500;
   const multipliers = [1.0, 1.5, 2.25, 3.0]; // 1st..4th
   let total = 0;
   for (let i = 0; i < count; i++) {
@@ -211,7 +215,7 @@ function _sousChefHireCost(count, baseCost) {
  *   chefAuctionWinningBid?: number
  * }} auctionResults
  * @param {Object} cfg - uses cfg.unitCostPerProduct { product: cost } and
- *   cfg.sousChefBaseCost (default 50).
+ *   cfg.sousChefBaseCost (default 500).
  * @returns {{
  *   stockCost: number,
  *   sousChefHireCost: number,
@@ -227,18 +231,27 @@ function calculateRoundCosts(decision, auctionResults, cfg = config) {
   const isFlat = typeof rawUnitCost === 'number';
   let stockCost = 0;
   for (const product of Object.keys(stocked)) {
-    const qty = _num(stocked[product]);
+    // Clamp negative or non-finite quantities to 0. Production validators
+    // already reject those, but defense-in-depth here keeps stockCost
+    // non-negative even if a malformed payload slips through (fuzz/edge
+    // case 7.5: NaN/undefined/negative quantities used to produce negative
+    // totalSpent which then propagated into budgetAfter and confused
+    // downstream consumers).
+    const qty = Math.max(0, _num(stocked[product]));
     const cost = isFlat ? rawUnitCost : _num((rawUnitCost && rawUnitCost[product]));
-    stockCost += qty * cost;
+    stockCost += qty * Math.max(0, cost);
   }
 
+  // Same defense for sousChefCount.
+  const rawSous = (decision && decision.sousChefCount) || 0;
+  const sousCount = Math.max(0, _num(rawSous));
   const sousChefHireCost = _sousChefHireCost(
-    (decision && decision.sousChefCount) || 0,
+    sousCount,
     cfg && cfg.sousChefBaseCost
   );
 
-  const adBidCost = (auctionResults && auctionResults.adAuctionWinningBid) || 0;
-  const chefBidCost = (auctionResults && auctionResults.chefAuctionWinningBid) || 0;
+  const adBidCost = Math.max(0, _num((auctionResults && auctionResults.adAuctionWinningBid) || 0));
+  const chefBidCost = Math.max(0, _num((auctionResults && auctionResults.chefAuctionWinningBid) || 0));
 
   const totalSpent = stockCost + sousChefHireCost + adBidCost + chefBidCost;
 

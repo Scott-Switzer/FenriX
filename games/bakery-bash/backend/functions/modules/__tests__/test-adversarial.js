@@ -158,7 +158,7 @@ test('mergeConfig: numeric string budget → parsed correctly', () => {
 test('mergeConfig: nested NaN coefficients → defaults', () => {
   const cfg = config.mergeConfig({ revenueCoefficients: { base: NaN, sousChefCoeff: 'hack' } });
   assert(cfg.revenueCoefficients.base === 500, `base should default to 500, got ${cfg.revenueCoefficients.base}`);
-  assert(cfg.revenueCoefficients.sousChefCoeff === 12, 'sousChefCoeff default');
+  assert(cfg.revenueCoefficients.sousChefCoeff === 25, 'sousChefCoeff default (balance pass)');
 }, 'HIGH');
 
 test('mergeConfig: empty nested objects → nested defaults', () => {
@@ -935,9 +935,10 @@ test('calculateChefSatisfactionScore: 0 sous chefs → 100', () => {
   assert(s === 100, `0 sous chefs → 100, got ${s}`);
 }, 'LOW');
 
-test('calculateChefSatisfactionScore: 9+ sous chefs → floor (35)', () => {
-  const s = chefSystem.calculateChefSatisfactionScore(9, defaultCfg);
-  assert(s === 35, `9 sous chefs → floor 35, got ${s}`);
+test('calculateChefSatisfactionScore: many sous chefs → floor (35)', () => {
+  // decay 10/chef-over-threshold-of-4: 11 chefs → raw 30, floor clamps to 35.
+  const s = chefSystem.calculateChefSatisfactionScore(11, defaultCfg);
+  assert(s === 35, `11 sous chefs → floor 35, got ${s}`);
 }, 'MEDIUM');
 
 test('calculateChefSatisfactionScore: 500 sous chefs → floor (no crash)', () => {
@@ -1627,7 +1628,7 @@ test('[Balance] Chef satisfaction floor applied at 35', () => {
   assert(score >= 0 && score <= 100, `chefSatisfaction in [0,100]: ${score}`);
 }, 'HIGH');
 
-test('[Balance] Ad bonus correctly reflected in revenue formula', () => {
+test('[Balance] Anti-arbitrage: adSpendCoeff zeroed out so adSpend cannot inflate revenue', () => {
   const baseRevenue = revenue.computeGrossRevenue({
     sousChefCount: 0,
     aggregateSatisfactionPct: 0,
@@ -1640,15 +1641,15 @@ test('[Balance] Ad bonus correctly reflected in revenue formula', () => {
   const withAd = revenue.computeGrossRevenue({
     sousChefCount: 0,
     aggregateSatisfactionPct: 0,
-    adSpend: 1000,
+    adSpend: 1000000,
     numProducts: 0,
     totalProductRevenue: 0,
     noiseSeed: 'fixed-seed'
   }, defaultCfg);
 
-  // With same seed, difference should be adSpendCoeff(0.8) * 1000 = 800
+  // adSpendCoeff is 0 (KILLED ARBITRAGE EXPLOIT) — adSpend must NOT change revenue.
   const diff = withAd - baseRevenue;
-  assert(Math.abs(diff - 800) < 1, `adSpend diff should be 800, got ${diff}`);
+  assert(Math.abs(diff) < 0.001, `adSpend must not affect revenue (coeff=0), got diff ${diff}`);
 }, 'HIGH');
 
 test('[Balance] Loan shark interest applied correctly', () => {
@@ -1684,8 +1685,8 @@ test('[Balance] Revenue with 6 products > revenue with 3 products (numProductsCo
     numProducts: 6, totalProductRevenue: 0, noiseSeed: 'test'
   }, defaultCfg);
   const diff = r6 - r3;
-  // numProductsCoeff(50) * (6-3) = 150
-  assert(Math.abs(diff - 150) < 1, `3 more products → 150 more revenue, got diff ${diff}`);
+  // numProductsCoeff(100) * (6-3) = 300 (balance pass: was 50 → 100)
+  assert(Math.abs(diff - 300) < 1, `3 more products → 300 more revenue, got diff ${diff}`);
 }, 'MEDIUM');
 
 // ============================================================================

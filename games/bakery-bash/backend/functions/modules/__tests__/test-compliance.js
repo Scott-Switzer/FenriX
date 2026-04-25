@@ -120,15 +120,14 @@ function section(title) {
 
 section('A1. Revenue Formula');
 {
-  // Spec: 500 + 12×sousChef + 8×aggSatisfaction + 0.8×adSpend + 50×numProducts
-  //       + Σ(qtySold×fixedPrice) + noise[-100,+100]
+  // Balance pass: 500 + 25×sousChef + 60×aggSatisfaction + 0×adSpend + 100×numProducts
+  //               + Σ(qtySold×fixedPrice) + noise[-100,+100]
+  // adSpendCoeff zeroed to kill the original ad-bid arbitrage exploit.
   const { computeGrossRevenue } = require(path.join(BASE, 'revenue'));
   const cfg = mergeConfig({});
 
   // Seeded test — noise is deterministic when noiseSeed is provided.
-  // With these known inputs, gross should be:
-  //   500 + 12*2 + 8*75 + 0.8*1000 + 50*4 + 200 + noise
-  //   = 500 + 24 + 600 + 800 + 200 + 200 + noise = 2324 + noise
+  // 500 + 25*2 + 60*75 + 0*1000 + 100*4 + 200 = 500 + 50 + 4500 + 0 + 400 + 200 = 5650 + noise
   const r = computeGrossRevenue({
     sousChefCount: 2,
     aggregateSatisfactionPct: 75,
@@ -138,34 +137,37 @@ section('A1. Revenue Formula');
     noiseSeed: 'test-seed-1',
   }, cfg);
 
-  // Without noise, formula value = 2324
-  const formulaBase = 500 + 12*2 + 8*75 + 0.8*1000 + 50*4 + 200;
+  // Without noise, formula value = 5650
+  const formulaBase = 500 + 25*2 + 60*75 + 0*1000 + 100*4 + 200;
   assert(typeof r === 'number' && Number.isFinite(r),    'Revenue formula returns a finite number');
   assert(r >= formulaBase - 100 && r <= formulaBase + 100,
     'Revenue formula value within noise bounds',
     `formulaBase=${formulaBase}, got=${r}`);
 
-  // Verify coefficient structure in config
+  // Verify coefficient structure in config (balance-tuned values)
   const rc = cfg.revenueCoefficients;
-  assert(rc.base === 500,            'base coefficient = 500');
-  assert(rc.sousChefCoeff === 12,    'sousChefCoeff = 12');
-  assert(rc.satisfactionCoeff === 8, 'satisfactionCoeff = 8.0');
-  assert(rc.adSpendCoeff === 0.8,    'adSpendCoeff = 0.8');
-  assert(rc.numProductsCoeff === 50, 'numProductsCoeff = 50');
-  assert(rc.noiseMin === -100,       'noiseMin = -100');
-  assert(rc.noiseMax === 100,        'noiseMax = 100');
+  assert(rc.base === 500,             'base coefficient = 500');
+  assert(rc.sousChefCoeff === 25,     'sousChefCoeff = 25');
+  assert(rc.satisfactionCoeff === 60, 'satisfactionCoeff = 60');
+  assert(rc.adSpendCoeff === 0,       'adSpendCoeff = 0 (anti-arbitrage)');
+  assert(rc.numProductsCoeff === 100, 'numProductsCoeff = 100');
+  assert(rc.noiseMin === -100,        'noiseMin = -100');
+  assert(rc.noiseMax === 100,         'noiseMax = 100');
 }
 
 section('A2. Products & Pricing');
 {
-  // Spec: Coffee $4.00, Croissant $4.75, Bagel $3.00, Cookie $2.50, Sandwich $8.75, Matcha $6.25
+  // Balance-tuned catalog (passes 1, 6, 8, 9, 11). Demand 4–6× original spec to make
+  // product sales the dominant income source; satisfactionWeight equalized to 1.0;
+  // bagel/cookie prices raised to close the per-customer revenue gap; sandwich/matcha
+  // prices lowered so premium tier ≈ 1.6× cheap (was 3.5×).
   const expected = {
-    coffee:    { fixedPrice: 4.00,  baseDemand: 70, satisfactionWeight: 1.5, isBaseMenu: false },
-    croissant: { fixedPrice: 4.75,  baseDemand: 60, satisfactionWeight: 1.2, isBaseMenu: true  },
-    bagel:     { fixedPrice: 3.00,  baseDemand: 55, satisfactionWeight: 1.0, isBaseMenu: true  },
-    cookie:    { fixedPrice: 2.50,  baseDemand: 50, satisfactionWeight: 1.0, isBaseMenu: true  },
-    sandwich:  { fixedPrice: 8.75,  baseDemand: 45, satisfactionWeight: 1.0, isBaseMenu: false },
-    matcha:    { fixedPrice: 6.25,  baseDemand: 25, satisfactionWeight: 1.3, isBaseMenu: false },
+    coffee:    { fixedPrice: 4.00,  baseDemand: 240, satisfactionWeight: 1.0, isBaseMenu: false },
+    croissant: { fixedPrice: 4.75,  baseDemand: 240, satisfactionWeight: 1.0, isBaseMenu: true  },
+    bagel:     { fixedPrice: 4.50,  baseDemand: 240, satisfactionWeight: 1.0, isBaseMenu: true  },
+    cookie:    { fixedPrice: 4.00,  baseDemand: 240, satisfactionWeight: 1.0, isBaseMenu: true  },
+    sandwich:  { fixedPrice: 5.50,  baseDemand: 200, satisfactionWeight: 1.0, isBaseMenu: false },
+    matcha:    { fixedPrice: 4.50,  baseDemand: 200, satisfactionWeight: 1.0, isBaseMenu: false },
   };
 
   for (const [product, vals] of Object.entries(expected)) {
@@ -226,7 +228,7 @@ section('A2b. Pricing Zones (POST-01)');
   // Constants match spec
   assertClose(PRICE_STEP, 0.25, 'PRICE_STEP');
   assertClose(FLOOR_BONUS, 0.15, 'FLOOR_BONUS');
-  assertClose(MULTIPLIER_FLOOR, 0.1, 'MULTIPLIER_FLOOR');
+  assertClose(MULTIPLIER_FLOOR, 0.05, 'MULTIPLIER_FLOOR');
 
   // Coffee zone matches proposal table
   const z_coffee = PRICE_ZONES.coffee;
@@ -238,15 +240,16 @@ section('A2b. Pricing Zones (POST-01)');
   assertClose(z_coffee.ceiling, 6.50, 'coffee ceiling');
   assert(z_coffee.elasticityTier === 'high', 'coffee elasticity = high');
 
-  // Matcha zone matches proposal table
+  // Matcha zone — balance pass 6: rescaled to $2.50–$7 (mid $4.50), elasticityTier 'high'.
+  // Premium pricing now a real tradeoff (more $/customer, way fewer customers).
   const z_matcha = PRICE_ZONES.matcha;
-  assertClose(z_matcha.floor, 3.50, 'matcha floor');
-  assertClose(z_matcha.competitiveRangeLow, 5.50, 'matcha competitiveRangeLow');
-  assertClose(z_matcha.competitiveRangeHigh, 7.00, 'matcha competitiveRangeHigh');
-  assertClose(z_matcha.premiumRangeLow, 7.50, 'matcha premiumRangeLow');
-  assertClose(z_matcha.premiumRangeHigh, 9.00, 'matcha premiumRangeHigh');
-  assertClose(z_matcha.ceiling, 10.00, 'matcha ceiling');
-  assert(z_matcha.elasticityTier === 'low', 'matcha elasticity = low');
+  assertClose(z_matcha.floor, 2.50, 'matcha floor');
+  assertClose(z_matcha.competitiveRangeLow, 3.50, 'matcha competitiveRangeLow');
+  assertClose(z_matcha.competitiveRangeHigh, 5.50, 'matcha competitiveRangeHigh');
+  assertClose(z_matcha.premiumRangeLow, 6.00, 'matcha premiumRangeLow');
+  assertClose(z_matcha.premiumRangeHigh, 6.50, 'matcha premiumRangeHigh');
+  assertClose(z_matcha.ceiling, 7.00, 'matcha ceiling');
+  assert(z_matcha.elasticityTier === 'high', 'matcha elasticity = high');
 }
 
 section('A3. Chef System');
@@ -265,11 +268,11 @@ section('A3. Chef System');
     assert(match, `${nat} specialties = ${specs.join(', ')}`, `got ${JSON.stringify(n.specialties)}`);
   }
 
-  // Chef multipliers
+  // Chef multipliers (balance pass — bumped to widen competitive separation)
   const expectedMults = {
-    novel:        { nonSpecialty: 1.0,  specialty: 1.4 },
-    intermediate: { nonSpecialty: 1.25, specialty: 1.75 },
-    advanced:     { nonSpecialty: 1.6,  specialty: 2.2 },
+    novel:        { nonSpecialty: 1.0,  specialty: 1.5 },
+    intermediate: { nonSpecialty: 1.4,  specialty: 2.2 },
+    advanced:     { nonSpecialty: 1.8,  specialty: 3.0 },
   };
   for (const [tier, vals] of Object.entries(expectedMults)) {
     const m = CHEF_MULTIPLIERS[tier];
@@ -283,8 +286,8 @@ section('A3. Chef System');
 
   // Output formula: 30 × multiplier
   const frenchAdv = { skillTier: 'advanced', specialties: ['croissant', 'coffee'] };
-  assertClose(getChefOutputForProduct(frenchAdv, 'croissant'), 30 * 2.2, 'Advanced French chef on croissant = 66');
-  assertClose(getChefOutputForProduct(frenchAdv, 'bagel'),     30 * 1.6, 'Advanced French chef on bagel (non-spec) = 48');
+  assertClose(getChefOutputForProduct(frenchAdv, 'croissant'), 30 * 3.0, 'Advanced French chef on croissant = 90');
+  assertClose(getChefOutputForProduct(frenchAdv, 'bagel'),     30 * 1.8, 'Advanced French chef on bagel (non-spec) = 54');
 
   // Base chef (no skillTier) returns 30 always
   const baseChef = { skillTier: 'base', specialties: [] };
@@ -293,16 +296,16 @@ section('A3. Chef System');
 
   // Total output example: base + advanced French on croissant, with 0 sous chefs
   const total = calculateTotalProductOutput('croissant', [frenchAdv], {});
-  assertClose(total, 30 + 66, 'Total output: base(30) + advanced French(66) = 96 for croissant');
+  assertClose(total, 30 + 90, 'Total output: base(30) + advanced French(90) = 120 for croissant');
 
-  // Chef Satisfaction Score: max(35, 100 - max(0, n-4) × 16)
+  // Chef Satisfaction Score: max(35, 100 - max(0, n-4) × decay) — balance pass: decay 16 → 10
   const cfg = mergeConfig({});
   assert(calculateChefSatisfactionScore(0,  cfg) === 100, 'Chef sat 0 sous chefs = 100');
   assert(calculateChefSatisfactionScore(4,  cfg) === 100, 'Chef sat 4 sous chefs = 100');
-  assert(calculateChefSatisfactionScore(5,  cfg) === 84,  'Chef sat 5 sous chefs = 84');
-  assert(calculateChefSatisfactionScore(6,  cfg) === 68,  'Chef sat 6 sous chefs = 68');
-  assert(calculateChefSatisfactionScore(7,  cfg) === 52,  'Chef sat 7 sous chefs = 52');
-  assert(calculateChefSatisfactionScore(9,  cfg) === 35,  'Chef sat 9 sous chefs = 35 (floor)');
+  assert(calculateChefSatisfactionScore(5,  cfg) === 90,  'Chef sat 5 sous chefs = 90');
+  assert(calculateChefSatisfactionScore(6,  cfg) === 80,  'Chef sat 6 sous chefs = 80');
+  assert(calculateChefSatisfactionScore(7,  cfg) === 70,  'Chef sat 7 sous chefs = 70');
+  assert(calculateChefSatisfactionScore(11, cfg) === 35,  'Chef sat 11 sous chefs = 35 (floor)');
   assert(calculateChefSatisfactionScore(15, cfg) === 35,  'Chef sat 15 sous chefs = 35 (floor)');
 
   // Effective output: totalOutput × (chefSatisfaction / 100)
