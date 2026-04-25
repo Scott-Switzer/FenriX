@@ -3747,26 +3747,27 @@ h3 { font-size: 0.7rem; }
  * on the scene so it scrolls off-screen as the player reads the panels. */
 .decide-phase__layout {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 1.5rem;
   margin: 0 0 1rem;
-  /* Claim the leftover vertical space in .page-shell.game-page--wide
-   * so .game-page__dashboard inside has room to flex:1 / scroll, and
-   * the round-cost + Submit button siblings stay above the fold. */
   flex: 1;
   min-height: 0;
+  align-items: flex-start;
 }
 
 .decide-phase__scene-panel {
   display: flex;
-  justify-content: center;
-  align-items: flex-start;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  flex-shrink: 0;
+  width: 320px;
 }
 
 .decide-phase__scene-panel .pixel-bakery-scene {
-  transform: scale(1.5);
+  transform: scale(1.2);
   transform-origin: top center;
-  margin-bottom: calc(270px * 0.5); /* compensate for 1.5x visual height */
+  margin-bottom: calc(270px * 0.2); /* compensate for 1.2x visual height */
 }
 
 /* ── Ad Winner Banner (Decide screen, rounds 2+) ───────────────────────
