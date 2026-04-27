@@ -16,8 +16,9 @@ go.
   writes for `topBids` and `recordSubmission`).
 - **Tier 1** (no code, ~30 min): deploy + extend phase durations + run snapshot
   watcher during the session. This alone is enough to not crash.
-- **Tier 2** (~half day of code): pre-warm + cascade-write fix + practice run.
-  Buys real smoothness.
+- **Tier 2** (~most of a day of code): pre-warm + cascade-write fix +
+  save/restart-this-round UI + practice run. Buys real smoothness and a
+  one-click panic button.
 - **Tier 3** (~few hours each, optional): min-instances, prof connection-health
   UI, shard `game.submittedCount`.
 
@@ -206,6 +207,86 @@ catches bugs that won't otherwise show up until showtime.
 
 This is the **highest-confidence** thing on the list. If you only do one Tier-2
 item, do this one.
+
+---
+
+### T2.4 — Save / restart-this-round from the professor UI
+
+**Why**: T1.3 puts the panic button in a terminal — fine for our team, awful for
+a professor running 70 students mid-class. A "Restart this round" button on the
+professor page lets them recover from a class-killing bug without dropping into
+a CLI mid-session. It also removes the requirement that someone keep
+`npm run snapshot:watch` running on a laptop for the whole session.
+
+The existing snapshot infrastructure from PR #98 (`snapshot-game.js` /
+`watch-and-snapshot.js` / `restore-game.js`) does the heavy lifting. This task
+wraps it in callables, auto-fires it at round boundaries, and exposes one
+button + one confirmation dialog on the professor page.
+
+**The fix**
+
+1. **Auto-snapshot at the start of every round.** Hook into `advanceGamePhase`'s
+   transition into `round_N_email` — best-effort, non-fatal, runs after the
+   transaction commits.
+2. **`createSnapshot({ gameId })` callable.** Manual checkpoint button on the
+   professor page. Gated to `professorUid` like the other admin callables.
+3. **`restoreSnapshot({ gameId, snapshotId })` callable.** Pauses the game,
+   restores, leaves it paused. Returns the new state so the professor can
+   message students to refresh. Gated to `professorUid`. Logs every restore
+   to Cloud Logging with the calling uid (audit trail).
+4. **Storage.** Snapshots can exceed Firestore's 1 MB doc limit at 70 players
+   × 5 rounds (estimate ~1.5 MB compressed). Write the blob to Firebase
+   Cloud Storage at `gs://<bucket>/snapshots/{gameId}/{snapshotId}.json`,
+   then write a small index doc to `games/{gameId}/snapshots/{snapshotId}`
+   with `{ phase, round, capturedAt, gcsPath, sizeBytes, capturedByUid }`.
+   FE lists snapshots via the index docs.
+5. **Frontend.** Three additions to the professor page:
+   - **"Save now"** button — manual checkpoint
+   - **"Restart from last save"** button — opens a list of recent snapshots
+     (newest first), click one to restore. Gated behind a typed confirmation
+     ("RESTORE round_N") to match `restore-game.js`'s safety pattern. Restored
+     game lands paused.
+   - **"Last saved: round 3 · 12:34"** indicator next to the buttons.
+6. **Retention.** Cap snapshots per game at 20 (auto-prune oldest). Cap age at
+   30 days. Storage cost at 1.5 MB × 20 × $0.026/GB·mo is fractions of a cent
+   per game — negligible.
+
+**Steps**
+- [ ] Refactor: extract `serialize` / `deserialize` from
+      `scripts/snapshot-game.js` and `scripts/restore-game.js` into
+      `functions/modules/snapshot.js` so the scripts AND the callables share one
+      implementation. Keep the CLI scripts working — the module just becomes
+      their backbone.
+- [ ] Schema: `games/{gameId}/snapshots/{snapshotId}` with
+      `{ phase, round, capturedAt: Timestamp, gcsPath, sizeBytes, capturedByUid, capturedBy: 'auto'|'manual' }`
+- [ ] Backend: `createSnapshot` and `restoreSnapshot` callables.
+- [ ] Backend: hook auto-snapshot into the `advanceGamePhase` round-email
+      transition (after the transaction commits, like the existing email-body
+      generation is queued post-transaction).
+- [ ] FE: "Save now" + "Restart from last save" buttons + "Last saved: …"
+      indicator on `ProfessorPage.tsx`. Snapshot list as a small modal.
+- [ ] Rules: `snapshots/{id}` readable by professor only. Cloud Storage
+      bucket rules: only Cloud Functions can read/write the snapshots
+      prefix.
+- [ ] Test: trigger a fake mid-round failure (e.g., manually corrupt a
+      `submissions` doc), restore, confirm players auto-rejoin after refresh
+      and round can complete normally.
+- [ ] Test: restore from a snapshot that's older than the current round
+      (round 4 game, restoring to round 2 snapshot) — confirms the `--clean`
+      semantics that drop drift docs.
+
+**Effort**: ~3–4 hours
+**Risk**: **Medium**. Restore is destructive — keep all three safety gates:
+typed confirmation, log every restore with the calling uid, set `paused: true`
+on the restored game so players can't write into a half-restored state.
+
+**Cost**: ~$0/mo at this scale (Cloud Storage list price $0.026/GB·mo;
+snapshot blobs total <1 GB even with retention).
+
+**Why this isn't Tier 1**: T1.3's CLI watcher is the same panic button at the
+same recovery granularity. T2.4 is the *better* version — but if the session is
+in 48 hours and you can't ship code, T1.3 is the right answer. If you can ship
+code, T2.4 is what you want in the prof's hands.
 
 ---
 
