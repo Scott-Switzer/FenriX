@@ -350,6 +350,12 @@ export interface GameConfigParams {
   phaseDurations?: Record<string, number>;
   adBonuses?: Partial<Record<AdType, number>>;
   adBidMinimums?: Partial<Record<AdType, number>>;
+  /** Cost to purchase last round's competitor decisions CSV. */
+  competitorInsightCost?: number;
+  /** Cost to purchase the static nationality → specialty CSV. */
+  chefDataTier1Cost?: number;
+  /** Cost to purchase the full per-chef profile dump for the current round. */
+  chefDataTier2Cost?: number;
   // Legacy (pre-rewrite seed doc). Kept so UI can fall back if the canonical
   // field is not yet present in Firestore.
   costPerStaffPerRound?: number;

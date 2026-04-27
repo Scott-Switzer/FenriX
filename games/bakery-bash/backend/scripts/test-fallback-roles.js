@@ -64,14 +64,9 @@ async function seed(db, small1, small2, fullOps, fullFin, fullAdv) {
     professorUid: "uid_professor",
   });
   await db.doc(`games/${GAME_ID}/config/params`).set({
-    startingBudget: 500000,
-    sousChefBaseCost: 12500,
     unitCostPerProduct: 1,
     specialtyChefCap: 3,
-    revenueCoefficients: {
-      base: 500, sousChefCoeff: 12, satisfactionCoeff: 8,
-      adSpendCoeff: 0.8, numProductsCoeff: 50, noiseMin: 0, noiseMax: 0,
-    },
+    revenueCoefficients: { noiseMin: 0, noiseMax: 0 },
   });
 
   // TEAM_SMALL — 2 players. Both get `finance`/`advertising` — no
@@ -88,7 +83,7 @@ async function seed(db, small1, small2, fullOps, fullFin, fullAdv) {
       uid, playerId: uid,
       displayName: `Small ${role}`, bakeryName: "Small Bakery",
       teamId: TEAM_SMALL, role,
-      budgetCurrent: 500000, cumulativeRevenue: 0,
+      budgetCurrent: 10000, cumulativeRevenue: 0,
       specialtyChefs: [], sousChefCount: 0,
       consecutiveMissedRounds: 0, disconnected: false,
     });
@@ -115,7 +110,7 @@ async function seed(db, small1, small2, fullOps, fullFin, fullAdv) {
       uid, playerId: uid,
       displayName: `Full ${role}`, bakeryName: "Full Bakery",
       teamId: TEAM_FULL, role,
-      budgetCurrent: 500000, cumulativeRevenue: 0,
+      budgetCurrent: 10000, cumulativeRevenue: 0,
       specialtyChefs: [], sousChefCount: 0,
       consecutiveMissedRounds: 0, disconnected: false,
     });

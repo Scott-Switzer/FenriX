@@ -95,7 +95,7 @@ section('A: config.js — type confusion & boundary fuzzing');
 
 test('mergeConfig: null input → full defaults', () => {
   const cfg = config.mergeConfig(null);
-  assert(cfg.startingBudget === 500000, 'startingBudget default');
+  assert(cfg.startingBudget === 10000, 'startingBudget default');
   assert(cfg.totalRounds === 5, 'totalRounds default');
 }, 'HIGH');
 
@@ -116,17 +116,17 @@ test('mergeConfig: string input → full defaults', () => {
 
 test('mergeConfig: NaN budget → default', () => {
   const cfg = config.mergeConfig({ startingBudget: NaN });
-  assert(cfg.startingBudget === 500000, `NaN budget should fall back to default, got ${cfg.startingBudget}`);
+  assert(cfg.startingBudget === 10000, `NaN budget should fall back to default, got ${cfg.startingBudget}`);
 }, 'HIGH');
 
 test('mergeConfig: Infinity budget → default', () => {
   const cfg = config.mergeConfig({ startingBudget: Infinity });
-  assert(cfg.startingBudget === 500000, `Infinity budget should fall back to default, got ${cfg.startingBudget}`);
+  assert(cfg.startingBudget === 10000, `Infinity budget should fall back to default, got ${cfg.startingBudget}`);
 }, 'HIGH');
 
 test('mergeConfig: -Infinity budget → default', () => {
   const cfg = config.mergeConfig({ startingBudget: -Infinity });
-  assert(cfg.startingBudget === 500000, `-Infinity budget should fall back to default`);
+  assert(cfg.startingBudget === 10000, `-Infinity budget should fall back to default`);
 }, 'HIGH');
 
 test('mergeConfig: negative budget override is accepted as-is (no domain clamp)', () => {
@@ -142,12 +142,12 @@ test('mergeConfig: MAX_SAFE_INTEGER budget', () => {
 
 test('mergeConfig: injection string in startingBudget → default', () => {
   const cfg = config.mergeConfig({ startingBudget: "'; DROP TABLE games; --" });
-  assert(cfg.startingBudget === 500000, 'SQL injection in budget → default');
+  assert(cfg.startingBudget === 10000, 'SQL injection in budget → default');
 }, 'CRITICAL');
 
 test('mergeConfig: script tag in startingBudget → default', () => {
   const cfg = config.mergeConfig({ startingBudget: '<script>alert(1)</script>' });
-  assert(cfg.startingBudget === 500000, 'XSS in budget → default');
+  assert(cfg.startingBudget === 10000, 'XSS in budget → default');
 }, 'CRITICAL');
 
 test('mergeConfig: numeric string budget → parsed correctly', () => {
@@ -157,14 +157,14 @@ test('mergeConfig: numeric string budget → parsed correctly', () => {
 
 test('mergeConfig: nested NaN coefficients → defaults', () => {
   const cfg = config.mergeConfig({ revenueCoefficients: { base: NaN, sousChefCoeff: 'hack' } });
-  assert(cfg.revenueCoefficients.base === 500, `base should default to 500, got ${cfg.revenueCoefficients.base}`);
-  assert(cfg.revenueCoefficients.sousChefCoeff === 25, 'sousChefCoeff default (balance pass)');
+  assert(cfg.revenueCoefficients.base === 10, `base should default to 10, got ${cfg.revenueCoefficients.base}`);
+  assert(cfg.revenueCoefficients.sousChefCoeff === 0.5, 'sousChefCoeff default (balance pass 16)');
 }, 'HIGH');
 
 test('mergeConfig: empty nested objects → nested defaults', () => {
   const cfg = config.mergeConfig({ revenueCoefficients: {}, adBonuses: {} });
-  assert(cfg.revenueCoefficients.base === 500, 'empty obj → revenueCoefficients.base default');
-  assert(cfg.adBonuses.TV === 20000, 'empty obj → adBonuses.TV default');
+  assert(cfg.revenueCoefficients.base === 10, 'empty obj → revenueCoefficients.base default');
+  assert(cfg.adBonuses.TV === 400, 'empty obj → adBonuses.TV default');
 }, 'MEDIUM');
 
 test('numberOrDefault: null → fallback', () => {
@@ -243,8 +243,8 @@ test('computeGrossRevenue: string fields → treated as zero', () => {
     noiseSeed: 'seed'
   }, defaultCfg);
   assertFinite(r, 'string fields: gross revenue finite');
-  // base(500) + noise(-100..100) → should be in roughly [400, 600]
-  assertRange(r, 300, 700, 'string fields: revenue in plausible range');
+  // base(10) + noise(-2..2) → should be in roughly [8, 12]
+  assertRange(r, 5, 15, 'string fields: revenue in plausible range');
 }, 'HIGH');
 
 test('computeGrossRevenue: NaN fields → treated as zero', () => {
@@ -1685,8 +1685,10 @@ test('[Balance] Revenue with 6 products > revenue with 3 products (numProductsCo
     numProducts: 6, totalProductRevenue: 0, noiseSeed: 'test'
   }, defaultCfg);
   const diff = r6 - r3;
-  // numProductsCoeff(100) * (6-3) = 300 (balance pass: was 50 → 100)
-  assert(Math.abs(diff - 300) < 1, `3 more products → 300 more revenue, got diff ${diff}`);
+  // Test the relationship rather than a literal — numProductsCoeff is tuned
+  // by balance work and was rescaled in pass 16 (100 → 2).
+  const expected = defaultCfg.revenueCoefficients.numProductsCoeff * (6 - 3);
+  assert(Math.abs(diff - expected) < 1, `3 more products → ${expected} more revenue, got diff ${diff}`);
 }, 'MEDIUM');
 
 // ============================================================================

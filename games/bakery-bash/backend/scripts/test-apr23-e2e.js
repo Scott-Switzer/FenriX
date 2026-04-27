@@ -91,15 +91,12 @@ async function seedGame(db) {
     createdAt: FieldValue.serverTimestamp(),
   });
   await db.doc(`games/${GAME_ID}/config/params`).set({
-    startingBudget: 500000,
     playerCap: 20,
-    sousChefBaseCost: 12500,
     unitCostPerProduct: 1,
     specialtyChefCap: 3,
-    revenueCoefficients: {
-      base: 500, sousChefCoeff: 12, satisfactionCoeff: 8,
-      adSpendCoeff: 0.8, numProductsCoeff: 50, noiseMin: 0, noiseMax: 0,
-    },
+    // Force-zero noise so the simulation is deterministic across reruns;
+    // other coefficients fall back to DEFAULT_GAME_CONFIG.
+    revenueCoefficients: { noiseMin: 0, noiseMax: 0 },
   });
 }
 

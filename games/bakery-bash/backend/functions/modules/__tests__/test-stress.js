@@ -1264,7 +1264,7 @@ function runDynamicPricingStress() {
       productPrices: PRODUCT_KEYS.reduce((a, p) => ({ ...a, [p]: randomPrice(PRICE_ZONES[p]) }), {}),
     },
     specialtyChefs: [],
-    budgetCurrent: 500000,
+    budgetCurrent: 10000,
     returningCustomersPending: 0,
     auctionResults: { adWon: null, adBidPaid: 0, chefsWon: [], chefBidPaid: 0 },
     priorSubmittedPrices: [],

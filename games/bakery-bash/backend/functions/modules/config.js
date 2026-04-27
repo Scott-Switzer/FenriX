@@ -258,19 +258,38 @@ const SATISFACTION_TIERS = [
 // ---------------------------------------------------------------------------
 
 const DEFAULT_GAME_CONFIG = {
-  startingBudget: 500000,
-  // Balance pass 7: dropped from $12,500 → $5k → $2k → $1k → $500.
-  // Mirror-match probes showed engaged play still lost $21k/game while
-  // non-engaged play (baseline, minimalist) profited $5–17k. Engagement
-  // needs to PAY in the equilibrium where everyone engages, otherwise no
-  // one engages. At $500 base, 4 sous chefs cost $3,875/round, $19.4k
-  // over 5 rounds — small enough that engaged strategies clear $10–30k
-  // profit when paired with sat-coefficient bump (satisfactionCoeff 60).
-  // Also rescales chef-bid floors: novel $1k, intermediate $1.75k,
-  // advanced $2.75k. Chefs are essentially "must-buy" upgrades; the
-  // auction tension comes from chef pool scarcity (12 chefs / 3 teams =
-  // ~4 chefs per team, hard cap at 3) rather than from price.
-  sousChefBaseCost: 500,
+  // Balance pass 16 (Apr 2026): full proportional rescale to product
+  // economics. Product unit cost ($1) and sell prices ($4.00–$5.50) are
+  // LOCKED — everything else scales 50× down so cash amounts are
+  // proportional to what teams can actually earn from selling product.
+  //
+  // Pre-rescale: starting $500k, max product-revenue ceiling $6,140/round
+  // (all teams combined). Cash dwarfed product economy by ~80×, so engaged
+  // play vs minimalist differed by only $2k–$23k on a $500k base — the
+  // game felt like Monopoly play money. This rescale compresses everything
+  // (budget, sous, ads, formula coefficients, curveballs) by 50× so a
+  // round of strong product sales meaningfully shifts the budget.
+  //
+  // New scale:
+  //   startingBudget       $10,000   (was $500k)
+  //   sousChefBaseCost     $10        (was $500)
+  //   chef bid floors      $20/$35/$55  (was $1k/$1.75k/$2.75k)
+  //   adBonuses (TV)       $400       (was $20k)
+  //   revenue formula base $10        (was $500)
+  //   satisfactionCoeff    1.2        (was 60)
+  //   curveball burglary   $200       (was $10k)
+  //
+  // Loan shark interest (10%) is a percentage so it doesn't scale.
+  // Players can absolutely go into debt — see `loan-shark.js`.
+  startingBudget: 10000,
+  // Balance pass 16: $500 → $10 (50× scale-down). At $10 base, 4 sous
+  // chefs cost $77.50/round = $387.50 over 5 rounds (~4% of $10k budget).
+  // Chef bid floors rescale automatically: novel $20, intermediate $35,
+  // advanced $55. Chef value (extra units sold via specialty multipliers)
+  // is unchanged because product prices are unchanged, so auction prices
+  // will clear well above floor — the floor just exists to prevent
+  // $1-bid-wins-everything degeneracy.
+  sousChefBaseCost: 10,
   unitCostPerProduct: 1,
 
   // Balance pass 1: revenue formula was the source of the worst exploit —
@@ -293,13 +312,26 @@ const DEFAULT_GAME_CONFIG = {
   // caps at 100 and requires real output to achieve, sous chefs bounded
   // by escalating cost + cohesion penalty.
   revenueCoefficients: {
-    base: 500,
-    sousChefCoeff: 25,        // was 12
-    satisfactionCoeff: 60.0,  // was 8.0 → 30 → 60
-    adSpendCoeff: 0,          // was 0.8 — KILLED ARBITRAGE EXPLOIT
-    numProductsCoeff: 100,    // was 50
-    noiseMin: -100,
-    noiseMax: 100,
+    // Balance pass 16: all formula constants 50× down so the formula
+    // bonus is on the same order as product-sale revenue, not 25×
+    // larger. Product sales become the dominant revenue lever — exactly
+    // what "balance proportional to product sell prices" demands.
+    //
+    // At sat=70% (good tier), satisfactionCoeff*sat now contributes
+    // 1.2 × 70 = $84/round (was $4,200). Product sales for a 4-product
+    // team with decent allocation contribute ~$1,500–2,500/round. The
+    // formula bonus is a tail, not the main course.
+    //
+    // numProductsCoeff at 2 = $8 for 4 products (was $400). Stocking
+    // variety still gets a small nudge but the real value of variety
+    // is access to more demand pools.
+    base: 10,                 // was 500 → 10
+    sousChefCoeff: 0.5,       // was 25 → 0.5
+    satisfactionCoeff: 1.2,   // was 60 → 1.2
+    adSpendCoeff: 0,          // unchanged — KILLED ARBITRAGE EXPLOIT
+    numProductsCoeff: 2,      // was 100 → 2
+    noiseMin: -2,             // was -100 → -2
+    noiseMax: 2,              // was 100 → 2
   },
 
   // Balance pass 1: cut roughly 60% across the board. Old bonuses guaranteed
@@ -308,10 +340,14 @@ const DEFAULT_GAME_CONFIG = {
   // edge — they bring in real customer traffic via the foot-traffic boost
   // added below — but bidding is no longer a money cannon.
   adBonuses: {
-    TV: 20000,        // was 50000
-    Billboard: 12500, // was 37500
-    Radio: 7500,      // was 25000
-    Newspaper: 4000,  // was 18750
+    // Balance pass 16: 50× scale-down. TV $400 = ~10% of starting budget
+    // (was 4% of $500k starting). Winning an ad is now a meaningful round
+    // event — covers ~80–100 units of product worth of bonus revenue.
+    // Foot-traffic bonus (below) is unchanged because it's a percentage.
+    TV: 400,
+    Billboard: 250,
+    Radio: 150,
+    Newspaper: 80,
   },
 
   // Balance pass 1: ad winners get a foot-traffic bonus that scales with
@@ -386,8 +422,22 @@ const DEFAULT_GAME_CONFIG = {
   curveballs: {
     burglaryThreshold: 40,
     burglaryChance: 0.25,
-    burglaryAmount: 10000,
+    // Balance pass 16: 50× down. $200 burglary on a $10k budget is a
+    // 2% sting — same proportional pain as the old $10k on $500k.
+    burglaryAmount: 200,
   },
+
+  // Balance pass 16: data-purchase costs rescaled 50× to stay proportional
+  // to the new $10k starting budget. Old values ($5k/$2.5k/$7.5k) were
+  // 25–75% of the new budget — economically prohibitive and unplayable.
+  // New values preserve the original proportions ($5k was 1% of old $500k →
+  // $100 is 1% of new $10k, etc.). These were previously inline fallbacks
+  // in functions/index.js with no DEFAULT_GAME_CONFIG entry; promoting them
+  // here lets professors override via Firestore config like every other
+  // tunable parameter.
+  competitorInsightCost: 100,
+  chefDataTier1Cost: 50,
+  chefDataTier2Cost: 150,
 };
 
 // ---------------------------------------------------------------------------
@@ -550,6 +600,10 @@ function mergeConfig(rawConfig) {
       burglaryChance:    numberOrDefault((raw.curveballs || {}).burglaryChance,    d.curveballs.burglaryChance),
       burglaryAmount:    numberOrDefault((raw.curveballs || {}).burglaryAmount,    d.curveballs.burglaryAmount),
     },
+
+    competitorInsightCost: numberOrDefault(raw.competitorInsightCost, d.competitorInsightCost),
+    chefDataTier1Cost:     numberOrDefault(raw.chefDataTier1Cost,     d.chefDataTier1Cost),
+    chefDataTier2Cost:     numberOrDefault(raw.chefDataTier2Cost,     d.chefDataTier2Cost),
   };
 }
 

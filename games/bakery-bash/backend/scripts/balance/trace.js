@@ -94,8 +94,8 @@ const player = {
   cleanliness_pct: 100,
   auctionResults: {
     adWins: ['TV'],
-    adBidPaid: 10000,
-    chefBidPaid: 2750,  // floor for advanced @ sousChefBaseCost $500
+    adBidPaid: 200,
+    chefBidPaid: 55,  // 5.5 × sousChefBaseCost — advanced floor at the rescaled $10 base
     chefsWon: [advancedFrenchChef],
   },
 };
@@ -149,8 +149,8 @@ console.log('\n--- Cost breakdown (hand) ---');
 const stockUnits = Object.values(decision.quantities).reduce((s, q) => s + q, 0);
 const stockCost = stockUnits * cfg.unitCostPerProduct;
 const sousCost = chefSystem.getTotalSousChefHireCost(4, cfg);
-const adBidCost = 10000;
-const chefBidCost = 2750;
+const adBidCost = player.auctionResults.adBidPaid;
+const chefBidCost = player.auctionResults.chefBidPaid;
 const expectedTotal = stockCost + sousCost + adBidCost + chefBidCost;
 console.log(`  stockCost:      $${stockCost.toLocaleString()} (${stockUnits} units × $${cfg.unitCostPerProduct})`);
 console.log(`  sousCost (4):   $${sousCost.toLocaleString()}`);

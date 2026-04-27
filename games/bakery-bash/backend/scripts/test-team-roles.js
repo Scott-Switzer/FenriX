@@ -55,7 +55,7 @@ async function seed(adminDb, uid1, uid2) {
       playerId: uid,
       displayName: `Player-${uid.slice(0, 6)}`,
       bakeryName: `Bakery-${uid.slice(0, 6)}`,
-      budgetCurrent: 500000,
+      budgetCurrent: 10000,
       cumulativeRevenue: 0,
       specialtyChefs: [],
       sousChefCount: 0,
@@ -160,7 +160,7 @@ async function main() {
   // Give user3 a player doc but NOT a team membership
   await adminDb.doc(`games/${GAME_ID}/players/${uid3}`).set({
     uid: uid3, playerId: uid3, displayName: "Outsider", bakeryName: "Outsider Bakery",
-    budgetCurrent: 500000, cumulativeRevenue: 0, specialtyChefs: [], sousChefCount: 0, role: null,
+    budgetCurrent: 10000, cumulativeRevenue: 0, specialtyChefs: [], sousChefCount: 0, role: null,
   });
   const updateTeamName3 = httpsCallable(functions3, "updateTeamName");
   await expectError(

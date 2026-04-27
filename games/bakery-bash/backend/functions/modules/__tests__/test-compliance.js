@@ -126,8 +126,10 @@ section('A1. Revenue Formula');
   const { computeGrossRevenue } = require(path.join(BASE, 'revenue'));
   const cfg = mergeConfig({});
 
-  // Seeded test — noise is deterministic when noiseSeed is provided.
-  // 500 + 25*2 + 60*75 + 0*1000 + 100*4 + 200 = 500 + 50 + 4500 + 0 + 400 + 200 = 5650 + noise
+  // Seeded test — noise is deterministic when noiseSeed is provided. The
+  // expected formula value derives from the live coefficients in cfg so the
+  // assertion stays correct across balance rescales.
+  const rc = cfg.revenueCoefficients;
   const r = computeGrossRevenue({
     sousChefCount: 2,
     aggregateSatisfactionPct: 75,
@@ -137,22 +139,32 @@ section('A1. Revenue Formula');
     noiseSeed: 'test-seed-1',
   }, cfg);
 
-  // Without noise, formula value = 5650
-  const formulaBase = 500 + 25*2 + 60*75 + 0*1000 + 100*4 + 200;
+  const formulaBase =
+    rc.base +
+    rc.sousChefCoeff * 2 +
+    rc.satisfactionCoeff * 75 +
+    rc.adSpendCoeff * 1000 +
+    rc.numProductsCoeff * 4 +
+    200;
+  // Noise is clamped to [noiseMin, noiseMax], so the maximum deviation from
+  // formulaBase is bounded by max(|noiseMin|, noiseMax). +1 floor avoids a
+  // zero-tolerance window when noise is disabled.
+  const noiseTolerance = Math.max(Math.abs(rc.noiseMin), rc.noiseMax) + 1;
   assert(typeof r === 'number' && Number.isFinite(r),    'Revenue formula returns a finite number');
-  assert(r >= formulaBase - 100 && r <= formulaBase + 100,
+  assert(r >= formulaBase - noiseTolerance && r <= formulaBase + noiseTolerance,
     'Revenue formula value within noise bounds',
     `formulaBase=${formulaBase}, got=${r}`);
 
-  // Verify coefficient structure in config (balance-tuned values)
-  const rc = cfg.revenueCoefficients;
-  assert(rc.base === 500,             'base coefficient = 500');
-  assert(rc.sousChefCoeff === 25,     'sousChefCoeff = 25');
-  assert(rc.satisfactionCoeff === 60, 'satisfactionCoeff = 60');
-  assert(rc.adSpendCoeff === 0,       'adSpendCoeff = 0 (anti-arbitrage)');
-  assert(rc.numProductsCoeff === 100, 'numProductsCoeff = 100');
-  assert(rc.noiseMin === -100,        'noiseMin = -100');
-  assert(rc.noiseMax === 100,         'noiseMax = 100');
+  // Coefficient structure is locked; absolute values are tuned by balance work.
+  assert(typeof rc.base === 'number',                      'base coefficient is numeric');
+  assert(typeof rc.sousChefCoeff === 'number',             'sousChefCoeff is numeric');
+  assert(typeof rc.satisfactionCoeff === 'number',         'satisfactionCoeff is numeric');
+  assert(rc.adSpendCoeff === 0,                            'adSpendCoeff = 0 (anti-arbitrage)');
+  assert(typeof rc.numProductsCoeff === 'number',          'numProductsCoeff is numeric');
+  assert(typeof rc.noiseMin === 'number' && rc.noiseMin <= 0,
+                                                            'noiseMin is non-positive');
+  assert(typeof rc.noiseMax === 'number' && rc.noiseMax >= 0,
+                                                            'noiseMax is non-negative');
 }
 
 section('A2. Products & Pricing');
@@ -348,9 +360,10 @@ section('A3. Chef System');
   // Specialty chef cap = 3
   assert(DEFAULT_GAME_CONFIG.specialtyChefCap === 3, 'Specialty chef cap = 3');
 
-  // Chef pool generation produces 12 chefs (balance-tuned default)
+  // Chef pool generation matches the configured pool size.
   const pool = generateChefPool(1, cfg);
-  assert(pool.length === 12, `Chef pool size 12 (got ${pool.length})`);
+  assert(pool.length === cfg.chefPoolSize,
+    `Chef pool size = cfg.chefPoolSize (${cfg.chefPoolSize}, got ${pool.length})`);
   assert(pool.every(c => ['novel','intermediate','advanced'].includes(c.skillTier)),
     'All chefs have valid skill tiers');
   assert(pool.every(c => ['french','japanese','italian','american'].includes(c.nationality)),
@@ -485,18 +498,16 @@ section('A6. Ad Types');
   assert(adBonuses.Radio > 0,     'Radio bonus > 0');
   assert(adBonuses.Newspaper > 0, 'Newspaper bonus > 0');
 
-  // ⚠️ KNOWN DISCREPANCY: code defaults are 200/150/100/75 (not 250× scaled 50000/37500/25000/18750)
-  // This is acknowledged in DEC-13 as a placeholder pending INT-06 tuning.
-  const scaledOk = adBonuses.TV === 50000 && adBonuses.Billboard === 37500;
-  if (!scaledOk) {
-    console.log('  ⚠️  NOTE: adBonuses are placeholder values (DEC-13) — not yet scaled 250×');
-  }
+  // Post Balance pass 16: defaults are TV=400, Billboard=250, Radio=150,
+  // Newspaper=80 — proportional to the $10k starting budget. The ordering
+  // assertions above are the spec; absolute values are tuned by balance work.
 }
 
 section('A7. Phase Transitions');
 {
-  // Spec: lobby → round_1_email → round_1_decide → round_1_bid_ad → round_1_bid_chef
-  //       → round_1_roster → simulating → results_ready → round_2_email → ...→ game_over
+  // Canonical order from phases.js PHASE_ORDER:
+  //   lobby → round_1_email → round_1_bid_ad → round_1_bid_chef → round_1_roster
+  //         → round_1_decide → simulating → results_ready → round_2_email → … → game_over
   const transitions = [
     ['lobby',             { phase: 'round_1_email', round: 1  }],
     ['round_1_email',     { phase: 'round_1_bid_ad', round: 1 }],
@@ -621,14 +632,12 @@ section('A10. Game Creation Defaults');
   assert(DEFAULT_GAME_CONFIG.totalRounds === 5, 'Default totalRounds = 5');
   assert(cfg.totalRounds === 5, 'mergeConfig preserves totalRounds = 5');
 
-  // Spec: startingBudget = $500,000 (DEC-01)
-  // Code default is $2000 (placeholder); real value set via createGame config override
-  // This is a known discrepancy — the DEFAULT is a placeholder
-  if (DEFAULT_GAME_CONFIG.startingBudget !== 500000) {
-    console.log(`  ⚠️  NOTE: DEFAULT startingBudget=${DEFAULT_GAME_CONFIG.startingBudget} (not $500,000 DEC-01 — expected to be injected via config/params at game creation)`);
-  }
+  // Post Balance pass 16: startingBudget rescaled from the original DEC-01
+  // $500,000 spec to $10,000 to keep the economy proportional to product
+  // sell prices. The DEC-01 figure was play-money scale; the new figure is
+  // the live default professors run at.
   assert(typeof DEFAULT_GAME_CONFIG.startingBudget === 'number' && DEFAULT_GAME_CONFIG.startingBudget > 0,
-    'startingBudget is a positive number (placeholder; real value injected at game create)');
+    'startingBudget is a positive number');
 
   // maxPlayers: spec says 20 per game (DEC-12), schema must support 50
   // No hard cap in the modules themselves — cap is enforced at joinGame in index.js
@@ -642,10 +651,11 @@ section('A10. Game Creation Defaults');
   // Spec: specialtyChefCap = 3
   assert(cfg.specialtyChefCap === 3, 'specialtyChefCap = 3');
 
-  // mergeConfig does not corrupt numeric values
-  const custom = mergeConfig({ startingBudget: 500000, sousChefBaseCost: 12500 });
-  assert(custom.startingBudget === 500000, 'mergeConfig accepts $500,000 startingBudget');
-  assert(custom.sousChefBaseCost === 12500, 'mergeConfig accepts $12,500 sousChefBaseCost');
+  // mergeConfig does not corrupt numeric values — exercise with values that
+  // are NOT the current default so the assertions actually test propagation.
+  const custom = mergeConfig({ startingBudget: 25000, sousChefBaseCost: 75 });
+  assert(custom.startingBudget === 25000, 'mergeConfig propagates startingBudget override');
+  assert(custom.sousChefBaseCost === 75, 'mergeConfig propagates sousChefBaseCost override');
 }
 
 // ---------------------------------------------------------------------------
@@ -726,7 +736,9 @@ const STRATEGIES = [
   },
 ];
 
-const config = mergeConfig({ startingBudget: 500000, sousChefBaseCost: 12500 });
+// Section B exercises the lifecycle at the production-default economy so a
+// real budget-exhaustion or loan-shark edge would surface here.
+const config = mergeConfig({});
 
 // Generate round preferences for 4 rounds
 const ROUND_PREFS = generateGamePreferences(4, config);
@@ -754,17 +766,8 @@ for (let round = 1; round <= 4; round++) {
          prefs.neutral.length === 1 && prefs.cold.length === 1,
     `Round ${round}: preferences have correct distribution`);
 
-  // Phase sequence verification
-  const phaseSequence = [
-    `round_${round}_email`,
-    `round_${round}_bid_ad`,
-    `round_${round}_bid_chef`,
-    `round_${round}_roster`,
-    `round_${round}_decide`,
-    'simulating',
-    'results_ready',
-  ];
-  let currentPhase = round === 1 ? 'lobby' : `round_${round-1}_roster`;
+  // Phase sequence verification — round 1 enters via `lobby → round_1_email`.
+  // Mid-round transitions are exhaustively asserted in Section A7.
   if (round === 1) {
     const next = getNextPhase('lobby', 0, 4);
     assert(next.phase === 'round_1_email', `Round 1: lobby → round_1_email`);
@@ -772,13 +775,13 @@ for (let round = 1; round <= 4; round++) {
 
   // Generate chef pool for this round
   const pool = generateChefPool(round, config);
-  assert(pool.length === 12,
-    `Round ${round}: chef pool size = 12 (got ${pool.length})`);
+  assert(pool.length === config.chefPoolSize,
+    `Round ${round}: chef pool size = cfg.chefPoolSize (${config.chefPoolSize}, got ${pool.length})`);
 
   // Build player inputs for simulation
   const players = STRATEGIES.map(s => {
     const decision = s.getDecision(round);
-    const adBidPaid = s.id === 'adHeavy' ? 5000 : 0;
+    const adBidPaid = s.id === 'adHeavy' ? 100 : 0;
     return {
       playerId: s.id,
       displayName: s.displayName,

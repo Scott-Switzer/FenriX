@@ -51,7 +51,7 @@ console.log('\n=== 1. Zero stock everywhere ===');
 {
   const players = [{
     playerId: 'p1', displayName: 'P1', bakeryName: 'B1',
-    budgetCurrent: 500000,
+    budgetCurrent: 10000,
     decision: {
       quantities: { croissant: 0, cookie: 0, bagel: 0 },
       menu: { croissant: true, cookie: true, bagel: true, sandwich: false, coffee: false, matcha: false },
@@ -81,7 +81,7 @@ console.log('\n=== 2. Full chef-cap (3 advanced chefs) at R5 ===');
   ];
   const players = [{
     playerId: 'p1', displayName: 'P1', bakeryName: 'B1',
-    budgetCurrent: 500000,
+    budgetCurrent: 10000,
     decision: {
       quantities: { croissant: 300, coffee: 300, sandwich: 300, matcha: 300, bagel: 300, cookie: 300 },
       menu: { croissant: true, coffee: true, sandwich: true, matcha: true, bagel: true, cookie: true },
@@ -91,7 +91,7 @@ console.log('\n=== 2. Full chef-cap (3 advanced chefs) at R5 ===');
     },
     priorSubmittedPrices: [], specialtyChefs: chefs, sousChefCount: 4,
     returningCustomersPending: 100, cleanliness_pct: 100,
-    auctionResults: { adWins: ['TV'], adBidPaid: 16500, chefBidPaid: 0, chefsWon: [] },
+    auctionResults: { adWins: ['TV'], adBidPaid: 330, chefBidPaid: 0, chefsWon: [] },
   }];
   const result = sim.runSimulation(players, { modifiers: { coffee: 1, croissant: 1, bagel: 1, cookie: 1, sandwich: 1, matcha: 1 } }, cfg, { gameId: 'e2', round: 5 });
   const r = result[0];
@@ -167,7 +167,7 @@ console.log('\n=== 5. Maximum stocking (10× demand on all 6 products) ===');
   }
   const players = [{
     playerId: 'p1', displayName: 'P1', bakeryName: 'B1',
-    budgetCurrent: 500000,
+    budgetCurrent: 10000,
     decision: { quantities: stocks, menu, sousChefCount: 0, sousChefAssignments: {}, productPrices: {} },
     priorSubmittedPrices: [], specialtyChefs: [], sousChefCount: 0,
     returningCustomersPending: 0, cleanliness_pct: 100,
@@ -212,7 +212,7 @@ console.log('\n=== 7. Garbage fields in decisions ===');
 {
   const players = [{
     playerId: 'p1', displayName: 'P1', bakeryName: 'B1',
-    budgetCurrent: 500000,
+    budgetCurrent: 10000,
     decision: {
       quantities: { croissant: NaN, cookie: 'abc', bagel: undefined, coffee: -50 },
       menu: { croissant: true, coffee: true, bagel: true, sandwich: false, cookie: 'yes' },
@@ -246,7 +246,7 @@ console.log('\n=== 8. Sellout cascade (3 players, all stocking 10 of croissant) 
   for (let i = 0; i < 3; i++) {
     players.push({
       playerId: 'p' + i, displayName: 'P' + i, bakeryName: 'B' + i,
-      budgetCurrent: 500000,
+      budgetCurrent: 10000,
       decision: {
         quantities: { croissant: 10 },
         menu: { croissant: true, coffee: false, bagel: false, sandwich: false, cookie: false, matcha: false },

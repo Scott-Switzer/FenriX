@@ -85,7 +85,7 @@ function generateOneChef(round, config) {
   const skillTier = sampleSkillTier(rates);
   const specialties = CHEF_NATIONALITIES[nationality].specialties.slice();
   const baseCost = (cfg.sousChefBaseCost != null && Number.isFinite(cfg.sousChefBaseCost))
-    ? cfg.sousChefBaseCost : 12500;
+    ? cfg.sousChefBaseCost : 10;
   const minBidFloor = MIN_BID_FLOOR_MULTIPLIERS[skillTier] * baseCost;
 
   return {
@@ -295,7 +295,7 @@ function getSousChefCost(currentCount, config) {
     multiplier = 3.0 + 0.75 * (n - 3);
   }
   const baseCost = (config && Number.isFinite(config.sousChefBaseCost))
-    ? config.sousChefBaseCost : 12500;
+    ? config.sousChefBaseCost : 10;
   return multiplier * baseCost;
 }
 

@@ -36,7 +36,7 @@ console.log('\n=== A. Determinism ===');
 {
   const player = {
     playerId: 'p1', displayName: 'P1', bakeryName: 'B',
-    budgetCurrent: 500000,
+    budgetCurrent: 10000,
     decision: {
       quantities: { croissant: 100, coffee: 100 },
       menu: { croissant: true, coffee: true, bagel: false, cookie: false, sandwich: false, matcha: false },
@@ -45,7 +45,7 @@ console.log('\n=== A. Determinism ===');
     },
     priorSubmittedPrices: [], specialtyChefs: [], sousChefCount: 2,
     returningCustomersPending: 0, cleanliness_pct: 100,
-    auctionResults: { adWins: ['TV'], adBidPaid: 16500, chefBidPaid: 0, chefsWon: [] },
+    auctionResults: { adWins: ['TV'], adBidPaid: 330, chefBidPaid: 0, chefsWon: [] },
   };
   const prefs = { modifiers: { coffee: 1, croissant: 1, bagel: 1, cookie: 1, sandwich: 1, matcha: 1 } };
 
@@ -95,7 +95,7 @@ console.log('\n=== B. Curveball: burglary mechanic ===');
   for (let i = 0; i < N; i++) {
     const player = {
       playerId: 'p' + i, displayName: 'P', bakeryName: 'B',
-      budgetCurrent: 500000,
+      budgetCurrent: 10000,
       decision: {
         quantities: { croissant: 50 },
         menu: { croissant: true, coffee: false, bagel: false, cookie: false, sandwich: false, matcha: false },
@@ -122,7 +122,7 @@ console.log('\n=== B. Curveball: burglary mechanic ===');
   for (let i = 0; i < N; i++) {
     const player = {
       playerId: 'p' + i, displayName: 'P', bakeryName: 'B',
-      budgetCurrent: 500000,
+      budgetCurrent: 10000,
       decision: {
         quantities: { croissant: 50 },
         menu: { croissant: true },
@@ -147,7 +147,7 @@ console.log('\n=== B. Curveball: burglary mechanic ===');
   while (attempts < 200 && !found) {
     const player = {
       playerId: 'p' + attempts, displayName: 'P', bakeryName: 'B',
-      budgetCurrent: 500000,
+      budgetCurrent: 10000,
       decision: {
         quantities: { croissant: 50 },
         menu: { croissant: true },
@@ -183,7 +183,7 @@ console.log('\n=== C. Sellout cap (high pre-cap sat → capped at 45) ===');
   const advChef = { id: 'c1', nationality: 'french', skillTier: 'advanced', specialties: ['croissant', 'coffee'], minBidFloor: 2750, name: 'Marcel' };
   const player = {
     playerId: 'p1', displayName: 'P', bakeryName: 'B',
-    budgetCurrent: 500000,
+    budgetCurrent: 10000,
     decision: {
       quantities: { croissant: 200 },
       menu: { croissant: true, coffee: false, bagel: false, cookie: false, sandwich: false, matcha: false },

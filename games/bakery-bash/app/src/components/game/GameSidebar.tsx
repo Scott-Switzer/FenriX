@@ -24,9 +24,14 @@ type Tab = (typeof TABS)[number];
 const tabId = (tab: Tab) => `game-sidebar-tab-${tab.toLowerCase()}`;
 const panelId = (tab: Tab) => `game-sidebar-panel-${tab.toLowerCase()}`;
 
-const TIER1_COST = 2500;
-const TIER2_COST = 7500;
-const COMPETITOR_INTEL_COST = 5000;
+// Fallback display costs used when the Firestore game-config doc hasn't
+// synced yet. The backend reads these from `cfg.competitorInsightCost`,
+// `cfg.chefDataTier1Cost`, `cfg.chefDataTier2Cost` (with the same defaults
+// in DEFAULT_GAME_CONFIG), so professor overrides flow through naturally
+// — see the `costs` derivation inside the component.
+const DEFAULT_TIER1_COST = 50;
+const DEFAULT_TIER2_COST = 150;
+const DEFAULT_COMPETITOR_INTEL_COST = 100;
 
 /**
  * FE-9 — `readOnly` is threaded into `StaffTab` so the steppers and
@@ -48,8 +53,13 @@ export function GameSidebar({ readOnly = false }: GameSidebarProps) {
     Record<string, boolean>
   >({});
 
-  const { gameId, role, currentRound, acquiredCsvs } = useGame();
+  const { gameId, role, currentRound, acquiredCsvs, config } = useGame();
   const dispatch = useGameDispatch();
+
+  const TIER1_COST = config?.chefDataTier1Cost ?? DEFAULT_TIER1_COST;
+  const TIER2_COST = config?.chefDataTier2Cost ?? DEFAULT_TIER2_COST;
+  const COMPETITOR_INTEL_COST =
+    config?.competitorInsightCost ?? DEFAULT_COMPETITOR_INTEL_COST;
 
   const addCsv = (entry: AcquiredCsv) => {
     dispatch({ type: "ADD_ACQUIRED_CSV", payload: entry });

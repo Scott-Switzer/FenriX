@@ -73,8 +73,8 @@ async function main() {
     createdAt: FieldValue.serverTimestamp(),
   });
   await gameRef.collection('config').doc('params').set({
-    startingBudget: 500000, playerCap: 20,
-    chefPoolSize: 6, sousChefBaseCost: 12500,
+    playerCap: 20,
+    chefPoolSize: 6,
   });
 
   // 2 teams, 1 player each, plus a professor.
@@ -119,14 +119,14 @@ async function main() {
   // Alice bids high — should win.
   await httpsCallable(fnsA, 'submitBids')({
     gameId: GAME_ID, bidType: 'chef',
-    chefBids: [{ chefId: chef.id, amount: chef.minBidFloor + 50000 }],
-  });
-  console.log(`  Alice bid $${chef.minBidFloor + 50000} on ${chef.name}`);
-  await httpsCallable(fnsB, 'submitBids')({
-    gameId: GAME_ID, bidType: 'chef',
     chefBids: [{ chefId: chef.id, amount: chef.minBidFloor + 1000 }],
   });
-  console.log(`  Bob bid   $${chef.minBidFloor + 1000} on ${chef.name}`);
+  console.log(`  Alice bid $${chef.minBidFloor + 1000} on ${chef.name}`);
+  await httpsCallable(fnsB, 'submitBids')({
+    gameId: GAME_ID, bidType: 'chef',
+    chefBids: [{ chefId: chef.id, amount: chef.minBidFloor + 20 }],
+  });
+  console.log(`  Bob bid   $${chef.minBidFloor + 20} on ${chef.name}`);
 
   // Sanity: read both bid docs.
   const aliceBidSnap = await gameRef.collection('players').doc(ALICE_UID).collection('bids').doc('round_1').get();

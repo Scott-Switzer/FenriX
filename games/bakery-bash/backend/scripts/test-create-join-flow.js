@@ -73,7 +73,6 @@ async function main() {
     createdAt: FieldValue.serverTimestamp(),
   });
   await gameRef.collection('config').doc('params').set({
-    startingBudget: 500000,
     playerCap: 20,
   });
 

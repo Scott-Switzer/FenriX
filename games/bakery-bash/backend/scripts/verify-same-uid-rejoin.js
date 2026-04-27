@@ -78,7 +78,7 @@ async function main() {
     totalPlayers: 0, submittedCount: 0, paused: false,
     createdAt: FieldValue.serverTimestamp(),
   });
-  await gameRef.collection('config').doc('params').set({ startingBudget: 500000, playerCap: 20 });
+  await gameRef.collection('config').doc('params').set({ playerCap: 20 });
 
   // SHARED_UID is the same across all "tabs"
   const { fns } = await clientForUid(SHARED_UID, adminAuth, 'shared-tabs');

@@ -104,7 +104,7 @@ async function main() {
     createdAt: FieldValue.serverTimestamp(),
   });
   await gameRef.collection('config').doc('params').set({
-    startingBudget: 500000, playerCap: 20,
+    playerCap: 20,
   });
 
   const fnsA = await clientForUid(ALICE_UID, adminAuth, 'app-a');
@@ -129,14 +129,14 @@ async function main() {
   await advance({ gameId: GAME_ID });
   await dumpGame(db, 'after email→bid_ad');
 
-  console.log('\nStep 4: each places bids on TV/Billboard/Radio/Newspaper at $20k each');
+  console.log('\nStep 4: each places bids on TV/Billboard/Radio/Newspaper at $400 each');
   await httpsCallable(fnsA, 'submitBids')({
     gameId: GAME_ID, bidType: 'ad',
-    adBids: { TV: 20000, Billboard: 20000, Radio: 20000, Newspaper: 20000 },
+    adBids: { TV: 400, Billboard: 400, Radio: 400, Newspaper: 400 },
   });
   await httpsCallable(fnsB, 'submitBids')({
     gameId: GAME_ID, bidType: 'ad',
-    adBids: { TV: 25000, Billboard: 5000, Radio: 5000, Newspaper: 5000 }, // Bob outbids on TV only
+    adBids: { TV: 500, Billboard: 100, Radio: 100, Newspaper: 100 }, // Bob outbids on TV only
   });
 
   console.log('\nStep 5: advance bid_ad → bid_chef (ad auction resolves)');
@@ -150,9 +150,8 @@ async function main() {
     const w = ads[adType];
     console.log(`  ${adType}: winnerId=${w?.winnerId || '(none)'} winningBid=${w?.winningBid || 0}`);
   }
-  console.log('\n>>> EXPECTED: Bob wins TV ($25k > $20k); Alice wins Billboard/Radio/Newspaper ($20k > $5k)');
-  console.log('>>> If Alice only "won Newspaper" in playtest, the per-ad MIN_BID floor is the cause:');
-  console.log('>>> Defaults: TV=$16k, Billboard=$10k, Radio=$6k, Newspaper=$3.2k.');
+  console.log('\n>>> EXPECTED: Bob wins TV ($500 > $400); Alice wins Billboard/Radio/Newspaper ($400 > $100)');
+  console.log('>>> Note: ad bid floors were removed in V7, so any positive bid is a valid auction entry.');
 
   console.log('\nStep 6: each places chef bids and advance bid_chef → roster (chef auction resolves)');
   // Get the chef pool for round 1

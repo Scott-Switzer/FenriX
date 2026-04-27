@@ -66,16 +66,16 @@ function generateMenuOptionsFiltered() {
 
 const SOUS_OPTIONS = [0, 2, 3, 4, 5, 6, 8];
 
+// Updated balance pass 16: bid levels are now expressed as multiples of the
+// configured ad bonus, so this stays sensible across rebalances. The set
+// covers underbidding (0.5×), at-bonus (1×), and intentional over-bidding
+// (1.25×, 1.75×, 2.5×) so the search can discover ad-spam dominance.
+const _b = (v, mults) => mults.map((m) => Math.round(v * m));
 const AD_BID_LEVELS = {
-  // Updated post-balance pass 14: minimums = bonus values (20k/12.5k/7.5k/4k).
-  // Below-min bids auto-dropped. Bids = bonus give zero cash margin.
-  // Bidding above bonus is intentional over-bidding (you'd lose money on cash
-  // but gain foot traffic) — included so the search can discover that
-  // strategy if it dominates.
-  TV:        [0, 20000, 25000, 35000, 50000],
-  Billboard: [0, 12500, 16000, 22000, 35000],
-  Radio:     [0, 7500, 10000, 15000],
-  Newspaper: [0, 4000, 6000, 8000],
+  TV:        [0, ..._b(cfg.adBonuses.TV,        [0.5, 1.0, 1.25, 1.75, 2.5])],
+  Billboard: [0, ..._b(cfg.adBonuses.Billboard, [0.5, 1.0, 1.25, 1.75, 2.5])],
+  Radio:     [0, ..._b(cfg.adBonuses.Radio,     [0.5, 1.0, 1.5,  2.0])],
+  Newspaper: [0, ..._b(cfg.adBonuses.Newspaper, [0.5, 1.0, 1.5,  2.0])],
 };
 
 // Smart-bid for chef: floor of nation-best chef, or 0 (no purchase).
@@ -172,10 +172,10 @@ function evaluate(candidateFn, opponentName, reps = 30) {
 async function searchBestResponse(opponentName) {
   console.log(`\n>>> Best-response vs ${opponentName} <<<`);
 
-  // Defaults
+  // Defaults — TV bid scaled to ~80% of current TV bonus (post-rebalance).
   let bestMenu = ['croissant', 'cookie', 'bagel', 'coffee'];
   let bestSous = 4;
-  let bestAds = { TV: 8000 };
+  let bestAds = { TV: Math.round(cfg.adBonuses.TV * 0.8) };
   let bestChef = 'french-best';
   let bestPrice = 'catalog';
 
@@ -288,11 +288,14 @@ async function main() {
     );
   }
 
-  // Flag: if any best-response profit exceeds $50k, that's a new dominant strategy
-  console.log('\nAlert: best-response profits exceeding $50k indicate new dominant strategy candidates:');
+  // Flag: best-response profit > 2× starting budget = new dominant strategy.
+  // Post-rebalance ($10k start) the threshold is $20k. Pre-rebalance it was
+  // $50k on a $500k start (10% of starting capital — analogous to 200% now).
+  const flagThreshold = cfg.startingBudget * 2;
+  console.log(`\nAlert: best-response profits exceeding $${flagThreshold} indicate new dominant strategy candidates:`);
   for (const r of results) {
-    if (r.bestProfit > 50000) {
-      console.log(`  ⚠ vs ${r.opponent}: best response profits $${Math.round(r.bestProfit / 1000)}k`);
+    if (r.bestProfit > flagThreshold) {
+      console.log(`  ⚠ vs ${r.opponent}: best response profits ${fmt(r.bestProfit)}`);
     }
   }
 }

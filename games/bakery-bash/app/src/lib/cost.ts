@@ -20,8 +20,10 @@ import type {
   StaffCounts,
 } from "../types/game";
 
-/** Default per-hire base when Firestore `config/params` hasn't resolved. */
-export const DEFAULT_HIRE_BASE_COST = 50;
+/** Default per-hire base when Firestore `config/params` hasn't resolved.
+ * Matches `sousChefBaseCost` in backend/functions/modules/config.js (post
+ * balance pass 16 / Apr 2026 rebalance to a $10k starting budget). */
+export const DEFAULT_HIRE_BASE_COST = 10;
 
 /** Default per-unit production cost when `config.unitCostPerProduct` absent. */
 const DEFAULT_UNIT_COST = 1;

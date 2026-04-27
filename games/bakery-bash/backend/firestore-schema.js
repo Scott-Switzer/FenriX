@@ -62,30 +62,34 @@ const GameDocument = {
 // ─────────────────────────────────────────────────────────────
 const GameConfigDocument = {
   // ── Economy ──────────────────────────────────────────────
-  startingBudget: 500000,         // number ($) — each player's opening budget
-  sousChefBaseCost: 12500,        // number ($) — cost per sous chef hired per round
-  unitCostPerProduct: 1,          // number ($) — flat cost per unit ordered
+  // Balance pass 16 (Apr 2026): all monetary values rescaled 50× down to be
+  // proportional to actual product revenue (~$6,140/round across all teams
+  // at full demand). Product unit cost ($1) and sell prices ($4–$5.50) are
+  // LOCKED. See modules/config.js for the rebalance commentary.
+  startingBudget: 10000,          // number ($) — each player's opening budget
+  sousChefBaseCost: 10,           // number ($) — base for sous-chef escalation
+  unitCostPerProduct: 1,          // number ($) — flat cost per unit ordered (LOCKED)
 
   // ── Revenue model ────────────────────────────────────────
   // revenue = base + sousChefCoeff×sousChefs + satisfactionCoeff×satisfaction
   //         + adSpendCoeff×adSpend + numProductsCoeff×numProducts + noise
   revenueCoefficients: {
-    base: 500,                    // number — intercept
-    sousChefCoeff: 12,            // number — per-sous-chef revenue boost
-    satisfactionCoeff: 8.0,       // number — per-point satisfaction boost
-    adSpendCoeff: 0.8,            // number — multiplier on ad spend ($)
-    numProductsCoeff: 50,         // number — per-active-product boost
-    noiseMin: -100,               // number ($) — lower bound of uniform noise
-    noiseMax: 100,                // number ($) — upper bound of uniform noise
+    base: 10,                     // number — intercept
+    sousChefCoeff: 0.5,           // number — per-sous-chef revenue boost
+    satisfactionCoeff: 1.2,       // number — per-point satisfaction boost
+    adSpendCoeff: 0,              // number — KILLED in pass 1 (was arbitrage exploit)
+    numProductsCoeff: 2,          // number — per-active-product boost
+    noiseMin: -2,                 // number ($) — lower bound of uniform noise
+    noiseMax: 2,                  // number ($) — upper bound of uniform noise
   },
 
   // ── Advertising ──────────────────────────────────────────
   // Sealed-bid first-price auction; winner adds bonus to revenue that round.
   adBonuses: {
-    TV: 50000,                    // number ($)
-    Billboard: 37500,             // number ($)
-    Radio: 25000,                 // number ($)
-    Newspaper: 18750,             // number ($)
+    TV: 400,                      // number ($)
+    Billboard: 250,               // number ($)
+    Radio: 150,                   // number ($)
+    Newspaper: 80,                // number ($)
   },
 
   // ── Phase durations ──────────────────────────────────────
@@ -138,7 +142,7 @@ const PlayerDocument = {
   joinedAt: null,                 // Timestamp
 
   // Live financial state (never shown to players mid-game — DEC design principle)
-  budgetCurrent: 500000,          // number ($) — updated after each round (DEC-01)
+  budgetCurrent: 10000,           // number ($) — updated after each round (DEC-01)
   cumulativeRevenue: 0,           // number ($) — sum of all round revenues (for leaderboard)
 
   // Current round's working draft (live editable state before submit)

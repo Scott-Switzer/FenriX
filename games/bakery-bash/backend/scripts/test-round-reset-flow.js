@@ -53,7 +53,6 @@ async function main() {
     endedAt: null,
   });
   await gameRef.collection('config').doc('params').set({
-    startingBudget: 500000,
     phaseDurations: {
       email: 60, decide: 180, bid_ad: 90, bid_chef: 90,
       roster: 30, results_ready: 60,

@@ -120,6 +120,26 @@ function smartBidFor(chef, budget, fraction = 1.0) {
   return Math.max(floor, Math.min(cap, floor + Math.floor(floor * 0.05)));
 }
 
+/**
+ * Per-ad-type bid as a fraction of the configured bonus. Lets strategies
+ * stay sensible across rebalances without hand-editing every adBids object.
+ * Default 0.825 mirrors the historical fixed bids ($16.5k for $20k TV).
+ */
+function adBid(ctx, adType, fraction = 0.825) {
+  const bonus = (ctx && ctx.cfg && ctx.cfg.adBonuses && ctx.cfg.adBonuses[adType]) || 0;
+  return Math.max(0, Math.round(bonus * fraction));
+}
+
+/** Standard 4-ad bid spread (~80% of each bonus). */
+function standardAdBids(ctx) {
+  return {
+    TV:        adBid(ctx, 'TV',        0.825),
+    Billboard: adBid(ctx, 'Billboard', 0.840),
+    Radio:     adBid(ctx, 'Radio',     0.867),
+    Newspaper: adBid(ctx, 'Newspaper', 0.875),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Strategies
 // ---------------------------------------------------------------------------
@@ -134,7 +154,7 @@ function baseline(ctx) {
   const offered = ['croissant', 'cookie', 'bagel'];
   const sousChefCount = 2;
   return {
-    adBids: { TV: 16500, Billboard: 10500, Radio: 6500, Newspaper: 3500 },
+    adBids: standardAdBids(ctx),
     chefBids: [],
     quantities: stockForOffered(offered, ctx.roundPrefs, 1.3),
     menu: menuFromList(offered),
@@ -154,7 +174,7 @@ function frenchStack(ctx) {
     : [];
   const sousChefCount = 4;
   return {
-    adBids: { TV: 16500, Billboard: 10500, Radio: 6500, Newspaper: 3500 },
+    adBids: standardAdBids(ctx),
     chefBids,
     quantities: stockForOffered(offered, ctx.roundPrefs, 1.4),
     menu: menuFromList(offered),
@@ -174,7 +194,7 @@ function japaneseStack(ctx) {
     : [];
   const sousChefCount = 4;
   return {
-    adBids: { TV: 16500, Billboard: 10500, Radio: 6500, Newspaper: 3500 },
+    adBids: standardAdBids(ctx),
     chefBids,
     quantities: stockForOffered(offered, ctx.roundPrefs, 1.4),
     menu: menuFromList(offered),
@@ -194,7 +214,7 @@ function italianStack(ctx) {
     : [];
   const sousChefCount = 4;
   return {
-    adBids: { TV: 16500, Billboard: 10500, Radio: 6500, Newspaper: 3500 },
+    adBids: standardAdBids(ctx),
     chefBids,
     quantities: stockForOffered(offered, ctx.roundPrefs, 1.4),
     menu: menuFromList(offered),
@@ -214,7 +234,7 @@ function americanStack(ctx) {
     : [];
   const sousChefCount = 4;
   return {
-    adBids: { TV: 16500, Billboard: 10500, Radio: 6500, Newspaper: 3500 },
+    adBids: standardAdBids(ctx),
     chefBids,
     quantities: stockForOffered(offered, ctx.roundPrefs, 1.4),
     menu: menuFromList(offered),
@@ -234,7 +254,7 @@ function premiumMenu(ctx) {
     : [];
   const sousChefCount = 4;
   return {
-    adBids: { TV: 16500, Billboard: 10500, Radio: 6500, Newspaper: 3500 },
+    adBids: standardAdBids(ctx),
     chefBids,
     quantities: stockForOffered(offered, ctx.roundPrefs, 1.4),
     menu: menuFromList(offered),
@@ -250,7 +270,7 @@ function floorPricing(ctx) {
   const offered = ['croissant', 'cookie', 'bagel', 'coffee', 'sandwich', 'matcha']; // all 6
   const sousChefCount = 4;
   return {
-    adBids: { TV: 16500 },
+    adBids: { TV: adBid(ctx, 'TV', 0.825) },
     chefBids: [],
     quantities: stockForOffered(offered, ctx.roundPrefs, 1.5),
     menu: menuFromList(offered),
@@ -266,7 +286,7 @@ function ceilingPricing(ctx) {
   const offered = ['croissant', 'cookie', 'bagel'];
   const sousChefCount = 2;
   return {
-    adBids: { TV: 16500 },
+    adBids: { TV: adBid(ctx, 'TV', 0.825) },
     chefBids: [],
     quantities: stockForOffered(offered, ctx.roundPrefs, 1.3),
     menu: menuFromList(offered),
@@ -281,7 +301,12 @@ ceilingPricing.label = 'CeilingPricing';
 function adSpam(ctx) {
   const offered = ['croissant', 'cookie', 'bagel'];
   return {
-    adBids: { TV: 49000, Billboard: 35000, Radio: 22000, Newspaper: 17000 },
+    adBids: {
+      TV:        adBid(ctx, 'TV',        2.45),
+      Billboard: adBid(ctx, 'Billboard', 2.80),
+      Radio:     adBid(ctx, 'Radio',     2.93),
+      Newspaper: adBid(ctx, 'Newspaper', 4.25),
+    },
     chefBids: [],
     quantities: stockForOffered(offered, ctx.roundPrefs, 1.0),
     menu: menuFromList(offered),
@@ -321,7 +346,7 @@ function fullMenuBalanced(ctx) {
     : [];
   const sousChefCount = 4;
   return {
-    adBids: { Billboard: 10500 },
+    adBids: { Billboard: adBid(ctx, 'Billboard', 0.840) },
     chefBids,
     quantities: stockForOffered(offered, ctx.roundPrefs, 1.3),
     menu: menuFromList(offered),
@@ -351,7 +376,9 @@ function loanAbuser(ctx) {
   }
   const sousChefCount = ctx.round >= 2 ? 4 : 2;
   return {
-    adBids: ctx.round === 1 ? { Newspaper: 3500 } : { TV: 16500 },
+    adBids: ctx.round === 1
+      ? { Newspaper: adBid(ctx, 'Newspaper', 0.875) }
+      : { TV: adBid(ctx, 'TV', 0.825) },
     chefBids,
     quantities: stockForOffered(offered, ctx.roundPrefs, 1.3),
     menu: menuFromList(offered),
@@ -367,7 +394,7 @@ function sousChefStacker(ctx) {
   const offered = ['croissant', 'cookie', 'bagel', 'coffee'];
   const sousChefCount = 8;
   return {
-    adBids: { TV: 16500 },
+    adBids: { TV: adBid(ctx, 'TV', 0.825) },
     chefBids: [],
     quantities: stockForOffered(offered, ctx.roundPrefs, 1.5),
     menu: menuFromList(offered),
@@ -396,7 +423,7 @@ function trendChaser(ctx) {
     : [];
   const sousChefCount = 4;
   return {
-    adBids: { TV: 16500 },
+    adBids: { TV: adBid(ctx, 'TV', 0.825) },
     chefBids,
     quantities: stockForOffered(offered, ctx.roundPrefs, 1.5),
     menu: menuFromList(offered),
@@ -441,7 +468,7 @@ function adversarialCeilingCounter(ctx) {
   for (const p of offered) productPrices[p] = PRICE_ZONES[p].ceiling;
   const quantities = stockForOffered(offered, ctx.roundPrefs, 1.4);
   return {
-    adBids: { TV: 16500, Billboard: 10500, Radio: 6500, Newspaper: 3500 },
+    adBids: standardAdBids(ctx),
     chefBids,
     menu: menuFromList(offered),
     quantities,

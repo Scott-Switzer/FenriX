@@ -3431,7 +3431,7 @@ exports.purchaseCompetitorInsight = onCall(async (request) => {
 
   const configSnap = await gameRef.collection("config").doc("params").get();
   const config = configSnap.exists ? configSnap.data() : {};
-  const insightCost = (config.competitorInsightCost) || 5000;
+  const insightCost = numberOrDefault(config.competitorInsightCost, 100);
 
   await db.runTransaction(async (tx) => {
     const playerRef = gameRef.collection("players").doc(uid);
@@ -3475,13 +3475,14 @@ exports.purchaseCompetitorInsight = onCall(async (request) => {
 // ===========================================================================
 // purchaseChefData — Tier 1 / Tier 2 chef data CSVs
 //
-// Tier 1 ($2,500): static nationality → specialty-product map. Reveals which
-// cuisines lift which products — always the same payload, independent of
-// the current round's generated pool.
+// Tier 1 (chefDataTier1Cost, default $50): static nationality → specialty-
+// product map. Reveals which cuisines lift which products — always the same
+// payload, independent of the current round's generated pool.
 //
-// Tier 2 ($7,500): full per-chef dump for the current round's chef pool
-// (name, nationality, gender, skill tier, specialties, min bid floor) so a
-// team can evaluate every candidate before the chef auction resolves.
+// Tier 2 (chefDataTier2Cost, default $150): full per-chef dump for the
+// current round's chef pool (name, nationality, gender, skill tier,
+// specialties, min bid floor) so a team can evaluate every candidate
+// before the chef auction resolves.
 //
 // Purchases are recorded at `players/{uid}/purchases/chef_tier{1|2}` and
 // the transaction rejects re-buying the same tier, so the total cost is
@@ -3505,8 +3506,8 @@ exports.purchaseChefData = onCall(async (request) => {
 
   const configSnap = await gameRef.collection("config").doc("params").get();
   const config = configSnap.exists ? configSnap.data() : {};
-  const tier1Cost = numberOrDefault(config.chefDataTier1Cost, 2500);
-  const tier2Cost = numberOrDefault(config.chefDataTier2Cost, 7500);
+  const tier1Cost = numberOrDefault(config.chefDataTier1Cost, 50);
+  const tier2Cost = numberOrDefault(config.chefDataTier2Cost, 150);
   const cost = tier === 1 ? tier1Cost : tier2Cost;
 
   await db.runTransaction(async (tx) => {

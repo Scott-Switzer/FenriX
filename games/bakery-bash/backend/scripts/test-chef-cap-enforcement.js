@@ -74,8 +74,6 @@ async function seedRosterGame(db, professorUid, playerUid, chefCount) {
   });
 
   await db.doc(`games/${GAME_ID}/config/params`).set({
-    startingBudget: 500000,
-    sousChefBaseCost: 12500,
     unitCostPerProduct: 1,
     specialtyChefCap: 3,
     chefPoolSize: 12,
@@ -90,7 +88,7 @@ async function seedRosterGame(db, professorUid, playerUid, chefCount) {
       gender: "female",
       skillTier: "novel",
       specialties: ["croissant", "coffee"],
-      minBidFloor: 25000,
+      minBidFloor: 500,
     });
   }
 
@@ -101,7 +99,7 @@ async function seedRosterGame(db, professorUid, playerUid, chefCount) {
     bakeryName: "Chef-Cap Bakery",
     role: "solo",
     teamId: null,
-    budgetCurrent: 500000,
+    budgetCurrent: 10000,
     cumulativeRevenue: 0,
     specialtyChefs: chefs,
     sousChefCount: 0,

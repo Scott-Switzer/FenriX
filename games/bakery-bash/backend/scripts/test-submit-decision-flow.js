@@ -66,14 +66,11 @@ async function seedGame(db, soloUid, operationsUid, financeUid) {
   });
 
   await db.doc(`games/${GAME_ID}/config/params`).set({
-    startingBudget: 500000,
-    sousChefBaseCost: 12500,
     unitCostPerProduct: 1,
     specialtyChefCap: 3,
-    revenueCoefficients: {
-      base: 500, sousChefCoeff: 12, satisfactionCoeff: 8,
-      adSpendCoeff: 0.8, numProductsCoeff: 50, noiseMin: 0, noiseMax: 0,
-    },
+    // Force-zero noise so the simulation is deterministic across reruns.
+    // Other revenueCoefficients fall back to DEFAULT_GAME_CONFIG.
+    revenueCoefficients: { noiseMin: 0, noiseMax: 0 },
   });
 
   // solo player — bypasses all role checks
@@ -81,7 +78,7 @@ async function seedGame(db, soloUid, operationsUid, financeUid) {
     uid: soloUid, playerId: soloUid,
     displayName: "Solo Baker", bakeryName: "Solo Bakery",
     role: "solo",
-    budgetCurrent: 500000, cumulativeRevenue: 0,
+    budgetCurrent: 10000, cumulativeRevenue: 0,
     specialtyChefs: [], sousChefCount: 0,
     consecutiveMissedRounds: 0, disconnected: false,
   });
@@ -91,7 +88,7 @@ async function seedGame(db, soloUid, operationsUid, financeUid) {
     uid: operationsUid, playerId: operationsUid,
     displayName: "Ops Baker", bakeryName: "Ops Bakery",
     role: "operations",
-    budgetCurrent: 500000, cumulativeRevenue: 0,
+    budgetCurrent: 10000, cumulativeRevenue: 0,
     specialtyChefs: [], sousChefCount: 0,
     consecutiveMissedRounds: 0, disconnected: false,
   });
@@ -101,7 +98,7 @@ async function seedGame(db, soloUid, operationsUid, financeUid) {
     uid: financeUid, playerId: financeUid,
     displayName: "Finance Baker", bakeryName: "Finance Bakery",
     role: "finance",
-    budgetCurrent: 500000, cumulativeRevenue: 0,
+    budgetCurrent: 10000, cumulativeRevenue: 0,
     specialtyChefs: [], sousChefCount: 0,
     consecutiveMissedRounds: 0, disconnected: false,
   });

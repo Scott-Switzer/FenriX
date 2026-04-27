@@ -62,7 +62,7 @@ async function seedLobbyGame(db, professorId) {
     displayName: "Test Player",
     bakeryName: "Test Bakery",
     role: "solo",
-    budgetCurrent: 500000,
+    budgetCurrent: 10000,
     cumulativeRevenue: 0,
     specialtyChefs: [],
     sousChefCount: 0,

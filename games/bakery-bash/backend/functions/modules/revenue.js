@@ -184,11 +184,13 @@ function computeGrossRevenue(inputs, cfg = config) {
  * dependency between revenue.js and chef-system.js.
  *
  * @param {number} count - number of sous chefs hired.
- * @param {number} baseCost - cost per "unit multiplier" (default $500).
+ * @param {number} baseCost - cost per "unit multiplier" (default 10 — see
+ *   DEFAULT_GAME_CONFIG.sousChefBaseCost). Test callers may pass any
+ *   positive number to exercise the formula at a different scale.
  * @returns {number} total hire cost.
  */
 function _sousChefHireCost(count, baseCost) {
-  const b = baseCost != null ? baseCost : 500;
+  const b = baseCost != null ? baseCost : 10;
   const multipliers = [1.0, 1.5, 2.25, 3.0]; // 1st..4th
   let total = 0;
   for (let i = 0; i < count; i++) {
@@ -215,7 +217,7 @@ function _sousChefHireCost(count, baseCost) {
  *   chefAuctionWinningBid?: number
  * }} auctionResults
  * @param {Object} cfg - uses cfg.unitCostPerProduct { product: cost } and
- *   cfg.sousChefBaseCost (default 500).
+ *   cfg.sousChefBaseCost (default 10 — see DEFAULT_GAME_CONFIG).
  * @returns {{
  *   stockCost: number,
  *   sousChefHireCost: number,

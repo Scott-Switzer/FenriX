@@ -9,10 +9,9 @@
  * Verifies:
  *  - Per-round result docs exist with correct shape
  *  - Budget tracking across rounds is consistent
- *  - Ad auction results are recorded
+ *  - Ad auction resolves to the highest bidder (no min-bid floor in V7+)
  *  - Chef rosters accumulate within the cap
  *  - Cumulative profit at game end matches per-round sum
- *  - The new ad bid minimum (Balance pass 12) is enforced
  *  - Sellout cap reflected in per-product results
  *
  * Run via:
@@ -32,8 +31,21 @@ const { connectFunctionsEmulator, getFunctions, httpsCallable } = require('fireb
 
 const PROJECT_ID = 'bakery-bash-54d12';
 const GAME_ID = 'balance-e2e-' + Date.now();
-const BIDS_BELOW_MIN = 100;     // Will be rejected by validation
-const NORMAL_AD_BID = 17000;    // Above the $16k minimum (Pass 15)
+
+// Pull live defaults so this test stays in sync with config.js scale (which
+// has been rebalanced from $500k → $10k starting budget; ad bonuses 50× down).
+const path = require('path');
+const cfgMod = require(path.join('..', '..', 'functions', 'modules', 'config'));
+const chefMod = require(path.join('..', '..', 'functions', 'modules', 'chef-system'));
+const CFG = cfgMod.mergeConfig(cfgMod.DEFAULT_GAME_CONFIG);
+
+const STARTING_BUDGET = CFG.startingBudget;     // $10,000 post-rebalance
+const TV_BONUS = CFG.adBonuses.TV;              // $400 post-rebalance
+// Alice bids ~80% of TV bonus (winning, profitable), Bob bids a tiny amount
+// that loses to Alice. Pre-V7 there was a hard min-bid floor; that's gone
+// (cfg.adBidMinimums all 0), so Bob's bid simply loses to Alice's.
+const NORMAL_AD_BID = Math.round(TV_BONUS * 0.825);   // ~$330
+const LOSING_AD_BID = Math.max(1, Math.round(TV_BONUS * 0.10)); // ~$40
 
 let PASS = 0;
 let FAIL = 0;
@@ -95,7 +107,9 @@ async function main() {
     createdAt: FieldValue.serverTimestamp(),
   });
 
-  // Use defaults — don't override, so balance pass 12 ad floors apply
+  // Use defaults — don't override the params doc, so the test exercises
+  // whatever DEFAULT_GAME_CONFIG currently ships (V7: no ad-bid floor,
+  // 50× rescaled budget/bonuses).
   await db.doc(`games/${GAME_ID}/config/params`).set({});
 
   // 2 solo teams
@@ -110,7 +124,7 @@ async function main() {
     await db.doc(`games/${GAME_ID}/players/${uid}`).set({
       uid, playerId: uid, displayName: name, bakeryName: `${name} Bakery`,
       teamId: teamSlug, role: 'solo',
-      budgetCurrent: 500000, cumulativeRevenue: 0,
+      budgetCurrent: STARTING_BUDGET, cumulativeRevenue: 0,
       specialtyChefs: [], sousChefCount: 0,
       consecutiveMissedRounds: 0, disconnected: false,
     });
@@ -126,8 +140,10 @@ async function main() {
   const phase1 = (await db.doc(`games/${GAME_ID}`).get()).get('phase');
   check('R1 email→bid_ad transition', phase1 === 'round_1_bid_ad', `got ${phase1}`);
 
-  // Submit ad bids — Alice bids $8k TV (above $5k min), Bob bids $100 TV (below min, should fail)
-  for (const [uid, bid] of [['uid_alice', NORMAL_AD_BID], ['uid_bob', BIDS_BELOW_MIN]]) {
+  // Alice bids ~80% of TV bonus (winning), Bob bids a token amount that loses
+  // the auction to Alice. (Pre-V7 ad min floors were a thing; they were removed
+  // for UX, so we now just rely on Alice's higher bid winning the sealed auction.)
+  for (const [uid, bid] of [['uid_alice', NORMAL_AD_BID], ['uid_bob', LOSING_AD_BID]]) {
     await db.doc(`games/${GAME_ID}/players/${uid}/bids/round_1`).set({
       ad: { TV: bid, Billboard: 0, Radio: 0, Newspaper: 0 },
       adSubmittedAt: FieldValue.serverTimestamp(),
@@ -142,8 +158,10 @@ async function main() {
   const aliceAdResult = adAuction['team-a'] || adAuction['uid_alice'];
   const bobAdResult = adAuction['team-b'] || adAuction['uid_bob'];
 
-  check('R1 alice ($8k bid) won TV', !!aliceAdResult && aliceAdResult.adTypes && aliceAdResult.adTypes.includes('TV'));
-  check('R1 ANTI-EXPLOIT: bob ($100 bid below minimum) did NOT win', !bobAdResult);
+  check(`R1 alice ($${NORMAL_AD_BID} bid) won TV`,
+    !!aliceAdResult && aliceAdResult.adTypes && aliceAdResult.adTypes.includes('TV'));
+  check(`R1 bob ($${LOSING_AD_BID} bid) lost TV to higher bidder`,
+    !bobAdResult || !bobAdResult.adTypes || !bobAdResult.adTypes.includes('TV'));
 
   // Submit chef bids (skip — both teams skip)
   for (const uid of ['uid_alice', 'uid_bob']) {
@@ -189,24 +207,32 @@ async function main() {
   check('R1 alice budgetAfter is finite', Number.isFinite(aliceR1.budgetAfter));
   check('R1 bob budgetAfter is finite', Number.isFinite(bobR1.budgetAfter));
 
-  // Alice won TV → her revenue should include the TV bonus ($20k)
-  check('R1 alice received TV ad bonus', aliceR1.revenueGross > 15000);
-  // Bob's $100 bid was rejected → no TV bonus, low revenue
-  check('R1 bob did NOT receive TV ad bonus (bid below min)', bobR1.revenueGross < 5000);
+  // Alice won TV → her gross should include the TV bonus on top of product
+  // sales. Both teams sell into the same demand pool so product revenue is
+  // comparable; the TV bonus is the differentiator.
+  check(`R1 alice gross > bob gross by ~TV bonus ($${TV_BONUS})`,
+    (aliceR1.revenueGross - bobR1.revenueGross) >= TV_BONUS - 100);
+  check('R1 bob did NOT receive TV ad bonus (lost auction)',
+    (aliceR1.revenueGross - bobR1.revenueGross) > 0);
 
-  // Cost reconciliation
+  // Cost reconciliation. With post-rebalance scale:
+  //   Alice: NORMAL_AD_BID ad + 2-sous hire ($25 at base $10) + 400 stock
+  //   Bob:   $0 ad win (lost auction, doesn't pay) + 25 sous + 400 stock
   const aliceCostsR1 = aliceR1.totalSpent;
   const bobCostsR1 = bobR1.totalSpent;
-  // Alice paid $17k for ad + $1,250 for 2 sous + 400 stock = ~$18.65k
-  // Bob paid $0 for ad (rejected) + $1,250 sous + 400 stock = ~$1.65k
+  const sousCostFor2 = chefMod.getTotalSousChefHireCost(2, CFG);  // 2.5 × baseCost
+  const stockCost = 400 * CFG.unitCostPerProduct;
+  const aliceExpectedSpend = NORMAL_AD_BID + sousCostFor2 + stockCost;
+  const bobExpectedSpend = 0 + sousCostFor2 + stockCost;
   console.log(`  Alice totalSpent: $${aliceCostsR1}, Bob totalSpent: $${bobCostsR1}`);
-  check('R1 alice spent ~$18.65k (17k ad + 1.25k sous + 400 stock)',
-    Math.abs(aliceCostsR1 - 18650) < 200);
-  check('R1 bob spent ~$1.65k (0 ad + 1.25k sous + 400 stock)',
-    Math.abs(bobCostsR1 - 1650) < 200);
+  console.log(`  Expected — Alice: $${aliceExpectedSpend}, Bob: $${bobExpectedSpend}`);
+  check(`R1 alice spent ~$${aliceExpectedSpend} (${NORMAL_AD_BID} ad + ${sousCostFor2} sous + ${stockCost} stock)`,
+    Math.abs(aliceCostsR1 - aliceExpectedSpend) < 5);
+  check(`R1 bob spent ~$${bobExpectedSpend} (0 ad lost + ${sousCostFor2} sous + ${stockCost} stock)`,
+    Math.abs(bobCostsR1 - bobExpectedSpend) < 5);
 
   // Budget reconciliation: budgetAfter = budgetBefore + revenueNet - totalSpent
-  const aliceBudgetExpected = Math.round(500000 + aliceR1.revenueNet - aliceR1.totalSpent);
+  const aliceBudgetExpected = Math.round(STARTING_BUDGET + aliceR1.revenueNet - aliceR1.totalSpent);
   check('R1 alice budgetAfter = budgetBefore + revenueNet - totalSpent',
     Math.abs(aliceR1.budgetAfter - aliceBudgetExpected) <= 1,
     `got ${aliceR1.budgetAfter}, expected ${aliceBudgetExpected}`);
@@ -228,9 +254,11 @@ async function main() {
 
   // Skip ads/chefs/roster/decide quickly
   await advance({ gameId: GAME_ID }); // → bid_ad
+  // R2 ad bid: ~50% of TV bonus (split-the-difference auction)
+  const r2Bid = Math.round(TV_BONUS * 0.5);
   for (const uid of ['uid_alice', 'uid_bob']) {
     await db.doc(`games/${GAME_ID}/players/${uid}/bids/round_2`).set({
-      ad: { TV: 6000, Billboard: 0, Radio: 0, Newspaper: 0 },
+      ad: { TV: r2Bid, Billboard: 0, Radio: 0, Newspaper: 0 },
       adSubmittedAt: FieldValue.serverTimestamp(),
     });
   }

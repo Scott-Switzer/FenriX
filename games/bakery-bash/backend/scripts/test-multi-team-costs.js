@@ -85,8 +85,6 @@ async function seedBaseGame(db, professorUid) {
   });
 
   await db.doc(`games/${GAME_ID}/config/params`).set({
-    startingBudget: 500000,
-    sousChefBaseCost: 12500,
     unitCostPerProduct: 1,
     specialtyChefCap: 3,
     chefPoolSize: 12,
@@ -109,7 +107,7 @@ async function seedBaseGame(db, professorUid) {
     bakeryName: "Solo Bakery",
     role: "solo",
     teamId: null,
-    budgetCurrent: 500000,
+    budgetCurrent: 10000,
     cumulativeRevenue: 0,
     specialtyChefs: [],
     sousChefCount: 0,
@@ -131,7 +129,7 @@ async function seedBaseGame(db, professorUid) {
       bakeryName: "Multi Bakery",
       role: m.role,
       teamId: TEAM_MULTI,
-      budgetCurrent: 500000,
+      budgetCurrent: 10000,
       cumulativeRevenue: 0,
       specialtyChefs: [],
       sousChefCount: 0,

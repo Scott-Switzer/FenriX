@@ -43,7 +43,8 @@ const PROF_UID = 'prof-v6-debug';
     createdAt: FieldValue.serverTimestamp(),
   });
   await gameRef.collection('config').doc('params').set({
-    startingBudget: 500000, playerCap: 20,
+    // Empty startingBudget = inherit DEFAULT_GAME_CONFIG ($10k post-rebalance).
+    playerCap: 20,
   });
 
   console.log('Ensuring professor user + custom claim…');

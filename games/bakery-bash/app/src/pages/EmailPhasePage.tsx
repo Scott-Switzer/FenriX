@@ -34,7 +34,7 @@ const FLOATS = [
 // Backend default; mirrored here so the chip renders something useful even
 // before the game's config sub-doc has synced. See
 // backend/functions/modules/config.js DEFAULT_GAME_CONFIG.startingBudget.
-const DEFAULT_STARTING_BUDGET = 500000;
+const DEFAULT_STARTING_BUDGET = 10000;
 
 export function EmailPhasePage() {
   useGamePhaseNav();

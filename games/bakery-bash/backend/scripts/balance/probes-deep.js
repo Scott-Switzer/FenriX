@@ -4,8 +4,14 @@
 
 'use strict';
 
+const path = require('path');
 const harness = require('./harness');
 const strategies = require('./strategies');
+const cfgMod = require(path.join('..', '..', 'functions', 'modules', 'config'));
+const cfg = cfgMod.mergeConfig(cfgMod.DEFAULT_GAME_CONFIG);
+
+// Helper: ad bid as fraction of bonus (so probes stay sensible across rebalances).
+const adBidAt = (type, frac = 0.825) => Math.round((cfg.adBonuses[type] || 0) * frac);
 
 function fmt(n) {
   if (typeof n !== 'number') return String(n);
@@ -123,7 +129,7 @@ function footTrafficMax() {
     const qts = {};
     for (const p of offered) qts[p] = Math.round(baseDemand[p] * 1.5);
     return {
-      adBids: { TV: 5000 },
+      adBids: { TV: adBidAt('TV') },
       chefBids,
       menu: { coffee: true, croissant: true, bagel: true, cookie: true, sandwich: true, matcha: true },
       quantities: qts,
@@ -168,7 +174,7 @@ function chefTierComparison() {
       menu: { croissant: true, cookie: true, bagel: true, coffee: true },
       sousChefCount: 4,
       sousChefAssignments: { croissant: 2, cookie: 1, bagel: 1 },
-      adBids: { TV: 5000 },
+      adBids: { TV: adBidAt('TV') },
       quantities: { croissant: 90, cookie: 70, bagel: 80, coffee: 100 },
     };
   };

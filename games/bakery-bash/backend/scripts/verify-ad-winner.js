@@ -75,7 +75,7 @@ async function main() {
     createdAt: FieldValue.serverTimestamp(),
   });
   await gameRef.collection('config').doc('params').set({
-    startingBudget: 500000, playerCap: 20,
+    playerCap: 20,
   });
 
   const fnsA = await clientForUid(ALICE_UID, adminAuth, 'app-a');
@@ -98,16 +98,16 @@ async function main() {
   let g = await gameRef.get();
   console.log('Now in phase:', g.get('phase'));
 
-  console.log('\nStep 3: Alice bids ONLY on TV (20000). Bob bids ONLY on Billboard (15000).');
+  console.log('\nStep 3: Alice bids ONLY on TV ($400). Bob bids ONLY on Billboard ($300).');
   // Alice bids TV only.
   await httpsCallable(fnsA, 'submitBids')({
     gameId: GAME_ID, bidType: 'ad',
-    adBids: { TV: 20000, Billboard: 0, Radio: 0, Newspaper: 0 },
+    adBids: { TV: 400, Billboard: 0, Radio: 0, Newspaper: 0 },
   });
   // Bob bids Billboard only.
   await httpsCallable(fnsB, 'submitBids')({
     gameId: GAME_ID, bidType: 'ad',
-    adBids: { TV: 0, Billboard: 15000, Radio: 0, Newspaper: 0 },
+    adBids: { TV: 0, Billboard: 300, Radio: 0, Newspaper: 0 },
   });
 
   // Confirm bids stored.

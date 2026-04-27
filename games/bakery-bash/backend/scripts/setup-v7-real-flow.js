@@ -73,8 +73,11 @@ async function clearGame(db, gid) {
     totalPlayers: 0, submittedCount: 0, paused: false,
     createdAt: FieldValue.serverTimestamp(),
   });
+  // Empty config = use DEFAULT_GAME_CONFIG from modules/config.js (post-rebalance:
+  // $10k starting budget). Don't hardcode startingBudget here or it will override
+  // the central default and re-introduce the $500k Monopoly-money scale.
   await gameRef.collection('config').doc('params').set({
-    startingBudget: 500000, playerCap: 20,
+    playerCap: 20,
   });
 
   const fnsBrowser = await clientForUid(BROWSER_UID, adminAuth, 'browser');
