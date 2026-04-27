@@ -538,7 +538,7 @@ export function AuctionPage() {
     const chef = chefPool.find((c) => c.id === chefId);
     const floor = chef?.minBidFloor ?? 0;
     if (floor > 0 && amount < floor) {
-      setSubmitError("Bid above the minimum bid.");
+      setSubmitError(`Bid must be at least $${floor}.`);
       return;
     }
     try {
@@ -596,7 +596,7 @@ export function AuctionPage() {
             // case a player submits via the bulk "Submit Bids" path.
             const floor = chef.minBidFloor ?? 0;
             if (floor > 0 && amount < floor) {
-              setSubmitError("Bid above the minimum bid.");
+              setSubmitError(`Bid must be at least $${floor}.`);
               setSubmitting(false);
               return;
             }
@@ -1006,9 +1006,9 @@ export function AuctionPage() {
                           }}
                         />
                       </div>
-                      {belowMinimum && (
+                      {belowMinimum && minBid !== null && (
                         <p className="auction-chef__bid-error" role="alert">
-                          Bid above the minimum bid.
+                          Bid must be at least ${minBid.toLocaleString()}.
                         </p>
                       )}
                       {!belowMinimum && isTiedChefBid(chef.id) && (
