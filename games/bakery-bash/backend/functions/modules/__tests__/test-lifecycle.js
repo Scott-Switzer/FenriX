@@ -96,14 +96,15 @@ for (let round = 1; round <= TOTAL_ROUNDS; round++) {
     assert(next.round === round, `round_${round}_email round = ${round}`);
   }
   // Validate intra-round transitions (these are round-agnostic patterns)
-  const intraPhases = ['email', 'decide', 'bid_ad', 'bid_chef', 'roster'];
+  const intraPhases = ['email', 'bid_ad', 'bid_chef', 'roster', 'decide'];
   for (let i = 0; i < intraPhases.length - 1; i++) {
     const from = `round_${round}_${intraPhases[i]}`;
     const to = `round_${round}_${intraPhases[i + 1]}`;
     const valid = phases.isValidTransition(from, to);
     assert(valid, `Transition ${from} → ${to} valid`);
   }
-  assert(phases.isValidTransition(`round_${round}_roster`, 'simulating'), `roster → simulating valid`);
+  assert(phases.isValidTransition(`round_${round}_roster`, `round_${round}_decide`), `roster → decide valid`);
+  assert(phases.isValidTransition(`round_${round}_decide`, 'simulating'), `decide → simulating valid`);
   assert(phases.isValidTransition('simulating', 'results_ready'), `simulating → results_ready valid`);
 
   // --- Decision phase ---

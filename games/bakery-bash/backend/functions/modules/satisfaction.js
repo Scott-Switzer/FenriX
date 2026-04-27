@@ -70,9 +70,11 @@ function fillRateToSatisfactionPct(fillRate) {
     if (fillRate < tier.maxFillRate) {
       const prevMax = i === 0 ? 0 : SATISFACTION_TIERS[i - 1].maxFillRate;
       const bandSize = tier.maxFillRate - prevMax;
-      // For the last tier (Infinity band), position = (fr - prevMax) / Inf = 0,
-      // so result = minSat (86 for excellent). This is correct: exactly meeting
-      // demand earns the start of excellent, surplus doesn't increase further.
+      // For the final tier (Infinity band), any fillRate >= 1.0 earns maxSat
+      // (100 for excellent) — surplus doesn't increase beyond the tier ceiling.
+      if (tier.maxFillRate === Infinity && fillRate >= 1.0) {
+        return tier.maxSat;
+      }
       const position = bandSize > 0 ? (fillRate - prevMax) / bandSize : 0;
       const clampedPos = Math.max(0, Math.min(1, position));
       return tier.minSat + clampedPos * (tier.maxSat - tier.minSat);

@@ -348,9 +348,9 @@ section('A3. Chef System');
   // Specialty chef cap = 3
   assert(DEFAULT_GAME_CONFIG.specialtyChefCap === 3, 'Specialty chef cap = 3');
 
-  // Chef pool generation produces 6-8 chefs
+  // Chef pool generation produces 12 chefs (balance-tuned default)
   const pool = generateChefPool(1, cfg);
-  assert(pool.length >= 6 && pool.length <= 8, `Chef pool size 6-8 (got ${pool.length})`);
+  assert(pool.length === 12, `Chef pool size 12 (got ${pool.length})`);
   assert(pool.every(c => ['novel','intermediate','advanced'].includes(c.skillTier)),
     'All chefs have valid skill tiers');
   assert(pool.every(c => ['french','japanese','italian','american'].includes(c.nationality)),
@@ -499,11 +499,11 @@ section('A7. Phase Transitions');
   //       → round_1_roster → simulating → results_ready → round_2_email → ...→ game_over
   const transitions = [
     ['lobby',             { phase: 'round_1_email', round: 1  }],
-    ['round_1_email',     { phase: 'round_1_decide', round: 1 }],
-    ['round_1_decide',    { phase: 'round_1_bid_ad', round: 1 }],
+    ['round_1_email',     { phase: 'round_1_bid_ad', round: 1 }],
     ['round_1_bid_ad',    { phase: 'round_1_bid_chef', round: 1 }],
     ['round_1_bid_chef',  { phase: 'round_1_roster', round: 1 }],
-    ['round_1_roster',    { phase: 'simulating', round: 1 }],
+    ['round_1_roster',    { phase: 'round_1_decide', round: 1 }],
+    ['round_1_decide',    { phase: 'simulating', round: 1 }],
     ['simulating',        { phase: 'results_ready', round: 1 }],
   ];
 
@@ -757,10 +757,10 @@ for (let round = 1; round <= 4; round++) {
   // Phase sequence verification
   const phaseSequence = [
     `round_${round}_email`,
-    `round_${round}_decide`,
     `round_${round}_bid_ad`,
     `round_${round}_bid_chef`,
     `round_${round}_roster`,
+    `round_${round}_decide`,
     'simulating',
     'results_ready',
   ];
@@ -772,8 +772,8 @@ for (let round = 1; round <= 4; round++) {
 
   // Generate chef pool for this round
   const pool = generateChefPool(round, config);
-  assert(pool.length >= 6 && pool.length <= 8,
-    `Round ${round}: chef pool size = ${pool.length}`);
+  assert(pool.length === 12,
+    `Round ${round}: chef pool size = 12 (got ${pool.length})`);
 
   // Build player inputs for simulation
   const players = STRATEGIES.map(s => {
