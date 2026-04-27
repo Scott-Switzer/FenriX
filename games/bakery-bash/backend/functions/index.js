@@ -1,10 +1,18 @@
 /**
  * index.js — Firebase Cloud Functions entry point for the bakery game backend.
  *
- * This is the ONLY file that imports Firebase. It orchestrates the pure
- * modules (config, phases, chef-system, satisfaction, customer-allocation,
- * revenue, loan-shark, simulation, csv-export, decision-validation,
- * round-preferences, market-insight).
+ * This file owns Firebase orchestration (admin init, function exports,
+ * Firestore client, auth checks). Domain modules (config, phases, chef-system,
+ * satisfaction, customer-allocation, revenue, loan-shark, simulation,
+ * csv-export, decision-validation, round-preferences, market-insight) are
+ * pure JS and never import Firebase.
+ *
+ * Documented exception: `modules/sharded-top-bids.js` and
+ * `modules/sharded-submissions.js` import `FieldValue` and `Timestamp` from
+ * `firebase-admin/firestore` to construct write-time sentinels
+ * (`serverTimestamp()`, `Timestamp.now()`). They take Firestore document refs
+ * as arguments rather than initialising the SDK themselves, so they remain
+ * unit-testable with a fake refs object.
  *
  * Preserved Firebase patterns from index-current.js:
  *   - Firebase admin init via getApps()/initializeApp()
@@ -669,17 +677,23 @@ async function resolveAndApplyAdAuction(gameRef, round) {
 }
 
 // ---------------------------------------------------------------------------
-// recordSubmission — BE-22 professor submission-state mirror
-// Writes { uid: { status, submittedAt, displayName, role } } to
-// games/{gameId}/submissions/{submissionDocId} with merge so the professor
-// dashboard can track per-player submission state in real time.
+// recordSubmission — BE-22 professor submission-state mirror (sharded path)
 //
-// Also maintains /submissionCounts/{submissionDocId} = { count, updatedAt }
-// in the same transaction. The counts mirror is readable by all signed-in
-// users (see firestore.rules) so the player-facing SubmissionLock can show
-// "X / Y submitted" without exposing per-player submission identities. The
-// count is only incremented when the uid was not already marked submitted,
-// so re-submissions don't double-count.
+// Writes the player's submission record into a shard under
+// `submissions/{submissionDocId}/shards/{idx}`. The `onSubmissionShardWritten`
+// trigger then aggregates all shards into the public docs that the FE listens
+// to:
+//   - submissions/{submissionDocId}     = { [uid]: { status, submittedAt,
+//                                                    displayName, role } }
+//   - submissionCounts/{submissionDocId} = { count, updatedAt }
+//
+// The counts mirror is readable by all signed-in users (see firestore.rules)
+// so the player-facing SubmissionLock can show "X / Y submitted" without
+// exposing per-player identities.
+//
+// Re-submissions don't double-count: the same uid always maps to the same
+// shard and overwrites the same `perUid[uid]` field, so the aggregator counts
+// each uid exactly once regardless of how many times they re-submit.
 //
 // submissionDocId pattern: "round_{N}_{phase}"  e.g. "round_1_decide"
 // Non-fatal: logged and swallowed on failure.

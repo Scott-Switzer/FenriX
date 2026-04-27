@@ -220,18 +220,32 @@ async function main() {
     }
   }
 
-  // The sharded path aggregates via an async trigger. Poll the round doc
-  // for up to 8s to let the trigger drain its queue before validating.
+  // The sharded path aggregates via an async trigger that runs with
+  // `concurrency: 1`, so a burst of N shard writes serialises through the
+  // queue and can take a while to drain. Poll the round doc for up to 20s
+  // and require 3 consecutive equal non-empty reads (~1.5s of stability)
+  // before declaring it converged — a single quiet 500ms gap is not enough
+  // when the trigger queue is still draining in the background.
   let topBids = {};
   let lastTopBidsJson = '';
-  const drainDeadline = Date.now() + 8000;
+  let stableCount = 0;
+  const drainDeadline = Date.now() + 20000;
+  const REQUIRED_STABLE_READS = 3;
   while (Date.now() < drainDeadline) {
     const roundDoc = await db.doc(`games/${args.gameId}/rounds/round_1`).get();
     topBids = roundDoc.exists ? (roundDoc.data().topBids || {}) : {};
     const json = JSON.stringify(topBids);
-    if (json === lastTopBidsJson && json !== '{}') break;
+    if (json === lastTopBidsJson && json !== '{}') {
+      stableCount += 1;
+      if (stableCount >= REQUIRED_STABLE_READS) break;
+    } else {
+      stableCount = 0;
+    }
     lastTopBidsJson = json;
     await new Promise((r) => setTimeout(r, 500));
+  }
+  if (stableCount < REQUIRED_STABLE_READS) {
+    console.log(`\n  ⚠️  topBids did not stabilise within ${20000} ms — result below may reflect in-flight aggregator state, not a real bug.`);
   }
   console.log('\n  Final rounds/round_1.topBids.ad:');
   console.log(`    ${JSON.stringify(topBids.ad || {}, null, 2).split('\n').join('\n    ')}`);

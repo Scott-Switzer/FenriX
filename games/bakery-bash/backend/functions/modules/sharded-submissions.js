@@ -101,9 +101,17 @@ async function readAndAggregateSubmissions(gameRef, submissionDocId) {
  * Read the shards, aggregate, and (if changed) write the legacy public
  * docs that the FE / professor dashboard listen to.
  *
- * Idempotent — safe to call concurrently. Skips writes when the result
- * matches the current state, so a burst of N shard writes resolves to
- * ≤N aggregate writes (and usually far fewer once steady state is reached).
+ * Concurrency: correctness-safe under concurrent calls — invocations are
+ * idempotent and the skip-if-unchanged guard handles last-write-wins. Not
+ * throughput-safe: concurrent invocations all write to the same
+ * `submissions/{docId}` and `submissionCounts/{docId}` docs and burn their
+ * per-document write budgets. The `onSubmissionShardWritten` trigger
+ * therefore runs with `concurrency: 1` to serialise these writes — any new
+ * caller must do the same.
+ *
+ * Skips writes when the result matches the current state, so a burst of N
+ * shard writes resolves to ≤N aggregate writes (and usually far fewer once
+ * steady state is reached).
  */
 async function recomputeAndCacheSubmissions(gameRef, submissionDocId) {
   const submissionRef = gameRef.collection('submissions').doc(submissionDocId);

@@ -193,11 +193,17 @@ function aggregateShardData(shards) {
  * + `rounds/{round}.topBidsLeader` so the legacy frontend listener keeps
  * working without changes.
  *
- * This function is the bridge between the sharded write layer (per-shard
- * doc, low contention) and the public aggregate (single round doc). It is
- * safe to call concurrently — multiple invocations read the same shard
- * state and produce the same aggregate, so last-write-wins under
- * `set({ merge: true })` is correct.
+ * This function is the bridge between the sharded write layer (per-shard doc,
+ * low contention) and the public aggregate (single round doc).
+ *
+ * Concurrency: correctness-safe under concurrent calls — multiple invocations
+ * read the same shard state, produce the same aggregate, and last-write-wins
+ * under `set({ merge: true })` converges to the correct value. It is NOT
+ * throughput-safe, however: concurrent invocations all write to the same
+ * `rounds/{round}` doc and burn its per-document write budget, which is the
+ * very contention this module exists to avoid. The `onTopBidsShardWritten`
+ * trigger therefore runs with `concurrency: 1` to serialise these writes —
+ * any new caller must do the same.
  *
  * Skips the write if the computed aggregate matches what's already on the
  * round doc, to avoid burning the round-doc write throughput on no-op updates.
