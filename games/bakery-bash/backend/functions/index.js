@@ -470,132 +470,6 @@ function buildTeamGroupsFromPlayerDocs(playerDocs) {
   return groups;
 }
 
-// ---------------------------------------------------------------------------
-// updateTopBids — DEPRECATED single-doc top-bids recomputer (kept for one
-// release for rollback safety; no longer wired into submitBids). The live
-// top-bids path is now the sharded `topBidsShards` collection + the
-// `onTopBidsShardWritten` trigger that maintains the same `rounds/{round}.topBids`
-// + `topBidsLeader` shape this function used to write directly.
-//
-// Why retired: at >10 concurrent bidders, this function's transaction on
-// the round doc piled up retries past the 25 s transaction deadline and
-// corrupted state when its non-fatal post-transaction side effects landed
-// out of order. See `modules/sharded-top-bids.js` and the
-// load-test-auction.js results for the new behaviour.
-//
-// Safe to delete in the next deploy after sharded path verified in prod.
-// ---------------------------------------------------------------------------
-// eslint-disable-next-line no-unused-vars
-async function updateTopBids(gameRef, round, bidType) {
-  const roundId = `round_${round}`;
-  const roundRef = gameRef.collection('rounds').doc(roundId);
-  try {
-    await db.runTransaction(async (tx) => {
-      const playersSnap = await tx.get(gameRef.collection('players'));
-      const bidSnaps = await Promise.all(
-        playersSnap.docs.map((pd) =>
-          tx.get(pd.ref.collection('bids').doc(roundId))
-        )
-      );
-
-      const playerToTeamKey = new Map(
-        playersSnap.docs.map((pd) => [pd.id, getPlayerTeamKey(pd)])
-      );
-
-      const submittedAtMillis = (ts) =>
-        ts && typeof ts.toMillis === 'function' ? ts.toMillis() : Number.POSITIVE_INFINITY;
-
-      const nextTopBidsAd = {};
-      const nextLeaderAd = {};
-      const nextTopBidsChef = {};
-      const nextLeaderChef = {};
-
-      if (bidType === 'ad') {
-        for (const adType of AD_TYPES) {
-          let topAmount = 0;
-          let topLeader = null;
-          let topMillis = Number.POSITIVE_INFINITY;
-          for (let i = 0; i < bidSnaps.length; i += 1) {
-            const bidSnap = bidSnaps[i];
-            if (!bidSnap.exists) continue;
-            const data = bidSnap.data() || {};
-            const amount = numberOrDefault(objectOrDefault(data.ad, {})[adType], 0);
-            if (amount <= 0) continue;
-            const millis = submittedAtMillis(data.adSubmittedAt);
-            const leaderKey = playerToTeamKey.get(playersSnap.docs[i].id) || playersSnap.docs[i].id;
-            if (
-              amount > topAmount ||
-              (amount === topAmount && millis < topMillis)
-            ) {
-              topAmount = amount;
-              topLeader = leaderKey;
-              topMillis = millis;
-            }
-          }
-          if (topAmount > 0) {
-            nextTopBidsAd[adType] = topAmount;
-            if (topLeader) nextLeaderAd[adType] = topLeader;
-          }
-        }
-      } else {
-        const topByChef = {};
-        const leaderByChef = {};
-        const millisByChef = {};
-        for (let i = 0; i < bidSnaps.length; i += 1) {
-          const bidSnap = bidSnaps[i];
-          if (!bidSnap.exists) continue;
-          const data = bidSnap.data() || {};
-          const chefBids = Array.isArray(data.chef) ? data.chef : [];
-          const millis = submittedAtMillis(data.chefSubmittedAt);
-          const leaderKey = playerToTeamKey.get(playersSnap.docs[i].id) || playersSnap.docs[i].id;
-          for (const bid of chefBids) {
-            if (!bid || !bid.chefId) continue;
-            const amount = numberOrDefault(bid.amount, 0);
-            if (amount <= 0) continue;
-            const prevAmount = numberOrDefault(topByChef[bid.chefId], 0);
-            const prevMillis = millisByChef[bid.chefId] ?? Number.POSITIVE_INFINITY;
-            if (
-              amount > prevAmount ||
-              (amount === prevAmount && millis < prevMillis)
-            ) {
-              topByChef[bid.chefId] = amount;
-              leaderByChef[bid.chefId] = leaderKey;
-              millisByChef[bid.chefId] = millis;
-            }
-          }
-        }
-        Object.assign(nextTopBidsChef, topByChef);
-        Object.assign(nextLeaderChef, leaderByChef);
-      }
-
-      const updates = { updatedAt: FieldValue.serverTimestamp() };
-      if (bidType === 'ad') {
-        updates['topBids.ad'] = nextTopBidsAd;
-        updates['topBidsLeader.ad'] = nextLeaderAd;
-      } else {
-        updates['topBids.chef'] = nextTopBidsChef;
-        updates['topBidsLeader.chef'] = nextLeaderChef;
-      }
-
-      const roundSnap = await tx.get(roundRef);
-      if (roundSnap.exists) {
-        tx.update(roundRef, updates);
-      } else {
-        tx.set(roundRef, {
-          round,
-          topBids: { ad: nextTopBidsAd, chef: nextTopBidsChef },
-          topBidsLeader: { ad: nextLeaderAd, chef: nextLeaderChef },
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-      }
-    });
-  } catch (err) {
-    logger.warn('updateTopBids side-effect failed — non-fatal.', {
-      gameId: gameRef.id, round, bidType, error: err && err.message,
-    });
-  }
-}
-
 async function resolveAndApplyAdAuction(gameRef, round) {
   const roundId = `round_${round}`;
   const roundRef = gameRef.collection('rounds').doc(roundId);
@@ -2396,6 +2270,9 @@ exports.submitDecision = onCall(CALLABLE_OPTS, async (request) => {
       _submitDecision_displayName = pSnap.get('displayName') || '';
 
       const game = gSnap.data();
+      if (game.paused === true) {
+        throw new HttpsError('failed-precondition', 'Game is paused. Submissions are temporarily disabled.');
+      }
       if (!canSubmitDecision(game.phase)) {
         throw new HttpsError('failed-precondition', 'Decisions can only be submitted during the decide phase.');
       }
@@ -2574,6 +2451,9 @@ exports.submitPrices = onCall(CALLABLE_OPTS, async (request) => {
     _submitPrices_displayName = pSnap.get('displayName') || '';
 
     const game = gSnap.data();
+    if (game.paused === true) {
+      throw new HttpsError('failed-precondition', 'Game is paused. Submissions are temporarily disabled.');
+    }
     if (!canSubmitDecision(game.phase)) {
       throw new HttpsError('failed-precondition', 'Prices can only be submitted during the decide phase.');
     }

@@ -87,10 +87,22 @@ async function main() {
     throw new Error("Anonymous sign-in did not return a uid.");
   }
 
+  const createTeam = httpsCallable(functions, "createTeam");
+  const teamResult = await createTeam({
+    joinCode: JOIN_CODE,
+    teamName: "Scone Rangers",
+    displayName: "The Rolling Scone",
+  });
+  const teamId = teamResult.data.teamId;
+  if (!teamId) {
+    throw new Error("createTeam did not return a teamId.");
+  }
+
   const joinGame = httpsCallable(functions, "joinGame");
   const firstJoin = await joinGame({
     joinCode: JOIN_CODE,
     displayName: "The Rolling Scone",
+    teamId,
   });
 
   if (firstJoin.data.playerId !== uid) {
@@ -122,6 +134,7 @@ async function main() {
   const secondJoin = await joinGame({
     joinCode: JOIN_CODE,
     displayName: "Crumb Club",
+    teamId,
   });
 
   if (secondJoin.data.playerId !== uid) {

@@ -710,6 +710,8 @@ export interface LeaderboardRanking {
   lastRoundRevenue?: number;
   /** Positive = moved up; negative = moved down; 0 = no change. */
   rankChange?: number;
+  /** Budget after this round (used for tie-break in conclusion). */
+  budgetAfter?: number;
 }
 
 /** Default maintenance bars (all 100%) used on game start / context reset. */

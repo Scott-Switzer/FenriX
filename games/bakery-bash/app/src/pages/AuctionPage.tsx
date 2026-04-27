@@ -14,6 +14,7 @@ import {
 } from "../components/game/AdWinnerBanner";
 import { useGame, useGameDispatch } from "../contexts/GameContext";
 import { useGamePhaseNav } from "../hooks/useGamePhaseNav";
+import { usePhaseCountdownSeconds } from "../hooks/usePhaseCountdownSeconds";
 import { db, functions } from "../lib/firebase";
 import { humanizeFunctionError } from "../lib/errors";
 import {
@@ -80,7 +81,6 @@ const AD_CARDS: readonly AdCard[] = [
   { id: "Billboard", label: "Billboard",   icon: "/assets/ads/billboard.svg", desc: "Plant your brand right in their path. Hard to miss, impossible to forget." },
 ];
 
-const TAB_DURATION_SECONDS = 60;
 const POOL_SIZE = 6;
 
 // Skill-tier roll probabilities for the cosmetic placeholder pool. The roll
@@ -259,7 +259,7 @@ export function AuctionPage() {
   // team" (don't lock — let the player raise to break the tie).
   const [topBidsLeaderAd, setTopBidsLeaderAd] = useState<Partial<Record<AdType, string>>>({});
   const [topBidsLeaderChef, setTopBidsLeaderChef] = useState<Record<string, string>>({});
-  const [remaining, setRemaining] = useState<number>(TAB_DURATION_SECONDS);
+  const remaining = usePhaseCountdownSeconds() ?? 0;
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [chefBidInputs, setChefBidInputs] = useState<Record<string, string>>({});
@@ -534,17 +534,24 @@ export function AuctionPage() {
 
   const handleSubmitSingleBid = useCallback(async (chefId: string) => {
     if (timerExpired || !gameId) return;
+    const amount = pendingChefBids[chefId] ?? 0;
+    const chef = chefPool.find((c) => c.id === chefId);
+    const floor = chef?.minBidFloor ?? 0;
+    if (floor > 0 && amount < floor) {
+      setSubmitError("Bid above the minimum bid.");
+      return;
+    }
     try {
       const submitBids = httpsCallable(functions, "submitBids");
       await submitBids({
         gameId,
         bidType: "chef",
-        chefBids: [{ chefId, amount: pendingChefBids[chefId] ?? 0 }],
+        chefBids: [{ chefId, amount }],
       });
     } catch (err) {
       setSubmitError(humanizeFunctionError(err, "Could not submit chef bid. Please try again."));
     }
-  }, [timerExpired, gameId, pendingChefBids]);
+  }, [timerExpired, gameId, pendingChefBids, chefPool]);
 
   const handleSubmitBids = useCallback(async () => {
     if (timerExpired) { setShowExpiredPopup(true); return; }
@@ -625,22 +632,6 @@ export function AuctionPage() {
     dispatch,
   ]);
 
-  // A24-I05 — reset and tick the local `remaining` timer whenever the
-  // phase flips (bid_ad → bid_chef). Previously this keyed off
-  // `activeTab` (local tab state); now that the tab bar is gone, drive
-  // it off `basePhase` directly so the "auction expired" popup still
-  // fires at the right moment.
-  useEffect(() => {
-    setRemaining(TAB_DURATION_SECONDS);
-  }, [basePhase]);
-
-  useEffect(() => {
-    const tick = setInterval(() => {
-      setRemaining((prev) => Math.max(0, prev - 1));
-    }, 1000);
-    return () => clearInterval(tick);
-  }, [basePhase]);
-
   useEffect(() => {
     if (timerExpired) {
       setShowExpiredPopup(true);
@@ -662,8 +653,11 @@ export function AuctionPage() {
   // `phaseEndsAt` from the backend and shows a unified clock across every
   // phase). The AuctionPage used to render a second local timer at
   // `.auction-page__timer`, which showed a duplicate clock on both bid
-  // tabs — removed. The `remaining` counter + `timerExpired` flag are
-  // kept internal because they still gate the bid inputs + the
+  // tabs — removed.
+  //
+  // `remaining` is now driven by `usePhaseCountdownSeconds()` (shared
+  // backend `phaseEndsAtMs`) so the auction expiry is always in sync with
+  // the professor-controlled phase timer. It gates bid inputs and the
   // timer-expired popup.
 
   const alreadySubmitted =

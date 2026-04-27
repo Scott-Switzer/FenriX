@@ -64,7 +64,7 @@ function coerceChef(raw: DocumentData): RosterChef | null {
   const gen = rawGen === "male" || rawGen === "m" ? "m" : rawGen === "female" || rawGen === "f" ? "f" : null;
   const tier = raw.skillTier;
   const validTier =
-    tier === "novel" || tier === "intermediate" || tier === "advanced";
+    tier === "base" || tier === "novel" || tier === "intermediate" || tier === "advanced";
   if (!id || !name || !validNat || !gen || !validTier) return null;
   return {
     id,
@@ -77,12 +77,11 @@ function coerceChef(raw: DocumentData): RosterChef | null {
   };
 }
 
-const SPECIALTY_CAP = 3;
-
 export function RosterPhasePage() {
   useGamePhaseNav();
-  const { gameId, playerId, teamId, currentRound, role, teamRoleAssignments } =
+  const { gameId, playerId, teamId, currentRound, role, teamRoleAssignments, config } =
     useGame();
+  const specialtyChefCap = config?.specialtyChefCap ?? 3;
 
   const [specialtyChefs, setSpecialtyChefs] = useState<RosterChef[]>([]);
   const [pendingRosterAction, setPendingRosterAction] = useState(false);
@@ -235,7 +234,7 @@ export function RosterPhasePage() {
   // operations (2-player team, cleared role, etc.).
   const canAct = roleOwnsRoster(role, teamRoleAssignments);
   const ownerLabel = ownerOfRoster();
-  const overCap = specialtyChefs.length > SPECIALTY_CAP;
+  const overCap = specialtyChefs.length > specialtyChefCap;
   const continueDisabled =
     overCap || submitting !== null || !canAct || rosterCompleted;
 
@@ -297,7 +296,7 @@ export function RosterPhasePage() {
         <h1 className="roster-phase-page__title">Your Kitchen Roster</h1>
         <p className="roster-phase-page__hint">
           Review who's in your kitchen for the rest of this round. Keep up to{" "}
-          <strong>{SPECIALTY_CAP}</strong> specialty chefs — lay one off if you
+          <strong>{specialtyChefCap}</strong> specialty chefs — lay one off if you
           ended up with more.
         </p>
       </header>
@@ -344,7 +343,7 @@ export function RosterPhasePage() {
           </div>
         </div>
 
-        {Array.from({ length: SPECIALTY_CAP }, (_, i) => {
+        {Array.from({ length: specialtyChefCap }, (_, i) => {
           const chef = specialtyChefs[i];
           return (
             <div
@@ -369,7 +368,7 @@ export function RosterPhasePage() {
         })}
 
         {overCap &&
-          specialtyChefs.slice(SPECIALTY_CAP).map((chef) => (
+          specialtyChefs.slice(specialtyChefCap).map((chef) => (
             <div
               key={`overflow-${chef.id}`}
               className="roster-phase-page__slot roster-phase-page__slot--overflow"

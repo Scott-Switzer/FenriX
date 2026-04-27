@@ -122,10 +122,14 @@ async function main() {
 
   const advanceGamePhase = httpsCallable(functions, "advanceGamePhase");
 
-  // Advance from round_1_roster → simulating (triggers simulation synchronously)
-  const result = await advanceGamePhase({ gameId: GAME_ID });
+  // Advance through the canonical phase flow: roster → decide → simulating → results_ready
+  let result = await advanceGamePhase({ gameId: GAME_ID });
+  assertEqual(result.data.phase, "round_1_decide", "Phase after roster should be decide.");
+  console.log("  ✓ advanceGamePhase: round_1_roster → round_1_decide");
+
+  result = await advanceGamePhase({ gameId: GAME_ID });
   assertEqual(result.data.phase, "results_ready", "Phase after simulation should be results_ready.");
-  console.log("  ✓ advanceGamePhase: round_1_roster → simulating → results_ready");
+  console.log("  ✓ advanceGamePhase: round_1_decide → simulating → results_ready");
 
   const [
     playerASnap,

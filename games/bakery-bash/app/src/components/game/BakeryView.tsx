@@ -8,9 +8,7 @@ import {
 
 import { PRICE_ZONES } from "../../lib/pricing";
 import { PriceInput } from "./PriceInput";
-import { totalStaffCost } from "../../lib/cost";
-
-const UNIT_COST = 0.5;
+import { totalStaffCost, totalProductCost } from "../../lib/cost";
 
 /**
  * Product display metadata — prices are fixed per FRONTEND.md rule #2.
@@ -110,6 +108,7 @@ interface ProductTileProps {
   price: number;
   isOnMenu: boolean;
   isBase: boolean;
+  unitCost: number;
   onQtyChange: (next: number) => void;
   onPriceChange: (next: number) => void;
   onToggle: (next: boolean) => void;
@@ -124,6 +123,7 @@ function ProductTile({
   price,
   isOnMenu,
   isBase,
+  unitCost,
   onQtyChange,
   onPriceChange,
   onToggle,
@@ -191,7 +191,7 @@ function ProductTile({
               </button>
             </div>
           )}
-          <span className="product-tile__unit-cost">Cost: ${UNIT_COST.toFixed(2)} / unit</span>
+          <span className="product-tile__unit-cost">Cost: ${unitCost.toFixed(2)} / unit</span>
           <PriceInput
             value={price}
             onChange={onPriceChange}
@@ -287,11 +287,14 @@ export function BakeryView({ readOnly = false }: BakeryViewProps) {
   };
 
   const allProducts = STATIONS.flatMap((s) => s.products);
-  const bakeryCost = allProducts
-    .filter((item) => pendingDecision.menu[item])
-    .reduce((sum, item) => sum + (pendingDecision.quantities[item] ?? 0) * UNIT_COST, 0);
+  const bakeryCost = totalProductCost(
+    pendingDecision.menu,
+    pendingDecision.quantities,
+    config,
+  );
   const staffCost = totalStaffCost(pendingDecision.staffCounts, config);
   const totalCommitted = bakeryCost + staffCost;
+  const unitCost = config?.unitCostPerProduct ?? 1;
 
   return (
     <div className={`bakery-view${readOnly ? " bakery-view--readonly" : ""}`}>
@@ -344,6 +347,7 @@ export function BakeryView({ readOnly = false }: BakeryViewProps) {
                     price={pendingDecision.productPrices[product] ?? 0}
                     isOnMenu={pendingDecision.menu[product]}
                     isBase={BASE_MENU.includes(product)}
+                    unitCost={unitCost}
                     onQtyChange={(n) => setQty(product, n)}
                     onPriceChange={(n) => setPrice(product, n)}
                     onToggle={(next) => toggleMenu(product, next)}

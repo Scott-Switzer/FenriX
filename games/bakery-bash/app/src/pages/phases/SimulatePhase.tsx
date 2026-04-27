@@ -22,7 +22,14 @@ export function SimulatePhase() {
   const { roundResults, maintenanceBars, teamName, pendingDecision, currentRound } = useGame();
   const latest = roundResults[roundResults.length - 1];
   const latestRound = latest ?? null;
-  const targetRevenue = typeof latest?.revenue === "number" ? latest.revenue : 0;
+  const targetRevenue =
+    typeof latest?.revenueNet === "number"
+      ? latest.revenueNet
+      : typeof latest?.revenueGross === "number"
+      ? latest.revenueGross
+      : typeof latest?.revenue === "number"
+      ? latest.revenue
+      : 0;
 
   const [, setDay] = useState(1);
   const [isNight, setIsNight] = useState(false);
