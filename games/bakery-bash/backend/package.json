@@ -20,7 +20,11 @@
     "test:ad-bonus-gate": "node scripts/test-ad-bonus-gate.js",
     "seed:emulator": "node scripts/seed-emulator.js",
     "seed:catalogs": "node scripts/seed-catalogs.js",
-    "set:professor-claim": "node scripts/set-professor-claim.js"
+    "set:professor-claim": "node scripts/set-professor-claim.js",
+    "snapshot": "node scripts/snapshot-game.js",
+    "snapshot:watch": "node scripts/watch-and-snapshot.js",
+    "restore": "node scripts/restore-game.js",
+    "loadtest:auction": "node scripts/load-test-auction.js"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^3.0.3",

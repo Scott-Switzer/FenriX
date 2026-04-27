@@ -19,7 +19,7 @@
 // Firebase imports (only file that does this)
 // ---------------------------------------------------------------------------
 
-const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { setGlobalOptions } = require('firebase-functions/v2');
 
@@ -87,6 +87,17 @@ const {
   DEFAULT_STUCK_THRESHOLD_MS,
   diagnoseSimulationState,
 } = require('./modules/recovery');
+
+const {
+  writeAdBidsToShard,
+  writeChefBidsToShard,
+  recomputeAndCacheTopBids,
+} = require('./modules/sharded-top-bids');
+
+const {
+  writeSubmissionToShard,
+  recomputeAndCacheSubmissions,
+} = require('./modules/sharded-submissions');
 
 // The following modules are part of the full backend surface. They are
 // required only where needed so that missing optional helpers do not break
@@ -452,20 +463,21 @@ function buildTeamGroupsFromPlayerDocs(playerDocs) {
 }
 
 // ---------------------------------------------------------------------------
-// updateTopBids — BE-25 competing-bid surface
-// After a successful submitBids, recompute the round's topBids map so the FE
-// can surface the current top VALUE for each ad slot / chef. Also writes
-// `topBidsLeader` so the FE can tell whether *we* are the unique leader (vs.
-// tied with another team) — the per-slot lock UI relies on this to avoid
-// freezing both teams when their bids are equal.
+// updateTopBids — DEPRECATED single-doc top-bids recomputer (kept for one
+// release for rollback safety; no longer wired into submitBids). The live
+// top-bids path is now the sharded `topBidsShards` collection + the
+// `onTopBidsShardWritten` trigger that maintains the same `rounds/{round}.topBids`
+// + `topBidsLeader` shape this function used to write directly.
 //
-// Wrapped in `db.runTransaction` so two concurrent submitBids calls cannot
-// each read pre-write state and stomp each other's recomputed `topBids`
-// map (regression guard for PR #54).
+// Why retired: at >10 concurrent bidders, this function's transaction on
+// the round doc piled up retries past the 25 s transaction deadline and
+// corrupted state when its non-fatal post-transaction side effects landed
+// out of order. See `modules/sharded-top-bids.js` and the
+// load-test-auction.js results for the new behaviour.
 //
-// Non-fatal: logged and swallowed on failure to avoid breaking submitBids's
-// critical path.
+// Safe to delete in the next deploy after sharded path verified in prod.
 // ---------------------------------------------------------------------------
+// eslint-disable-next-line no-unused-vars
 async function updateTopBids(gameRef, round, bidType) {
   const roundId = `round_${round}`;
   const roundRef = gameRef.collection('rounds').doc(roundId);
@@ -673,35 +685,13 @@ async function resolveAndApplyAdAuction(gameRef, round) {
 // Non-fatal: logged and swallowed on failure.
 // ---------------------------------------------------------------------------
 async function recordSubmission(gameRef, submissionDocId, uid, displayName, role) {
-  const submissionRef = gameRef.collection('submissions').doc(submissionDocId);
-  const countRef = gameRef.collection('submissionCounts').doc(submissionDocId);
+  // Sharded path: write the submission record into the uid's assigned shard
+  // (no contention with other uids in other shards). The
+  // `onSubmissionShardWritten` trigger then aggregates all shards into the
+  // public `submissions/{docId}` + `submissionCounts/{docId}` docs that the
+  // FE / professor dashboard already listen to. See modules/sharded-submissions.js.
   try {
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(submissionRef);
-      const existing = snap.exists ? (snap.data() || {}) : {};
-      const wasAlreadySubmitted =
-        existing[uid] && existing[uid].status === 'submitted';
-
-      tx.set(submissionRef, {
-        [uid]: {
-          status: 'submitted',
-          submittedAt: Timestamp.now(),
-          displayName: displayName || '',
-          role: role || null,
-        },
-      }, { merge: true });
-
-      if (!wasAlreadySubmitted) {
-        tx.set(countRef, {
-          count: FieldValue.increment(1),
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-      } else {
-        tx.set(countRef, {
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-      }
-    });
+    await writeSubmissionToShard(gameRef, submissionDocId, uid, displayName, role);
   } catch (err) {
     logger.warn('recordSubmission side-effect failed — non-fatal.', {
       gameId: gameRef.id, submissionDocId, uid, error: err && err.message,
@@ -2660,6 +2650,7 @@ exports.submitBids = onCall(CALLABLE_OPTS, async (request) => {
   let _submitBids_validated = null;
   let _submitBids_role = null;
   let _submitBids_displayName = '';
+  let _submitBids_teamKey = null;
 
   await db.runTransaction(async (transaction) => {
     const [gSnap, pSnap, cfgSnap] = await Promise.all([
@@ -2679,6 +2670,7 @@ exports.submitBids = onCall(CALLABLE_OPTS, async (request) => {
     }
     _submitBids_role = pSnap.get('role') || null;
     _submitBids_displayName = pSnap.get('displayName') || '';
+    _submitBids_teamKey = getPlayerTeamKey(pSnap);
 
     const game = gSnap.data();
     if (!canSubmitBids(game.phase, bidType)) {
@@ -2791,9 +2783,37 @@ exports.submitBids = onCall(CALLABLE_OPTS, async (request) => {
     }
   });
 
-  // BE-25: update topBids on the round doc after transaction (non-fatal)
-  if (_submitBids_round !== null && _submitBids_validated !== null) {
-    await updateTopBids(gameRef, _submitBids_round, bidType);
+  // BE-25 + perf: write the team's bid into their assigned shard so the FE
+  // can compute live top bids by aggregating across shards. Replaces the
+  // legacy `updateTopBids` single-doc transaction that hot-spotted the round
+  // doc and corrupted state at >10 concurrent bidders. Non-fatal: a failed
+  // shard write only delays the live UI for this team's bid until they
+  // re-submit; the source-of-truth `players/{uid}/bids/{round}` doc is
+  // already committed by the transaction above.
+  if (
+    _submitBids_round !== null
+    && _submitBids_validated !== null
+    && _submitBids_teamKey
+  ) {
+    try {
+      if (bidType === 'ad') {
+        await writeAdBidsToShard(
+          gameRef, _submitBids_round, _submitBids_teamKey, _submitBids_validated,
+        );
+      } else {
+        await writeChefBidsToShard(
+          gameRef, _submitBids_round, _submitBids_teamKey, _submitBids_validated,
+        );
+      }
+    } catch (err) {
+      logger.warn('writeBidsToShard side-effect failed — non-fatal.', {
+        gameId: gameRef.id,
+        round: _submitBids_round,
+        bidType,
+        teamKey: _submitBids_teamKey,
+        error: err && err.message,
+      });
+    }
   }
 
   // BE-22: mirror submission state for professor dashboard
@@ -3261,6 +3281,64 @@ exports.onDecisionSubmitted = onDocumentCreated(
 );
 
 // ---------------------------------------------------------------------------
+// onTopBidsShardWritten — aggregate sharded bids into rounds/{round}.topBids
+//
+// Each `submitBids` call writes to one shard under
+// `rounds/{round}/topBidsShards/{idx}`. This trigger watches those shard
+// writes and recomputes the public top-bids aggregate that the FE listens
+// to. Running with `concurrency: 1` (single instance, single in-flight
+// invocation) serialises the round-doc writes so they don't pile up under
+// the per-document write throttle when 25 teams bid in the same window.
+// `recomputeAndCacheTopBids` skips the write when the aggregate is
+// unchanged, so a burst of N shard writes resolves to ≤N round-doc writes
+// (and usually far fewer once the leader stabilises).
+// ---------------------------------------------------------------------------
+exports.onTopBidsShardWritten = onDocumentWritten(
+  {
+    document: 'games/{gameId}/rounds/{roundId}/topBidsShards/{shardIdx}',
+    concurrency: 1,
+  },
+  async (event) => {
+    const { gameId, roundId } = event.params;
+    const match = /^round_(\d+)$/.exec(roundId);
+    if (!match) return;
+    const round = Number(match[1]);
+    const gameRef = gameDoc(gameId);
+    try {
+      await recomputeAndCacheTopBids(gameRef, round);
+    } catch (err) {
+      logger.warn('onTopBidsShardWritten aggregation failed — non-fatal.', {
+        gameId, round, error: err && err.message,
+      });
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
+// onSubmissionShardWritten — aggregate sharded submission records into the
+// public `submissions/{docId}` + `submissionCounts/{docId}` docs that the FE
+// (SubmissionLock) and professor dashboard already listen to. Same `concurrency: 1`
+// + skip-no-op pattern as `onTopBidsShardWritten`. See `modules/sharded-submissions.js`.
+// ---------------------------------------------------------------------------
+exports.onSubmissionShardWritten = onDocumentWritten(
+  {
+    document: 'games/{gameId}/submissions/{submissionDocId}/shards/{shardIdx}',
+    concurrency: 1,
+  },
+  async (event) => {
+    const { gameId, submissionDocId } = event.params;
+    const gameRef = gameDoc(gameId);
+    try {
+      await recomputeAndCacheSubmissions(gameRef, submissionDocId);
+    } catch (err) {
+      logger.warn('onSubmissionShardWritten aggregation failed — non-fatal.', {
+        gameId, submissionDocId, error: err && err.message,
+      });
+    }
+  }
+);
+
+// ---------------------------------------------------------------------------
 // updateTeamName — any team member may rename their team.
 // ---------------------------------------------------------------------------
 exports.updateTeamName = onCall(CALLABLE_OPTS, async (request) => {
@@ -3599,10 +3677,13 @@ exports.resetGame = onCall(CALLABLE_OPTS, async (request) => {
   const playerDocs = playersSnap.docs;
 
   // Wipe game-level + per-player subcollections in parallel. deleteCollectionDocs
-  // chunks at BATCH_OP_LIMIT internally.
+  // chunks at BATCH_OP_LIMIT internally. `rounds` and `submissions` use
+  // recursiveDelete because they own shard subcollections (`topBidsShards`,
+  // `shards`) that would otherwise survive the reset and pollute the next
+  // game's aggregate writes.
   await Promise.all([
-    deleteCollectionDocs(gameRef.collection('rounds')),
-    deleteCollectionDocs(gameRef.collection('submissions')),
+    db.recursiveDelete(gameRef.collection('rounds')),
+    db.recursiveDelete(gameRef.collection('submissions')),
     deleteCollectionDocs(gameRef.collection('submissionCounts')),
     deleteCollectionDocs(gameRef.collection('marketInsights')),
     deleteCollectionDocs(gameRef.collection('leaderboard')),

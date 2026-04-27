@@ -109,6 +109,20 @@ service cloud.firestore {
       match /rounds/{roundId} {
         allow read: if signedIn();
         allow write: if false;
+
+        // ───────────────────────────────────────────────────
+        // /games/{gameId}/rounds/{roundId}/topBidsShards/{shardIdx}
+        // Sharded live-bid intake. Each shard holds the per-team bid
+        // amounts for the teams hashed to that shard. Server-only:
+        // exposing the per-team breakdown would defeat the sealed-bid
+        // design. The aggregated leader/top values are mirrored to
+        // `rounds/{roundId}.topBids` + `topBidsLeader` by the
+        // `onTopBidsShardWritten` trigger and read from there by the FE.
+        // ───────────────────────────────────────────────────
+        match /topBidsShards/{shardIdx} {
+          allow read: if false;
+          allow write: if false;
+        }
       }
 
       // ─────────────────────────────────────────────────────
@@ -173,6 +187,18 @@ service cloud.firestore {
       match /submissions/{doc} {
         allow read: if isProfessor() || isGameProfessor(gameId);
         allow write: if false;
+
+        // ───────────────────────────────────────────────────
+        // /games/{gameId}/submissions/{doc}/shards/{shardIdx}
+        // Sharded intake for the submissions mirror — server-only.
+        // The aggregated public view lives one level up at
+        // `submissions/{doc}` and is maintained by the
+        // `onSubmissionShardWritten` trigger from the shard data.
+        // ───────────────────────────────────────────────────
+        match /shards/{shardIdx} {
+          allow read: if false;
+          allow write: if false;
+        }
       }
 
       // ─────────────────────────────────────────────────────
