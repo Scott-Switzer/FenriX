@@ -215,6 +215,24 @@ service cloud.firestore {
         allow read: if signedIn();
         allow write: if false;
       }
+
+      // ─────────────────────────────────────────────────────
+      // /games/{gameId}/submittedCountShards/{roundDocId}/shards/{shardIdx}
+      // T3.3: Sharded uid-set intake for the submittedCount counter on
+      // the game doc. Server-only. The aggregated count is mirrored to
+      // `games/{gameId}.submittedCount` by the
+      // `onSubmittedCountShardWritten` trigger; FE never reads these shards
+      // directly (use `submissionCounts/{doc}` for player-facing counts).
+      // ─────────────────────────────────────────────────────
+      match /submittedCountShards/{roundDocId} {
+        allow read: if false;
+        allow write: if false;
+
+        match /shards/{shardIdx} {
+          allow read: if false;
+          allow write: if false;
+        }
+      }
     }
   }
 }
