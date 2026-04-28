@@ -451,8 +451,9 @@ function decideAdBids(botState, config, personality, difficulty, rng, opponents,
         }
       }
       if (predictedSecondHighest > 0) {
-        // Bid $1 above predicted second highest, capped at expected value
-        bidAmount = Math.min(Math.floor(ev), predictedSecondHighest + 1);
+        // Bid $1 above predicted second highest, capped at EV. Floor at the
+        // personality target so an aggressive bot does not get pushed below it.
+        bidAmount = Math.min(Math.floor(ev), Math.max(bidAmount, predictedSecondHighest + 1));
       }
     }
 
@@ -505,8 +506,9 @@ function decideChefBids(botState, config, personality, difficulty, rng, opponent
         }
       }
       if (predictedSecondHighest > 0) {
-        // Bid $1 above predicted second highest, capped at expected value
-        bidAmount = Math.min(Math.floor(ev), predictedSecondHighest + 1);
+        // Bid $1 above predicted second highest, capped at EV. Floor at the
+        // personality target so an aggressive bot does not get pushed below it.
+        bidAmount = Math.min(Math.floor(ev), Math.max(bidAmount, predictedSecondHighest + 1));
         bidAmount = Math.max(floor, bidAmount);
       }
     }
