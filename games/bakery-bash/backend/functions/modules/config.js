@@ -75,18 +75,55 @@
 //   American: 240 × $3.75 + 240 × $3.25 = $900   + $780   = $1,680
 // Range: $1,680–$2,100, ~25% spread. Acceptable given American's
 // cheap-product theme; narrows from the original 60%+ imbalance.
+// Apr 28, 2026 — station-unlock economy. Each station now starts with ONE
+// "starter" product (free) and ONE "locked" product that the team must
+// purchase to add to the menu. Starter picks were chosen to be the more
+// foundational / highest-demand item per station so a team that never
+// unlocks anything still has a viable 3-product baseline:
+//   bakery  → croissant (starter), cookie (locked)
+//   deli    → bagel    (starter), sandwich (locked)
+//   barista → coffee   (starter), matcha   (locked)
+// `isBaseMenu: true` now means "starter" — always available, can't be
+// removed from the menu. `isBaseMenu: false` means "must be unlocked
+// before it can be added to the menu" (see PRODUCT_UNLOCK_COSTS).
 const PRODUCT_CATALOG = {
-  coffee:    { fixedPrice: 4.00, baseDemand: 240, satisfactionWeight: 1.0, isBaseMenu: false },
+  coffee:    { fixedPrice: 4.00, baseDemand: 240, satisfactionWeight: 1.0, isBaseMenu: true  },
   croissant: { fixedPrice: 4.75, baseDemand: 240, satisfactionWeight: 1.0, isBaseMenu: true  },
   bagel:     { fixedPrice: 4.50, baseDemand: 240, satisfactionWeight: 1.0, isBaseMenu: true  },
-  cookie:    { fixedPrice: 4.00, baseDemand: 240, satisfactionWeight: 1.0, isBaseMenu: true  },
+  cookie:    { fixedPrice: 4.00, baseDemand: 240, satisfactionWeight: 1.0, isBaseMenu: false },
   sandwich:  { fixedPrice: 5.50, baseDemand: 200, satisfactionWeight: 1.0, isBaseMenu: false },
   matcha:    { fixedPrice: 4.50, baseDemand: 200, satisfactionWeight: 1.0, isBaseMenu: false },
 };
 
 const PRODUCT_KEYS   = ['coffee', 'croissant', 'bagel', 'cookie', 'sandwich', 'matcha'];
-const BASE_MENU      = ['croissant', 'cookie', 'bagel'];
-const OPTIONAL_MENU  = ['sandwich', 'coffee', 'matcha'];
+// Starter products — always on the menu, one per station. A new team begins
+// the game with exactly these three products available.
+const BASE_MENU      = ['croissant', 'bagel', 'coffee'];
+// Lockable products — must be unlocked via `purchaseProduct` before they can
+// be put on the menu. One per station, paired with its starter above.
+const OPTIONAL_MENU  = ['cookie', 'sandwich', 'matcha'];
+
+/**
+ * Default starter set every team begins with. Identical to BASE_MENU; named
+ * separately so a future config-driven seed (e.g. professor toggles starters
+ * per game) can vary without changing the validator's "always-on" semantics.
+ */
+const DEFAULT_UNLOCKED_PRODUCTS = ['croissant', 'bagel', 'coffee'];
+
+/**
+ * PRODUCT_UNLOCK_COST
+ * Flat cost (USD) to unlock any one of the OPTIONAL_MENU products. Every
+ * lock costs the same — no progressive ladder — to keep the decision
+ * straightforward: "do I want this product or not?" rather than "is this
+ * the *right* product to unlock first?"
+ *
+ * Sizing rationale (starting budget = $10,000):
+ *   $500 per unlock × 3 lockable products = $1,500 max spend, or ~15%
+ *   of the starting budget. Affordable in early rounds; a meaningful
+ *   trade-off against chef bids ($20–$55/round floor), ad bonuses
+ *   ($80–$400 of value), and weathering burglary events ($200 each).
+ */
+const PRODUCT_UNLOCK_COST = 500;
 
 // ---------------------------------------------------------------------------
 // POST-01: Per-product dynamic pricing configuration
@@ -461,6 +498,10 @@ const DEFAULT_GAME_CONFIG = {
   competitorInsightCost: 100,
   chefDataTier1Cost: 50,
   chefDataTier2Cost: 150,
+
+  // Apr 28, 2026 — flat cost (USD) to unlock one OPTIONAL_MENU product.
+  // Override per-game via `/games/{gameId}/config/params.productUnlockCost`.
+  productUnlockCost: PRODUCT_UNLOCK_COST,
 };
 
 // ---------------------------------------------------------------------------
@@ -634,6 +675,10 @@ function mergeConfig(rawConfig) {
     competitorInsightCost: numberOrDefault(raw.competitorInsightCost, d.competitorInsightCost),
     chefDataTier1Cost:     numberOrDefault(raw.chefDataTier1Cost,     d.chefDataTier1Cost),
     chefDataTier2Cost:     numberOrDefault(raw.chefDataTier2Cost,     d.chefDataTier2Cost),
+
+    // Apr 28, 2026 — flat per-unlock cost. Coerce through numberOrDefault so a
+    // malformed Firestore override (string, NaN) doesn't blow away the default.
+    productUnlockCost: numberOrDefault(raw.productUnlockCost, d.productUnlockCost),
   };
 }
 
@@ -646,6 +691,8 @@ module.exports = {
   PRODUCT_KEYS,
   BASE_MENU,
   OPTIONAL_MENU,
+  DEFAULT_UNLOCKED_PRODUCTS,
+  PRODUCT_UNLOCK_COST,
   PRICE_ZONES,
   ELASTICITY_COEFFICIENTS,
   PRICE_STEP,

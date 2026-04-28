@@ -74,6 +74,9 @@ const {
   DEFAULT_GAME_CONFIG,
   AD_TYPES,
   CHEF_NATIONALITIES,
+  DEFAULT_UNLOCKED_PRODUCTS,
+  OPTIONAL_MENU,
+  BASE_MENU,
   mergeConfig,
   numberOrDefault,
   objectOrDefault,
@@ -1242,6 +1245,12 @@ exports.joinGame = onCall(CALLABLE_OPTS, async (request) => {
         emoji: pickTeamEmoji(),
         roleAssignments: { [auth.uid]: autoRole },
         memberCount: 1,
+        // Apr 28 2026: every new team starts with one product per station
+        // unlocked. Locked products live in OPTIONAL_MENU and must be
+        // unlocked via `purchaseProduct` for the team to add them to the
+        // menu (see decision-validation.js).
+        unlockedProducts: [...DEFAULT_UNLOCKED_PRODUCTS],
+        unlocksPurchased: 0,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
@@ -1405,6 +1414,11 @@ exports.createTeam = onCall(CALLABLE_OPTS, async (request) => {
       emoji: pickTeamEmoji(),
       roleAssignments: { [auth.uid]: 'solo' },
       memberCount: 1,
+      // Apr 28 2026 — station-unlock seed (mirrors joinGame's auto-team
+      // branch). Each station starts with one product unlocked; locked
+      // products require a `purchaseProduct` call.
+      unlockedProducts: [...DEFAULT_UNLOCKED_PRODUCTS],
+      unlocksPurchased: 0,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -2685,8 +2699,12 @@ exports.submitDecision = onCall(CALLABLE_OPTS, async (request) => {
       const needsPriceGate = teamId
         && _submitDecision_role !== 'solo'
         && _submitDecision_role !== 'finance';
+      // Hoisted so the unlockedProducts read below reuses the snap when the
+      // price-gate block already fetched it (PR #119 contention work).
+      let teamSnap = null;
       if (needsPriceGate) {
-        const [teamSnap, teamPendingSnap] = await Promise.all([
+        let teamPendingSnap;
+        [teamSnap, teamPendingSnap] = await Promise.all([
           transaction.get(gameRef.collection('teams').doc(teamId)),
           transaction.get(teamPendingDocRef(gameRef, teamId)),
         ]);
@@ -2717,12 +2735,32 @@ exports.submitDecision = onCall(CALLABLE_OPTS, async (request) => {
       // mirrored once to `teams/{teamId}/state/pending` so other teammates
       // can subscribe without contending on each other's player docs.
 
+      // Apr 28 2026 — read the team's `unlockedProducts` so the validator can
+      // reject menu items the team hasn't paid to unlock. We only do this read
+      // when the player is on a team (every game post BE-20 should be); solo
+      // players outside a team fall back to BASE_MENU only via the validator's
+      // default. Missing team doc → starter set, matching joinGame's seed.
+      let unlockedProducts = [...DEFAULT_UNLOCKED_PRODUCTS];
+      if (teamId) {
+        if (!teamSnap) {
+          teamSnap = await transaction.get(gameRef.collection('teams').doc(teamId));
+        }
+        if (teamSnap.exists) {
+          const raw = teamSnap.get('unlockedProducts');
+          if (Array.isArray(raw) && raw.length > 0) {
+            unlockedProducts = raw.filter((p) => typeof p === 'string');
+          }
+        }
+      }
+
       // Validate using the decision-validation module (pure).
       // ValidationError is a plain JS error — convert to HttpsError so the
       // Firebase Functions runtime surfaces the right code to the client.
       let validated;
       try {
-        validated = decisionValidation.validateDecision(data, currentRound, config);
+        validated = decisionValidation.validateDecision(data, currentRound, config, {
+          unlockedProducts,
+        });
       } catch (vErr) {
         if (ValidationError && vErr instanceof ValidationError) {
           throw new HttpsError(vErr.code || 'invalid-argument', vErr.message);
@@ -4096,6 +4134,128 @@ exports.purchaseChefData = onCall(CALLABLE_OPTS, async (request) => {
   return { csv: rows.join("\n"), costDeducted: cost, tier };
 });
 
+// ===========================================================================
+// purchaseProduct — Apr 28 2026
+//
+// Each station starts with one product unlocked (BASE_MENU). The other
+// product per station lives in OPTIONAL_MENU and must be purchased before
+// the team can put it on their menu. Every unlock costs the same flat
+// amount — see `productUnlockCost` in config.js (default $500).
+//
+// Storage:
+//   - team doc gains `unlockedProducts: string[]` and `unlocksPurchased: number`.
+//     The team doc is readable by any signed-in user (firestore.rules), so
+//     teammates and opponents can see who has the full menu unlocked.
+//   - cost is deducted from the *caller's* `budgetCurrent` (mirrors the
+//     existing `purchaseCompetitorInsight` / `purchaseChefData` model).
+//
+// Authorization: any teammate may unlock — the menu is shared across the
+// team, so locking this to a specific role would just create a coordination
+// problem (Operations needs Finance to unlock a product before they can
+// stock it). The Finance/Operations gate applies to submitting decisions /
+// prices, not to spending on shared inventory.
+// ===========================================================================
+exports.purchaseProduct = onCall(CALLABLE_OPTS, async (request) => {
+  if (isWarmupRequest(request)) return { ok: true, warm: true };
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required.');
+  const { gameId: rawGameId, product } = request.data || {};
+  const gameId = cleanGameId(rawGameId);
+  if (typeof product !== 'string' || !OPTIONAL_MENU.includes(product)) {
+    throw new HttpsError(
+      'invalid-argument',
+      `product must be one of: ${OPTIONAL_MENU.join(', ')}`,
+    );
+  }
+  const uid = request.auth.uid;
+  const gameRef = gameDoc(gameId);
+
+  let costDeducted = 0;
+  let nextUnlocked = null;
+  let nextUnlocksPurchased = 0;
+
+  await db.runTransaction(async (tx) => {
+    const playerRef = gameRef.collection('players').doc(uid);
+    const cfgRef = gameRef.collection('config').doc('params');
+    const [playerSnap, cfgSnap, gameSnap] = await Promise.all([
+      tx.get(playerRef),
+      tx.get(cfgRef),
+      tx.get(gameRef),
+    ]);
+    if (!gameSnap.exists) throw new HttpsError('not-found', 'Game not found.');
+    if (!playerSnap.exists) throw new HttpsError('failed-precondition', 'Join the game before purchasing unlocks.');
+    if (gameSnap.get('paused') === true) {
+      throw new HttpsError('failed-precondition', 'Game is paused. Purchases are temporarily disabled.');
+    }
+    const currentPhase = typeof gameSnap.get('phase') === 'string' ? gameSnap.get('phase') : '';
+    if (!currentPhase.includes('decide')) {
+      throw new HttpsError('failed-precondition', 'Product unlocks only available during Decisions phase.');
+    }
+
+    const player = playerSnap.data();
+    const teamId = getPlayerTeamId(player);
+    if (!teamId) {
+      throw new HttpsError('failed-precondition', 'You must be on a team to unlock products.');
+    }
+    const teamRef = gameRef.collection('teams').doc(teamId);
+    const teamSnap = await tx.get(teamRef);
+    if (!teamSnap.exists) {
+      throw new HttpsError('not-found', 'Team not found.');
+    }
+
+    const team = teamSnap.data() || {};
+    const currentUnlocked = Array.isArray(team.unlockedProducts) && team.unlockedProducts.length > 0
+      ? team.unlockedProducts.filter((p) => typeof p === 'string')
+      : [...DEFAULT_UNLOCKED_PRODUCTS];
+
+    if (currentUnlocked.includes(product)) {
+      throw new HttpsError('already-exists', `Your team already has "${product}" unlocked.`);
+    }
+
+    const unlocksPurchased = numberOrDefault(team.unlocksPurchased, 0);
+    const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
+    const cost = numberOrDefault(config.productUnlockCost, 500);
+
+    const budget = numberOrDefault(player.budgetCurrent, 0);
+    if (budget < cost) {
+      throw new HttpsError(
+        'failed-precondition',
+        `Insufficient budget — unlocking "${product}" costs $${cost.toLocaleString()} but you only have $${budget.toLocaleString()}.`,
+      );
+    }
+
+    nextUnlocked = [...currentUnlocked, product];
+    nextUnlocksPurchased = unlocksPurchased + 1;
+    costDeducted = cost;
+
+    tx.update(playerRef, {
+      budgetCurrent: FieldValue.increment(-cost),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    tx.update(teamRef, {
+      unlockedProducts: nextUnlocked,
+      unlocksPurchased: nextUnlocksPurchased,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    tx.set(
+      playerRef.collection('purchases').doc(`unlock_${product}`),
+      {
+        kind: 'product-unlock',
+        product,
+        costDeducted: cost,
+        unlocksPurchasedBefore: unlocksPurchased,
+        purchasedAt: FieldValue.serverTimestamp(),
+      },
+    );
+  });
+
+  return {
+    product,
+    costDeducted,
+    unlockedProducts: nextUnlocked,
+    unlocksPurchased: nextUnlocksPurchased,
+  };
+});
+
 // ---------------------------------------------------------------------------
 // resetGame — professor-only. Wipes round/sim/leaderboard/conclusion data
 // and resets each player to lobby defaults so a class can replay without
@@ -4205,6 +4365,19 @@ exports.resetGame = onCall(HEAVY_CALLABLE_OPTS, async (request) => {
       lastRoundResult: FieldValue.delete(),
       consecutiveMissedRounds: 0,
       disconnected: false,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    ops += 1;
+    if (ops >= BATCH_OP_LIMIT) await commitBatch();
+  }
+
+  // Apr 28 2026 — restore each team back to the starter unlock set so a
+  // replay starts the unlock economy from scratch instead of carrying over
+  // products purchased in the prior playthrough.
+  for (const td of teamDocs) {
+    batch.update(td.ref, {
+      unlockedProducts: [...DEFAULT_UNLOCKED_PRODUCTS],
+      unlocksPurchased: 0,
       updatedAt: FieldValue.serverTimestamp(),
     });
     ops += 1;

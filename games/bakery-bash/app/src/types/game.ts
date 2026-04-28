@@ -120,8 +120,30 @@ export const PRODUCT_KEYS: ProductKey[] = [
   "matcha",
 ];
 
-export const BASE_MENU: ProductKey[] = ["croissant", "cookie", "bagel"];
-export const OPTIONAL_MENU: ProductKey[] = ["sandwich", "coffee", "matcha"];
+// Apr 28 2026 — station-unlock economy. BASE_MENU = the three "starter"
+// products (one per station, free at game start, can't be removed).
+// OPTIONAL_MENU = the three locked products that must be unlocked via
+// `purchaseProduct` before they can be added to the menu.
+//   bakery  → croissant (starter), cookie   (locked)
+//   deli    → bagel    (starter), sandwich (locked)
+//   barista → coffee   (starter), matcha   (locked)
+export const BASE_MENU: ProductKey[] = ["croissant", "bagel", "coffee"];
+export const OPTIONAL_MENU: ProductKey[] = ["cookie", "sandwich", "matcha"];
+
+/** Default starter set every team begins with — mirrors backend config. */
+export const DEFAULT_UNLOCKED_PRODUCTS: ProductKey[] = [
+  "croissant",
+  "bagel",
+  "coffee",
+];
+
+/**
+ * Default flat cost (USD) per OPTIONAL_MENU unlock. Mirrors
+ * `productUnlockCost` in backend `config.js`. Used as a fallback only —
+ * the canonical value comes through the `/games/{gameId}/config/params`
+ * listener.
+ */
+export const DEFAULT_PRODUCT_UNLOCK_COST = 500;
 
 // ---------------------------------------------------------------------------
 // Stations + maintenance (game-design-proposal integration)
@@ -356,6 +378,11 @@ export interface GameConfigParams {
   chefDataTier1Cost?: number;
   /** Cost to purchase the full per-chef profile dump for the current round. */
   chefDataTier2Cost?: number;
+  /**
+   * Apr 28 2026 — flat cost (USD) per product unlock. Falls back to
+   * DEFAULT_PRODUCT_UNLOCK_COST when missing.
+   */
+  productUnlockCost?: number;
   // Legacy (pre-rewrite seed doc). Kept so UI can fall back if the canonical
   // field is not yet present in Firestore.
   costPerStaffPerRound?: number;
@@ -666,6 +693,20 @@ export interface GameState {
    * before the listener has read the doc (strict gate until then).
    */
   teamRoleAssignments: Record<string, PlayerRole | null>;
+  /**
+   * Apr 28 2026 — products the team has unlocked (always includes the
+   * three BASE_MENU starters). Mirrored from
+   * `/games/{gameId}/teams/{teamId}.unlockedProducts`. The Bakery view
+   * disables the "Add" affordance for any OPTIONAL_MENU product not in
+   * this list and shows an "Unlock for $X" button instead.
+   */
+  unlockedProducts: ProductKey[];
+  /**
+   * Apr 28 2026 — total number of locked products the team has paid to
+   * unlock this game. Drives the cost ladder lookup for the *next*
+   * unlock. Mirrored from `/games/{gameId}/teams/{teamId}.unlocksPurchased`.
+   */
+  unlocksPurchased: number;
   /**
    * Server-driven phase end Timestamp (epoch ms) mirrored from
    * `/games/{gameId}.phaseEndsAt`. `null` while the game is paused or

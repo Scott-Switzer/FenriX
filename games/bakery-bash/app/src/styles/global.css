@@ -938,6 +938,74 @@ h3 { font-size: 0.7rem; }
   cursor: not-allowed;
 }
 
+/* ─── Apr 28 2026 — station-unlock paywall ─────────────────── */
+
+.product-tile--paywall {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--cream),
+    var(--cream) 6px,
+    var(--flour) 6px,
+    var(--flour) 12px
+  );
+  opacity: 0.85;
+}
+
+.product-tile__unlock {
+  grid-column: 1 / -1;
+  font-family: var(--font-pixel);
+  font-size: 0.5rem;
+  padding: 0.45rem 0.7rem;
+  border: var(--border-light);
+  background: var(--caramel);
+  color: var(--flour);
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.product-tile__unlock:hover:not(:disabled) {
+  background: var(--berry);
+  color: var(--flour);
+}
+
+.product-tile__unlock:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.bakery-view__unlock-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.85rem;
+  margin-top: 0.75rem;
+  border: var(--border-light);
+  background: var(--cream);
+  font-size: 0.85rem;
+  color: var(--espresso);
+  line-height: 1.35;
+}
+
+.bakery-view__unlock-banner-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.bakery-view__unlock-banner-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.bakery-view__unlock-error {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  border: 2px solid var(--berry);
+  background: var(--flour);
+  color: var(--berry);
+  font-size: 0.8rem;
+}
+
 /* ─── Game Sidebar (Tabbed) ──────────────────────────────── */
 
 .game-sidebar {

@@ -12,6 +12,7 @@ import {
   AD_TYPES,
   DEFAULT_MAINTENANCE_BARS,
   DEFAULT_STAFF_COUNTS,
+  DEFAULT_UNLOCKED_PRODUCTS,
   totalSousChefs,
   type AcquiredCsv,
   type AdType,
@@ -110,6 +111,11 @@ const initialState: GameState = {
   teamId: null,
   teamName: null,
   teamRoleAssignments: {},
+  // Apr 28 2026 — start every team at the starter set (one product per
+  // station). The team-doc listener overwrites this once it reads the
+  // canonical `unlockedProducts` from Firestore.
+  unlockedProducts: [...DEFAULT_UNLOCKED_PRODUCTS],
+  unlocksPurchased: 0,
   phaseEndsAtMs: null,
   leaderboard: [],
   leaderboardError: null,
@@ -171,6 +177,10 @@ type GameAction =
   | { type: "SET_LEADERBOARD"; payload: LeaderboardRanking[] }
   | { type: "SET_LEADERBOARD_ERROR"; payload: string | null }
   | { type: "ADD_ACQUIRED_CSV"; payload: AcquiredCsv }
+  | {
+      type: "SET_TEAM_UNLOCKS";
+      payload: { unlockedProducts: ProductKey[]; unlocksPurchased: number };
+    }
   | { type: "RESET" };
 
 function gameReducer(state: GameState, action: GameAction): GameState {
@@ -412,6 +422,51 @@ function gameReducer(state: GameState, action: GameAction): GameState {
             )
           : [...state.acquiredCsvs, action.payload];
       return { ...state, acquiredCsvs: next };
+    }
+
+    case "SET_TEAM_UNLOCKS": {
+      const { unlockedProducts, unlocksPurchased } = action.payload;
+      // Skip the render if nothing actually changed — the team-doc listener
+      // re-fires on any team-doc write (name change, role assignment, etc.)
+      // so most snapshots leave the unlock fields untouched.
+      const sameCount =
+        state.unlockedProducts.length === unlockedProducts.length;
+      const sameMembers =
+        sameCount &&
+        unlockedProducts.every((p) => state.unlockedProducts.includes(p));
+      if (sameMembers && state.unlocksPurchased === unlocksPurchased) {
+        return state;
+      }
+      // Apr 28 2026 — when a product gets unlocked, the player has not yet
+      // toggled it onto their menu. Don't auto-add it; just make the
+      // BakeryView UI render an "Add" affordance instead of "Unlock for $X".
+      // Conversely, if a product slips out of the unlocked set (shouldn't
+      // happen post-purchase, but defensive against admin/reset paths),
+      // remove it from the pending menu and zero its quantity.
+      const newlyLocked = (Object.keys(state.pendingDecision.menu) as ProductKey[])
+        .filter(
+          (p) =>
+            state.pendingDecision.menu[p] &&
+            !BASE_MENU.includes(p) &&
+            !unlockedProducts.includes(p),
+        );
+      const nextDecision = newlyLocked.length
+        ? {
+            ...state.pendingDecision,
+            menu: { ...state.pendingDecision.menu },
+            quantities: { ...state.pendingDecision.quantities },
+          }
+        : state.pendingDecision;
+      for (const p of newlyLocked) {
+        nextDecision.menu[p] = false;
+        nextDecision.quantities[p] = 0;
+      }
+      return {
+        ...state,
+        unlockedProducts: [...unlockedProducts],
+        unlocksPurchased,
+        pendingDecision: nextDecision,
+      };
     }
 
     case "RESET":

@@ -1,11 +1,15 @@
+import { useState } from "react";
+import { httpsCallable } from "firebase/functions";
 import { useGame, useGameDispatch } from "../../contexts/GameContext";
 import {
   BASE_MENU,
+  DEFAULT_PRODUCT_UNLOCK_COST,
   roleOwnsPricing,
   type ProductKey,
   type StationId,
 } from "../../types/game";
 
+import { functions } from "../../lib/firebase";
 import { PRICE_ZONES } from "../../lib/pricing";
 import { PriceInput } from "./PriceInput";
 import { totalStaffCost, totalProductCost } from "../../lib/cost";
@@ -108,6 +112,16 @@ interface ProductTileProps {
   price: number;
   isOnMenu: boolean;
   isBase: boolean;
+  /** Apr 28 2026 — true when the team has paid to unlock this product. */
+  isUnlocked: boolean;
+  /** Cost (USD) to unlock this product right now. 0 when already unlocked. */
+  unlockCost: number;
+  /** True when this product can't be unlocked yet (insufficient budget). */
+  cannotAfford: boolean;
+  /** True while a purchase callable is in flight (disables all unlock buttons). */
+  unlockPending: boolean;
+  /** Trigger the purchaseProduct callable for this product. */
+  onUnlock: () => void;
   unitCost: number;
   onQtyChange: (next: number) => void;
   onPriceChange: (next: number) => void;
@@ -123,6 +137,11 @@ function ProductTile({
   price,
   isOnMenu,
   isBase,
+  isUnlocked,
+  unlockCost,
+  cannotAfford,
+  unlockPending,
+  onUnlock,
   unitCost,
   onQtyChange,
   onPriceChange,
@@ -131,9 +150,16 @@ function ProductTile({
   priceDisabled,
 }: ProductTileProps) {
   const d = PRODUCT_DISPLAY[product];
+  // Apr 28 2026 — three states for a non-base tile:
+  //   1. unlocked + on menu  → full controls (qty stepper, price, remove)
+  //   2. unlocked + off menu → "+ Add" button
+  //   3. locked              → "Unlock for $X" button (purchase first)
+  const showLockedState = !isBase && !isUnlocked;
   return (
     <div
-      className={`product-tile${!isOnMenu ? " product-tile--locked" : ""}${
+      className={`product-tile${
+        !isOnMenu ? " product-tile--locked" : ""
+      }${showLockedState ? " product-tile--paywall" : ""}${
         readOnly ? " product-tile--readonly" : ""
       }`}
     >
@@ -211,7 +237,24 @@ function ProductTile({
           )}
         </div>
       ) : readOnly ? (
-        <span className="product-tile__muted">Off menu</span>
+        <span className="product-tile__muted">
+          {showLockedState ? "🔒 Locked" : "Off menu"}
+        </span>
+      ) : showLockedState ? (
+        <button
+          type="button"
+          className="product-tile__unlock"
+          onClick={onUnlock}
+          disabled={unlockPending || cannotAfford}
+          title={
+            cannotAfford
+              ? `Need $${unlockCost.toLocaleString()} to unlock ${d.name}.`
+              : `Unlock ${d.name} for your team for $${unlockCost.toLocaleString()}.`
+          }
+          aria-label={`Unlock ${d.name} for $${unlockCost}`}
+        >
+          🔒 Unlock — ${unlockCost.toLocaleString()}
+        </button>
       ) : (
         <button
           type="button"
@@ -245,11 +288,40 @@ export function BakeryView({ readOnly = false }: BakeryViewProps) {
     role,
     teamRoleAssignments,
     config,
+    gameId,
+    unlockedProducts,
+    budgetCurrent,
   } = useGame();
   const dispatch = useGameDispatch();
   // FE-I15: let any teammate edit prices when no one on the team
   // holds finance.
   const canEditPrices = roleOwnsPricing(role, teamRoleAssignments);
+
+  // Apr 28 2026 — station-unlock state. Flat cost per unlock, sourced from
+  // `/games/{gameId}/config/params.productUnlockCost` with a static fallback
+  // until the config-doc listener has hydrated.
+  const unlockCost = config?.productUnlockCost ?? DEFAULT_PRODUCT_UNLOCK_COST;
+  const [unlockPending, setUnlockPending] = useState<ProductKey | null>(null);
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+
+  const purchaseUnlock = async (product: ProductKey) => {
+    if (!gameId || readOnly || unlockPending) return;
+    setUnlockPending(product);
+    setUnlockError(null);
+    try {
+      const fn = httpsCallable(functions, "purchaseProduct");
+      await fn({ gameId, product });
+      // No local dispatch needed — the team-doc listener picks up the new
+      // unlockedProducts / unlocksPurchased and SET_TEAM_UNLOCKS handles
+      // the state update + any pendingDecision normalization.
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Could not unlock product.";
+      setUnlockError(message);
+    } finally {
+      setUnlockPending(null);
+    }
+  };
 
   const { staffCounts } = pendingDecision;
   const chefCountForStation = (s: StationId): number => {
@@ -277,6 +349,11 @@ export function BakeryView({ readOnly = false }: BakeryViewProps) {
   const toggleMenu = (product: ProductKey, checked: boolean) => {
     if (readOnly) return;
     if (BASE_MENU.includes(product)) return;
+    // Apr 28 2026 — guard against putting a still-locked product on the
+    // menu. The UI should never let this happen (unlocked products show
+    // "+ Add"; locked ones show "🔒 Unlock") but the toggle handler is
+    // shared so we re-check here.
+    if (checked && !unlockedProducts.includes(product)) return;
     dispatch({
       type: "UPDATE_PENDING_DECISION",
       payload: {
@@ -286,7 +363,6 @@ export function BakeryView({ readOnly = false }: BakeryViewProps) {
     });
   };
 
-  const allProducts = STATIONS.flatMap((s) => s.products);
   const bakeryCost = totalProductCost(
     pendingDecision.menu,
     pendingDecision.quantities,
@@ -295,6 +371,10 @@ export function BakeryView({ readOnly = false }: BakeryViewProps) {
   const staffCost = totalStaffCost(pendingDecision.staffCounts, config);
   const totalCommitted = bakeryCost + staffCost;
   const unitCost = config?.unitCostPerProduct ?? 1;
+  const cannotAfford = budgetCurrent !== null && budgetCurrent < unlockCost;
+  const lockedRemaining = STATIONS.flatMap((s) => s.products).filter(
+    (p) => !BASE_MENU.includes(p) && !unlockedProducts.includes(p),
+  );
 
   return (
     <div className={`bakery-view${readOnly ? " bakery-view--readonly" : ""}`}>
@@ -339,27 +419,57 @@ export function BakeryView({ readOnly = false }: BakeryViewProps) {
               </header>
 
               <div className="station-card__products">
-                {station.products.map((product) => (
-                  <ProductTile
-                    key={product}
-                    product={product}
-                    qty={pendingDecision.quantities[product] ?? 0}
-                    price={pendingDecision.productPrices[product] ?? 0}
-                    isOnMenu={pendingDecision.menu[product]}
-                    isBase={BASE_MENU.includes(product)}
-                    unitCost={unitCost}
-                    onQtyChange={(n) => setQty(product, n)}
-                    onPriceChange={(n) => setPrice(product, n)}
-                    onToggle={(next) => toggleMenu(product, next)}
-                    readOnly={readOnly}
-                    priceDisabled={!canEditPrices}
-                  />
-                ))}
+                {station.products.map((product) => {
+                  const isBase = BASE_MENU.includes(product);
+                  const isUnlocked =
+                    isBase || unlockedProducts.includes(product);
+                  return (
+                    <ProductTile
+                      key={product}
+                      product={product}
+                      qty={pendingDecision.quantities[product] ?? 0}
+                      price={pendingDecision.productPrices[product] ?? 0}
+                      isOnMenu={pendingDecision.menu[product]}
+                      isBase={isBase}
+                      isUnlocked={isUnlocked}
+                      unlockCost={unlockCost}
+                      cannotAfford={cannotAfford}
+                      unlockPending={unlockPending !== null}
+                      onUnlock={() => void purchaseUnlock(product)}
+                      unitCost={unitCost}
+                      onQtyChange={(n) => setQty(product, n)}
+                      onPriceChange={(n) => setPrice(product, n)}
+                      onToggle={(next) => toggleMenu(product, next)}
+                      readOnly={readOnly}
+                      priceDisabled={!canEditPrices}
+                    />
+                  );
+                })}
               </div>
             </section>
           );
         })}
       </div>
+
+      {!readOnly && lockedRemaining.length > 0 && (
+        <div className="bakery-view__unlock-banner" role="status">
+          <span className="bakery-view__unlock-banner-icon" aria-hidden>
+            🔒
+          </span>
+          <div className="bakery-view__unlock-banner-text">
+            <strong>
+              {lockedRemaining.length} product
+              {lockedRemaining.length === 1 ? "" : "s"} still locked.
+            </strong>{" "}
+            Each unlock costs <strong>${unlockCost.toLocaleString()}</strong>.
+          </div>
+        </div>
+      )}
+      {unlockError && (
+        <p className="bakery-view__unlock-error" role="alert">
+          {unlockError}
+        </p>
+      )}
 
       <div className="bakery-view__total-committed">
         <div className="bakery-view__total-committed-row bakery-view__total-committed-row--total">

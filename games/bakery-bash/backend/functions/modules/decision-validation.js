@@ -89,6 +89,11 @@ function requireNonNegNumber(value, label) {
  * @param {object} data           raw decision payload
  * @param {number} currentRound   round number (stored on the sanitized output)
  * @param {object} _config        merged game config (unused here; reserved for future rules)
+ * @param {object} [opts]         { unlockedProducts?: string[] } — Apr 28 2026:
+ *   list of products the team has unlocked (always includes BASE_MENU starters).
+ *   If a player tries to put an OPTIONAL_MENU product on the menu without
+ *   having unlocked it, validation fails. When omitted (legacy callers / tests),
+ *   defaults to BASE_MENU only — i.e., locked products are rejected.
  * @returns {object} sanitized decision:
  *   {
  *     round,
@@ -100,9 +105,22 @@ function requireNonNegNumber(value, label) {
  *   }
  * @throws {ValidationError} on any invalid field
  */
-function validateDecision(data, currentRound, _config) {
+function validateDecision(data, currentRound, _config, opts) {
   if (!data || typeof data !== 'object') {
     fail('invalid-argument', 'Decision payload must be an object');
+  }
+
+  // Apr 28 2026 — station unlocks. Build a Set of products the team is
+  // allowed to put on the menu. BASE_MENU is always allowed (starters);
+  // OPTIONAL_MENU products must appear in `unlockedProducts`.
+  const optsUnlocked = opts && Array.isArray(opts.unlockedProducts)
+    ? opts.unlockedProducts
+    : null;
+  const allowedSet = new Set(BASE_MENU);
+  if (optsUnlocked) {
+    for (const p of optsUnlocked) {
+      if (typeof p === 'string') allowedSet.add(p);
+    }
   }
 
   // --- menu ---
@@ -116,7 +134,14 @@ function validateDecision(data, currentRound, _config) {
     menu[p] = true;
   }
   for (const p of OPTIONAL_MENU) {
-    menu[p] = !!rawMenu[p];
+    const requested = !!rawMenu[p];
+    if (requested && !allowedSet.has(p)) {
+      fail(
+        'failed-precondition',
+        `Product "${p}" is locked. Unlock it on the bakery view before adding it to the menu.`,
+      );
+    }
+    menu[p] = requested;
   }
 
   const offeredProducts = PRODUCT_KEYS.filter((p) => menu[p]);
