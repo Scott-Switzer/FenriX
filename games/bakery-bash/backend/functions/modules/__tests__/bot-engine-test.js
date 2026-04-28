@@ -159,10 +159,14 @@ console.log('--- Difficulty noise ---');
   const mediumBids = [];
   const perfectBids = [];
 
+  // Distinct seed per iteration so each call uses an independent (but
+  // deterministic) RNG stream. Without this, sample size 20 is too small
+  // to reliably differentiate novice (0.50 noise) from medium (0.10 noise)
+  // when both fall back to Math.random.
   for (let i = 0; i < 20; i++) {
-    const n = generateBotDecisions(botState, 'bid_ad', TEST_CONFIG, [], 'novice', 'balanced');
-    const m = generateBotDecisions(botState, 'bid_ad', TEST_CONFIG, [], 'medium', 'balanced');
-    const p = generateBotDecisions(botState, 'bid_ad', TEST_CONFIG, [], 'perfect', 'balanced');
+    const n = generateBotDecisions(botState, 'bid_ad', TEST_CONFIG, [], 'novice', 'balanced', null, `noise-novice-${i}`);
+    const m = generateBotDecisions(botState, 'bid_ad', TEST_CONFIG, [], 'medium', 'balanced', null, `noise-medium-${i}`);
+    const p = generateBotDecisions(botState, 'bid_ad', TEST_CONFIG, [], 'perfect', 'balanced', null, `noise-perfect-${i}`);
     const nTv = typeof n.adBids.TV === 'number' ? n.adBids.TV : 0;
     const mTv = typeof m.adBids.TV === 'number' ? m.adBids.TV : 0;
     const pTv = typeof p.adBids.TV === 'number' ? p.adBids.TV : 0;
