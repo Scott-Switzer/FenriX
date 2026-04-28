@@ -220,8 +220,16 @@ async function seedBaseGame() {
   });
 }
 
-describe("Bakery Bash Firestore security rules", () => {
-  before(async () => {
+describe("Bakery Bash Firestore security rules", function () {
+  before(async function () {
+    // `firebase emulators:exec` (used by `npm run test:rules`) sets
+    // FIRESTORE_EMULATOR_HOST so @firebase/rules-unit-testing can
+    // auto-discover the emulator. Plain `npm test` runs without an
+    // emulator — skip the suite there rather than fail.
+    if (!process.env.FIRESTORE_EMULATOR_HOST) {
+      this.skip();
+      return;
+    }
     const rules = fs.readFileSync(
       path.resolve(__dirname, "../firestore.rules"),
       "utf8"
