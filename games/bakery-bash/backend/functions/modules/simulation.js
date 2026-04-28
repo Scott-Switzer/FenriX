@@ -59,6 +59,16 @@ const {
   buildCsvRow,
 } = require('./csv-export');
 
+const {
+  equipmentFactorCapacity,
+  equipmentFactorSatisfaction,
+  cleanlinessFactor,
+  gradeFromScore,
+  cleanlinessDriftDelta,
+  nextEquipmentGrade,
+  tierUpgradeCost,
+} = require('./equipment-cleanliness');
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -178,7 +188,8 @@ function computePlayerOutputAndSatisfaction(player, roundPreferences, config) {
     ? decision.sousChefCount
     : Number(player.sousChefCount) || 0;
 
-  const chefSatisfactionScore = calculateChefSatisfactionScore(sousChefCount, config);
+  const equipmentGrade = player.equipmentGrade || 'C';
+  const cleanlinessGrade = gradeFromScore(player.cleanlinessScore);
 
   const offeredProducts = getOfferedProducts(decision);
   const perProduct = {};
@@ -191,8 +202,8 @@ function computePlayerOutputAndSatisfaction(player, roundPreferences, config) {
     const qtyStocked = getQuantity(decision, product);
     const supplyCapped = Math.min(totalOutput, qtyStocked);
 
-    // Step 3: chef-satisfaction multiplier on throughput
-    const effectiveOutput = calculateEffectiveOutput(supplyCapped, chefSatisfactionScore);
+    // Step 3: equipment factor on throughput
+    const effectiveOutput = supplyCapped * equipmentFactorCapacity(equipmentGrade);
 
     // Step 4: fill rate uses round-modified base demand (trending boosts demand)
     const baseDemand = (PRODUCT_CATALOG[product] && PRODUCT_CATALOG[product].baseDemand) || 0;
@@ -200,7 +211,10 @@ function computePlayerOutputAndSatisfaction(player, roundPreferences, config) {
     const demand = Math.max(1, baseDemand * roundModifier);
 
     const fillRate = effectiveOutput / demand;
-    const satisfactionPct = fillRateToSatisfactionPct(fillRate);
+    const rawSat = fillRateToSatisfactionPct(fillRate);
+    const satisfactionPct = Math.max(0, Math.min(100,
+      rawSat * cleanlinessFactor(cleanlinessGrade) * equipmentFactorSatisfaction(equipmentGrade)
+    ));
     const tier = tierForSatisfaction(satisfactionPct);
 
     perProduct[product] = {
@@ -213,7 +227,7 @@ function computePlayerOutputAndSatisfaction(player, roundPreferences, config) {
     };
   }
 
-  return { offeredProducts, chefSatisfactionScore, perProduct };
+  return { offeredProducts, perProduct, equipmentGrade, cleanlinessGrade };
 }
 
 // ---------------------------------------------------------------------------
@@ -291,7 +305,7 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
   // Pass 1 — per-player output, chef-sat score, per-product satisfaction
   // ---------------------------------------------------------------------
   const perPlayer = safePlayers.map((player) => {
-    const { offeredProducts, chefSatisfactionScore, perProduct } =
+    const { offeredProducts, perProduct, equipmentGrade, cleanlinessGrade } =
       computePlayerOutputAndSatisfaction(player, roundPreferences, config);
 
     // Aggregate satisfaction (weighted) across this player's offered products.
@@ -301,9 +315,10 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
     return {
       player,
       offeredProducts,
-      chefSatisfactionScore,
       perProduct,
       aggregateSatisfactionPct,
+      equipmentGrade,
+      cleanlinessGrade,
     };
   });
 
@@ -376,6 +391,9 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
   const results = [];
 
   for (const pp of perPlayer) {
+    let nextRoundEquipmentGrade = pp.equipmentGrade || 'C';
+    let equipmentUpgradeApplied = false;
+
     const p = pp.player;
     const decision = p.decision || {};
     const allocEntry = allocation.get ? allocation.get(p.playerId) : allocation[p.playerId];
@@ -502,12 +520,38 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
       const roundCosts = calculateRoundCosts(costDecision, costAuction, config);
       totalSpent = roundCosts.totalSpent;
 
+      // Equipment upgrade — deduct cost if requested and the player has cash + room to upgrade.
+      // Returns the new grade for the result; original `equipmentGrade` (pp.equipmentGrade)
+      // is unchanged for the rest of THIS round's compute. The bump applies to NEXT round.
+      const upgradeRequested = !!decision.equipmentUpgradePurchased;
+      const _eqGradeForRound = pp.equipmentGrade || 'C';
+      const _nextGrade = nextEquipmentGrade(_eqGradeForRound);
+      const _upgradeCost = tierUpgradeCost(_eqGradeForRound);
+      if (upgradeRequested && _nextGrade && _upgradeCost && (budgetCurrent - totalSpent) >= _upgradeCost) {
+        totalSpent += _upgradeCost;
+        nextRoundEquipmentGrade = _nextGrade;
+        equipmentUpgradeApplied = true;
+      }
+
+      // Maintenance staff cost — flat per-head, deducted alongside other staff.
+      const maintenanceStaffCount = (decision.staffCounts && Number(decision.staffCounts.maintenanceGuys)) || 0;
+      const maintenanceCost = Math.max(0, maintenanceStaffCount) *
+        ((config && config.MAINTENANCE_STAFF_COST) || 20);
+      totalSpent += maintenanceCost;
+
       const loanResult = calculateLoanShark(totalSpent, budgetCurrent, config);
       amountBorrowed = loanResult.borrowed;
       interestCharged = loanResult.interest;
       loanSharkDeduction = loanResult.loanSharkDeduction;
     }
     const revenueNet = revenueGross - loanSharkDeduction;
+
+    // Cleanliness drift for next round.
+    const _maintenanceStaffCount = (decision.staffCounts && Number(decision.staffCounts.maintenanceGuys)) || 0;
+    const _currentScore = Number.isFinite(p.cleanlinessScore) ? p.cleanlinessScore : 75;
+    const _delta = cleanlinessDriftDelta(_maintenanceStaffCount, customerCount);
+    const cleanlinessScoreNext = Math.max(0, Math.min(100, _currentScore + _delta));
+    const cleanlinessGradeNext = gradeFromScore(cleanlinessScoreNext);
 
     // HIGH-07 fix: use the canonical updateBudget formula from loan-shark.js.
     // Spec says budgets CAN go negative — do NOT clamp at zero.
@@ -535,11 +579,15 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
       amountBorrowed,
       interestCharged,
       aggregateSatisfactionPct: postSelloutAggregate,
-      chefSatisfactionScore: pp.chefSatisfactionScore,
+      // Equipment + cleanliness (from C2/C3):
+      equipmentGrade: pp.equipmentGrade,
+      cleanlinessScore: cleanlinessScoreNext,
+      cleanlinessGrade: cleanlinessGradeNext,
+      equipmentUpgradePurchased: equipmentUpgradeApplied,
       // POST-01: per-product resolved prices (snapped, clamped, carry-over)
       // flow into the `price_<product>` CSV columns via csv-export.js.
       productPrices: resolvedPricesPerPlayer[p.playerId] || {},
-      // For professor export
+      // Professor export:
       playerId: p.playerId,
       displayName: p.displayName,
       bakeryName: p.bakeryName,
@@ -579,7 +627,11 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
       customerCount,
       perProductCustomers,
       aggregateSatisfactionPct: postSelloutAggregate,
-      chefSatisfactionScore: pp.chefSatisfactionScore,
+      // Equipment + cleanliness state for next round persistence:
+      equipmentGrade: nextRoundEquipmentGrade,
+      cleanlinessScore: cleanlinessScoreNext,
+      cleanlinessGrade: cleanlinessGradeNext,
+      equipmentUpgradeApplied,
       perProductSatisfaction,
       returningCustomersEarned,
       selloutAnywhere,
