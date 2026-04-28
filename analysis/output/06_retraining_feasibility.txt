@@ -1,0 +1,63 @@
+--- Setup ---
+Dataset training rows: 288
+Game observation pool: 240 (sampled per round)
+Held-out test set:    200 (game-version: noise cols collapsed to constants)
+Naive 'predict mean' RMSE on test: 248.9
+
+--- Static strategies (no in-game updates) ---
+  S1  Naive (all dataset features incl noise):    RMSE = 265.3
+  S2  Smart  (overlap-only dataset model):        RMSE = 229.9
+
+--- Re-training curves: RMSE on in-game test set ---
+(headers: t=teams; r=rounds; obs=observations; S3=online updater; S4=pure in-game)
+
+  n_teams = 6
+     r   obs   S3 online     S4 pure  (   vs S2,    vs S1)
+     1     6       228.6       (nan)  (    -1.2,    -36.7)
+     2    12       226.8       (nan)  (    -3.1,    -38.5)
+     3    18       225.8       (nan)  (    -4.0,    -39.4)
+     4    24       224.8       730.4  (    -5.1,    -40.5)
+     5    30       224.2      1246.8  (    -5.6,    -41.0)
+     6    36       225.2       428.0  (    -4.7,    -40.1)
+     7    42       224.7       336.0  (    -5.1,    -40.6)
+     8    48       225.3       314.4  (    -4.5,    -40.0)
+     9    54       224.9       317.9  (    -5.0,    -40.4)
+    10    60       224.4       329.0  (    -5.4,    -40.9)
+
+  n_teams = 12
+     r   obs   S3 online     S4 pure  (   vs S2,    vs S1)
+     1    12       229.0       (nan)  (    -0.8,    -36.2)
+     2    24       228.4       424.1  (    -1.4,    -36.8)
+     3    36       227.5       337.9  (    -2.3,    -37.7)
+     4    48       228.1       341.2  (    -1.7,    -37.2)
+     5    60       226.3       299.7  (    -3.5,    -39.0)
+     6    72       226.1       317.9  (    -3.8,    -39.2)
+     7    84       225.8       306.6  (    -4.1,    -39.5)
+     8    96       226.6       292.4  (    -3.3,    -38.7)
+     9   108       225.8       264.6  (    -4.1,    -39.5)
+    10   120       223.9       256.1  (    -5.9,    -41.3)
+
+  n_teams = 24
+     r   obs   S3 online     S4 pure  (   vs S2,    vs S1)
+     1    24       228.1       535.2  (    -1.7,    -37.1)
+     2    48       225.8       379.4  (    -4.0,    -39.4)
+     3    72       224.8       244.5  (    -5.1,    -40.5)
+     4    96       222.9       236.0  (    -6.9,    -42.4)
+     5   120       220.1       239.9  (    -9.8,    -45.2)
+     6   144       218.3       235.4  (   -11.6,    -47.0)
+     7   168       216.3       224.8  (   -13.5,    -49.0)
+     8   192       215.6       218.7  (   -14.2,    -49.6)
+     9   216       217.8       228.3  (   -12.1,    -47.5)
+    10   240       217.5       228.3  (   -12.3,    -47.7)
+
+--- Actual game scenario: 12 teams × 5 rounds = 60 observations ---
+  S1 naive (all features, no update):        RMSE = 265.3
+  S2 smart (overlap dataset, no update):     RMSE = 229.9
+  S3 online (smart + 60 in-game obs):        RMSE = 226.3
+  S4 pure in-game (60 obs, no dataset):      RMSE = 299.7
+  Naive 'predict mean':                      RMSE = 248.9
+
+Interpretation:
+  → Online updates with 60 in-game obs improve over the dataset-only smart model.
+  → Online updates outperform the naive (all-features) approach.
+  → Pure in-game learner is worse than dataset-trained: dataset prior helps.

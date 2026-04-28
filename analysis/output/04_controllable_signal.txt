@@ -1,0 +1,26 @@
+n=728; y_mean=600.8; y_std=235.6
+naive RMSE = 235.6 (predict mean)
+
+feature set                                                     CV R^2     CV RMSE   lift_vs_naive  n_features
+  ALL features (excl bakery_id, target)                            0.672       133.7           43.2%          37
+  Controllable (price+qty+ad_spend+ad_channel)                     0.220       206.8           12.2%          22
+  Fixed context (location, traffic, size, equip, etc.)             0.441       175.2           25.6%           8
+  Chef-related (count, tradition, skill, sous, maint)              0.055       228.1            3.2%           5
+  Quality outcomes (cust_sat + yelp)                               0.026       231.1            1.9%           2
+  GAME-overlapping products only (qty, 5 products)                 0.082       224.6            4.7%           5
+  GAME-overlapping products only (price, 5 products)               0.059       227.6            3.4%           5
+  GAME-overlapping ad channels only (3 channels)                   0.004       234.0            0.7%           3
+  Dataset-only products (qty: muffin/sourdough/banana_bread)       0.057       227.7            3.4%           3
+  Dataset-only ad channels (instagram + tiktok)                    0.040       229.7            2.5%           2
+
+--- GAME-ALIGNED features only (drop dataset-only products & channels) ---
+  features: ['qty_croissant', 'qty_cookie', 'qty_coffee', 'qty_matcha', 'qty_sandwich', 'price_croissant', 'price_cookie', 'price_coffee', 'price_matcha', 'price_sandwich', 'ad_spend_billboard', 'ad_spend_radio', 'ad_spend_newspaper', 'primary_ad_channel']
+  CV R^2=0.167  CV RMSE=213.6  lift_vs_naive=9.3%  n_features=14
+
+--- GAME-ALIGNED + chef skill/tradition/sous_count (translates via auction) ---
+  CV R^2=0.199  CV RMSE=209.5  lift_vs_naive=11.1%  n_features=17
+
+--- Marginal value of controllable on top of fixed context ---
+  R^2 fixed-only           = 0.441
+  R^2 fixed + controllable = 0.635
+  marginal R^2 from control = +0.194

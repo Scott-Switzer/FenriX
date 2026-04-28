@@ -1,0 +1,58 @@
+prof shape: (728, 39); student shape: (728, 39)
+columns equal: True
+
+When sorted by all features (excluding bakery_id), rows identical? False
+
+--- Per-column comparison (sorted independently) ---
+column                          identical   sum_abs_diff    max_abs_diff  corr_after_sort 
+  location_type                   True        —               —             —               
+  bakery_size                     True        —               —             —               
+  storefront_color                True        —               —             —               
+  traffic_zone                    True        —               —             —               
+  parking_spots                   True                0.0000        0.0000          1.000000
+  head_chef_tradition             True        —               —             —               
+  chef_count_total                True                0.0000        0.0000          1.000000
+  chef_skill_level                True        —               —             —               
+  sous_chef_count                 True                0.0000        0.0000          1.000000
+  maintenance_staff_count         True                0.0000        0.0000          1.000000
+  owner_years_experience          True                0.0000        0.0000          1.000000
+  equipment_grade                 True        —               —             —               
+  cleanliness_grade               True        —               —             —               
+  price_croissant                 True                0.0000        0.0000          1.000000
+  price_muffin                    True                0.0000        0.0000          1.000000
+  price_cookie                    True                0.0000        0.0000          1.000000
+  price_coffee                    True                0.0000        0.0000          1.000000
+  price_matcha                    True                0.0000        0.0000          1.000000
+  price_sandwich                  True                0.0000        0.0000          1.000000
+  price_sourdough                 True                0.0000        0.0000          1.000000
+  price_banana_bread              True                0.0000        0.0000          1.000000
+  qty_croissant                   True                0.0000        0.0000          1.000000
+  qty_muffin                      True                0.0000        0.0000          1.000000
+  qty_cookie                      True                0.0000        0.0000          1.000000
+  qty_coffee                      True                0.0000        0.0000          1.000000
+  qty_matcha                      True                0.0000        0.0000          1.000000
+  qty_sandwich                    True                0.0000        0.0000          1.000000
+  qty_sourdough                   True                0.0000        0.0000          1.000000
+  qty_banana_bread                True                0.0000        0.0000          1.000000
+  ad_spend_billboard              True                0.0000        0.0000          1.000000
+  ad_spend_radio                  True                0.0000        0.0000          1.000000
+  ad_spend_instagram              True                0.0000        0.0000          1.000000
+  ad_spend_tiktok                 True                0.0000        0.0000          1.000000
+  ad_spend_newspaper              True                0.0000        0.0000          1.000000
+  primary_ad_channel              True        —               —             —               
+  customer_satisfaction           True                0.0000        0.0000          1.000000
+  yelp_review_count               False            1999.0000       83.0000          0.998906
+  total_units_sold                True                0.0000        0.0000          1.000000
+
+Row-hash overlap: 12/728 prof rows have an identical row in student
+
+Likely-noised columns (sorted-not-equal): ['yelp_review_count']
+Row-hash overlap excluding noised cols: 728/728
+Matched 728 pairs via stable-column join
+
+--- Noise on noisy columns (paired) ---
+  yelp_review_count: mean=0.0124  std=22.1795  min=-101.0000  max=106.0000  abs_mean=16.3420  zeros=12/728
+
+Prof bakery_id range: BK1000–BK1727 (n_distinct=728)
+Student bakery_id range: BK1000–BK1727 (n_distinct=728)
+Common bakery_ids between the two: 728

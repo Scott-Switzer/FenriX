@@ -1,0 +1,94 @@
+n=728  target=total_units_sold
+y stats: mean=600.8 std=235.6 min=132 max=1608
+num features: 28; cat features: 9
+
+--- Naive baseline (predict mean) ---
+  RMSE=235.6  MAE=182.6  R^2=0.0 (by definition)
+
+--- 5-fold CV (out-of-sample) ---
+  model                             CV R^2     CV RMSE      CV MAE   lift_vs_naive
+  Linear (220-tier)                  0.672       133.7        95.4           43.2%
+  RandomForest (310-tier)            0.509       164.1       120.8           30.4%
+  GradientBoost (best)               0.606       146.7       105.0           37.7%
+
+--- Random Forest feature importance (top 25) ---
+  location_type_suburban               0.1328  ##########################
+  location_type_mall                   0.0994  ###################
+  price_coffee                         0.0807  ################
+  ad_spend_tiktok                      0.0552  ###########
+  yelp_review_count                    0.0457  #########
+  qty_cookie                           0.0376  #######
+  qty_matcha                           0.0373  #######
+  qty_sourdough                        0.0282  #####
+  qty_sandwich                         0.0267  #####
+  traffic_zone_high                    0.0266  #####
+  price_sandwich                       0.0229  ####
+  bakery_size_large                    0.0226  ####
+  bakery_size_small                    0.0218  ####
+  price_cookie                         0.0216  ####
+  ad_spend_radio                       0.0212  ####
+  qty_banana_bread                     0.0197  ###
+  traffic_zone_low                     0.0195  ###
+  customer_satisfaction                0.0174  ###
+  qty_coffee                           0.0170  ###
+  parking_spots                        0.0169  ###
+  ad_spend_instagram                   0.0168  ###
+  price_banana_bread                   0.0166  ###
+  qty_muffin                           0.0162  ###
+  ad_spend_billboard                   0.0157  ###
+  owner_years_experience               0.0153  ###
+
+--- Importance concentration ---
+  top-1 feature: 13.3% of total importance
+  top-3 features: 31.3%
+  top-5 features: 41.4%
+  top-10 features: 57.0%
+
+--- Importance grouped by feature family ---
+  location_type                    23.79%  ###############################################
+  qty                              19.71%  #######################################
+  price                            19.04%  ######################################
+  ad_spend                         11.70%  #######################
+  traffic_zone                      6.20%  ############
+  bakery_size                       4.60%  #########
+  yelp_review_count                 4.57%  #########
+  customer_satisfaction             1.74%  ###
+  parking_spots                     1.69%  ###
+  owner_years_experience            1.53%  ###
+  chef_count_total                  0.90%  #
+  head_chef_tradition               0.77%  #
+  sous_chef_count                   0.72%  #
+  chef_skill_level                  0.69%  #
+  storefront_color                  0.60%  #
+  cleanliness_grade                 0.56%  #
+  maintenance_staff_count           0.46%  
+  ad_channel_chosen                 0.39%  
+  equipment_grade                   0.37%  
+
+--- Linear regression coefficients (top 25 by |coef|) ---
+  (note: numeric features are standardized so coefs are comparable per-feature-stddev)
+  traffic_zone_low                     -152.96
+  location_type_suburban               -132.04
+  location_type_mall                   +128.33
+  traffic_zone_very_high               +105.08
+  traffic_zone_high                    +71.33
+  chef_skill_level_novice              -69.60
+  price_coffee                         -65.05
+  chef_skill_level_master              +54.68
+  ad_spend_tiktok                      +50.91
+  bakery_size_large                    +50.50
+  bakery_size_small                    -47.64
+  head_chef_tradition_east_asian       -38.08
+  ad_spend_radio                       +36.62
+  chef_skill_level_expert              +29.22
+  head_chef_tradition_american_comfort  +25.98
+  primary_ad_channel_billboard         +25.34
+  qty_sandwich                         +24.03
+  traffic_zone_medium                  -23.44
+  price_cookie                         -22.15
+  location_type_downtown               +21.91
+  ad_spend_instagram                   +21.40
+  head_chef_tradition_classical_french  +21.40
+  price_sourdough                      -21.33
+  cleanliness_grade_A                  +21.13
+  price_croissant                      -19.12

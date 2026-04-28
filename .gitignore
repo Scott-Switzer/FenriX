@@ -19,3 +19,9 @@ __pycache__/
 
 # Bakery Bash — local snapshot tool output (test artifacts)
 games/bakery-bash/backend/snapshots/
+
+# Bakery Bash — professor / student dataset files. Watermarked
+# "for educational use only" by the publisher and not redistributable.
+# Scripts in analysis/scripts/ expect copies to live here locally; do
+# not commit them to this public repo.
+analysis/data/
