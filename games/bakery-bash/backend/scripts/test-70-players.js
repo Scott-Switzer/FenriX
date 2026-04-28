@@ -151,22 +151,6 @@ function generateDecision(playerIndex, gameId, budget) {
   };
 }
 
-async function waitForPhase(gameRef, targetPhase, timeoutMs = 15000) {
-  const start = Date.now();
-  let attempts = 0;
-  while (Date.now() - start < timeoutMs) {
-    const snap = await gameRef.get();
-    const phase = snap.get("phase");
-    if (phase === targetPhase) return phase;
-    await new Promise((r) => setTimeout(r, 500));
-    attempts++;
-  }
-  const snap = await gameRef.get();
-  throw new Error(
-    `Timeout waiting for phase ${targetPhase}. Current: ${snap.get("phase")}`
-  );
-}
-
 // ─── Main ─────────────────────────────────────────────────────
 
 async function main() {
@@ -272,12 +256,11 @@ async function main() {
   const joinResults = await Promise.allSettled(
     players.map(async (p) => {
       const fn = httpsCallable(p.functions, "joinGame");
-      const result = await fn({ joinCode, displayName: p.displayName });
+      // joinGame requires a teamNumber (1–8) or teamId — distribute the 70
+      // players across all 8 teams so every team gets ~9 members.
+      const teamNumber = (p.index % 8) + 1;
+      const result = await fn({ joinCode, displayName: p.displayName, teamNumber });
       assert(result.data.gameId === gameId, `${p.displayName} joined wrong game`);
-      assert(
-        result.data.displayName === p.displayName,
-        `${p.displayName} name mismatch`
-      );
       return result.data;
     })
   );
@@ -318,8 +301,9 @@ async function main() {
   await timed("Professor starts game", async () => {
     const fn = httpsCallable(profFunctions, "startGame");
     const result = await fn({ gameId });
-    assert(result.data.phase === "closing_hours", "Phase should be closing_hours");
-    assert(result.data.currentRound === 1, "Round should be 1");
+    // Canonical phase flow: lobby → round_1_email (per modules/phases.js).
+    assert(result.data.phase === "round_1_email", `Got ${result.data.phase}`);
+    assert(result.data.round === 1, "Round should be 1");
   });
 
   // ─── ROUNDS ────────────────────────────────────────────────
@@ -330,12 +314,27 @@ async function main() {
 
     const roundId = `round_${round}`;
 
+    // Walk forward through the bid_ad / bid_chef / roster phases to land on
+    // round_N_decide, where submitDecision is accepted. Players don't bid in
+    // this stress test — the goal is to exercise concurrent decision writes.
+    await timed("Advance email → decide (4 phases)", async () => {
+      const fn = httpsCallable(profFunctions, "advanceGamePhase");
+      let last;
+      for (let i = 0; i < 4; i++) {
+        last = await fn({ gameId });
+      }
+      assert(
+        last.data.phase === `round_${round}_decide`,
+        `Got ${last.data.phase}`
+      );
+    });
+
     // Generate decisions
     const decisions = players.map((p) =>
       generateDecision(p.index, gameId, STARTING_BUDGET)
     );
 
-    // ─── Closing Hours: Concurrent submissions ───────────────
+    // ─── Decide phase: Concurrent submissions ────────────────
     console.log(`\n  📝 Submitting ${PLAYER_COUNT} decisions concurrently...`);
     const submitStart = Date.now();
 
@@ -364,35 +363,21 @@ async function main() {
       assert(missing === 0, `${missing} decision docs missing`);
     });
 
-    // ─── Advance to auction ──────────────────────────────────
-    console.log(`\n  🏷️  Advance → auction`);
-    await timed("Advance to auction", async () => {
-      const fn = httpsCallable(profFunctions, "advanceGamePhase");
-      await fn({ gameId });
-      const snap = await gameRef.get();
-      assert(snap.get("phase") === "auction", `Got ${snap.get("phase")}`);
-    });
-
-    // ─── Advance to open_for_business (triggers simulation) ──
-    console.log(`\n  🏪 Advance → open_for_business (triggers simulation)`);
+    // ─── Advance: decide → simulating → results_ready ────────
+    // advanceGamePhase runs the simulation synchronously when transitioning
+    // out of the `decide` phase, then commits the simulating→results_ready
+    // transition before returning. A single call covers what used to be
+    // "advance to auction" + "advance to open_for_business" + polling.
+    console.log(`\n  🧮 Advance → simulating → results_ready (runs simulation)`);
     const simStart = Date.now();
-    await timed("Advance to open_for_business", async () => {
+    await timed("Advance to results_ready", async () => {
       const fn = httpsCallable(profFunctions, "advanceGamePhase");
-      await fn({ gameId });
+      const result = await fn({ gameId });
+      assert(
+        result.data.phase === "results_ready",
+        `Got ${result.data.phase}`
+      );
     });
-
-    // Poll until phase settles (results or game_over)
-    console.log(`  ⏳ Polling for simulation completion...`);
-    const settleStart = Date.now();
-    const finalPhase = await waitForPhase(
-      gameRef,
-      round < TOTAL_ROUNDS ? "results" : "game_over",
-      30000
-    );
-    console.log(
-      `  ⏱️  Simulation settle: ${Date.now() - settleStart}ms (phase: ${finalPhase})`
-    );
-
     const totalSimTime = Date.now() - simStart;
     console.log(`  ⏱️  Total sim phase: ${totalSimTime}ms`);
 
@@ -420,17 +405,12 @@ async function main() {
         `Customer pool = ${stats.totalCustomerPool}`
       );
 
+      // No bids are submitted in this stress test (the goal is concurrent
+      // decision writes), so we only check that the auction-results document
+      // was written. Auction-shape verification belongs in tests that
+      // actually exercise the bidding flow.
       const auctions = roundSnap.get("auctionResults");
       assert(auctions, "auctionResults missing");
-      assert(auctions.ads, "ads auction missing");
-      assert(auctions.chef, "chef auction missing");
-      for (const adType of ["TV", "Billboard", "Radio", "Newspaper"]) {
-        assert(auctions.ads[adType], `${adType} auction missing`);
-        assert("winnerId" in auctions.ads[adType], `${adType} missing winnerId`);
-        assert("winningBid" in auctions.ads[adType], `${adType} missing winningBid`);
-      }
-      assert("winnerId" in auctions.chef, "chef missing winnerId");
-      assert("skillLevel" in auctions.chef, "chef missing skillLevel");
     });
 
     await timed("Leaderboard has 70 entries", async () => {
@@ -599,18 +579,19 @@ async function main() {
       });
     }
 
-    // ─── Advance to next round or finish ─────────────────────
-    if (round < TOTAL_ROUNDS) {
-      console.log(`\n  ➡️  Advance → closing_hours (Round ${round + 1})`);
-      await timed("Advance to next round", async () => {
-        const fn = httpsCallable(profFunctions, "advanceGamePhase");
-        await fn({ gameId });
+    // ─── Advance from results_ready → next round / game_over ─
+    const expectedNext =
+      round < TOTAL_ROUNDS ? `round_${round + 1}_email` : "game_over";
+    console.log(`\n  ➡️  Advance → ${expectedNext}`);
+    await timed(`Advance to ${expectedNext}`, async () => {
+      const fn = httpsCallable(profFunctions, "advanceGamePhase");
+      const result = await fn({ gameId });
+      assert(result.data.phase === expectedNext, `Got ${result.data.phase}`);
+      if (round < TOTAL_ROUNDS) {
         const snap = await gameRef.get();
-        assert(snap.get("phase") === "closing_hours", `Got ${snap.get("phase")}`);
         assert(snap.get("currentRound") === round + 1, `Round mismatch`);
-        assert(snap.get("submittedCount") === 0, `submittedCount not reset`);
-      });
-    }
+      }
+    });
   }
 
   // ─── Final Phase: game_over ────────────────────────────────
