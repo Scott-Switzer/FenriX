@@ -6,6 +6,8 @@ const { connectFunctionsEmulator, getFunctions, httpsCallable } = require("fireb
 
 const PROJECT_ID = "bakery-bash-54d12";
 
+const failures = [];
+
 function assert(condition, message) {
   if (!condition) throw new Error(`FAIL: ${message}`);
 }
@@ -13,13 +15,17 @@ function assert(condition, message) {
 async function expectError(fn, expectedCode, label) {
   try {
     await fn();
-    console.log(`  ⚠ ${label}: ACCEPTED but should reject`);
+    const msg = `${label}: ACCEPTED but should reject`;
+    failures.push(msg);
+    console.log(`  ⚠ ${msg}`);
   } catch (err) {
     const code = err.code || "";
     if (code.includes(expectedCode)) {
       console.log(`  ✓ ${label}: rejected (${code})`);
     } else {
-      console.log(`  ⚠ ${label}: got ${code} but expected ${expectedCode}`);
+      const msg = `${label}: got ${code} but expected ${expectedCode}`;
+      failures.push(msg);
+      console.log(`  ⚠ ${msg}`);
     }
   }
 }
@@ -136,12 +142,22 @@ async function main() {
 
   for (const t of bidTests) {
     try {
-      await submitBids({ gameId: g3, bidType: "ad", ...t.payload });
-      if (t.shouldWork) console.log(`  ✓ ${t.label}: accepted`);
-      else console.log(`  ⚠ ${t.label}: ACCEPTED but should reject`);
+      await submitBids({ gameId: g3, bidType: "ad", bids: t.payload });
+      if (t.shouldWork) {
+        console.log(`  ✓ ${t.label}: accepted`);
+      } else {
+        const msg = `${t.label}: ACCEPTED but should reject`;
+        failures.push(msg);
+        console.log(`  ⚠ ${msg}`);
+      }
     } catch (err) {
-      if (!t.shouldWork) console.log(`  ✓ ${t.label}: rejected (${err.code})`);
-      else console.log(`  ⚠ ${t.label}: REJECTED but should accept (${err.code})`);
+      if (!t.shouldWork) {
+        console.log(`  ✓ ${t.label}: rejected (${err.code})`);
+      } else {
+        const msg = `${t.label}: REJECTED but should accept (${err.code})`;
+        failures.push(msg);
+        console.log(`  ⚠ ${msg}`);
+      }
     }
   }
 
@@ -193,7 +209,9 @@ async function main() {
     await advanceGamePhase({ gameId: g5 });
     console.log("  ✓ Advance allowed at exactly 3 chefs (cap not exceeded)");
   } catch (err) {
-    console.log("  ⚠ Advance blocked at exactly 3 chefs — should be allowed");
+    const msg = `Advance blocked at exactly 3 chefs — should be allowed (${err.code})`;
+    failures.push(msg);
+    console.log(`  ⚠ ${msg}`);
   }
 
   // --- Test 6: Empty / malformed inputs ---
@@ -233,13 +251,24 @@ async function main() {
   ];
 
   for (const t of injectionNames) {
+    const shortName = t.name.slice(0, 30);
     try {
-      const res = await createTeam({ joinCode: "YZAB67", teamName: t.name, displayName: "Test" });
-      if (t.expect === "accepted") console.log(`  ✓ Team name "${t.name.slice(0, 30)}" accepted`);
-      else console.log(`  ⚠ Team name "${t.name.slice(0, 30)}" ACCEPTED but should reject`);
+      await createTeam({ joinCode: "YZAB67", teamName: t.name, displayName: "Test" });
+      if (t.expect === "accepted") {
+        console.log(`  ✓ Team name "${shortName}" accepted`);
+      } else {
+        const msg = `Team name "${shortName}" ACCEPTED but should reject`;
+        failures.push(msg);
+        console.log(`  ⚠ ${msg}`);
+      }
     } catch (err) {
-      if (t.expect === "rejected") console.log(`  ✓ Team name "${t.name.slice(0, 30)}" rejected (${err.code})`);
-      else console.log(`  ⚠ Team name "${t.name.slice(0, 30)}" REJECTED but should accept (${err.code})`);
+      if (t.expect === "rejected") {
+        console.log(`  ✓ Team name "${shortName}" rejected (${err.code})`);
+      } else {
+        const msg = `Team name "${shortName}" REJECTED but should accept (${err.code})`;
+        failures.push(msg);
+        console.log(`  ⚠ ${msg}`);
+      }
     }
   }
 
@@ -315,6 +344,12 @@ async function main() {
   const successCount = [r10a, r10b].filter(r => r.status === "fulfilled").length;
   assert(successCount >= 1, "At least one submit should succeed");
   console.log(`  ✓ Double-submit: ${successCount}/2 succeeded (idempotency guard working)`);
+
+  if (failures.length > 0) {
+    console.log(`\n❌ ${failures.length} soft-failure${failures.length === 1 ? "" : "s"}:`);
+    for (const f of failures) console.log(`  - ${f}`);
+    throw new Error(`${failures.length} adversarial assertion(s) failed`);
+  }
 
   console.log("\n=== All edge case tests passed ===\n");
 }

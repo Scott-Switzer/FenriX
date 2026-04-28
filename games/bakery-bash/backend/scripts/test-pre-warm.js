@@ -11,24 +11,45 @@ async function main() {
 
   console.log('\n=== Pre-warm Test ===\n');
 
+  // All 26 onCall handlers in functions/index.js. The pre-warm short-circuit
+  // must be present on every one of them; missing coverage means a callable
+  // would respond to T2.1's warmup ping with an auth error instead of a no-op.
   const callables = [
-    'joinGame', 'createTeam', 'startGame', 'advanceGamePhase',
+    'createGame', 'joinGame', 'createTeam', 'getTeamsInLobby',
+    'startGame', 'advanceGamePhase', 'retryStuckSimulation',
     'submitDecision', 'submitPrices', 'submitBids',
-    'createSnapshot', 'restoreSnapshot', 'pauseGame', 'resumeGame',
+    'layoffChef', 'continueFromRoster',
+    'pauseGame', 'resumeGame', 'endGame', 'getConclusion',
+    'exportPlayerCsv', 'exportProfessorCsv',
+    'updateTeamName', 'setTeamRole',
+    'extendPhase', 'purchaseCompetitorInsight', 'purchaseChefData',
+    'resetGame', 'createSnapshot', 'restoreSnapshot',
   ];
 
+  const failures = [];
   for (const name of callables) {
-    const fn = httpsCallable(functions, name);
-    const result = await fn({ _warmup: true });
-    assert(result.data.warm === true, `${name} should return warm=true`);
-    console.log(`  ✓ ${name}: warm`);
+    try {
+      const fn = httpsCallable(functions, name);
+      const result = await fn({ _warmup: true });
+      if (result.data && result.data.warm === true) {
+        console.log(`  ✓ ${name}: warm`);
+      } else {
+        failures.push(`${name}: expected { warm: true }, got ${JSON.stringify(result.data)}`);
+        console.log(`  ⚠ ${name}: bad warmup response`);
+      }
+    } catch (err) {
+      failures.push(`${name}: threw ${err.code || err.message}`);
+      console.log(`  ⚠ ${name}: threw ${err.code || err.message}`);
+    }
   }
 
-  console.log('\n=== Pre-warm Test PASSED ===\n');
-}
+  if (failures.length > 0) {
+    console.log(`\n❌ ${failures.length} callable(s) failed pre-warm:`);
+    for (const f of failures) console.log(`  - ${f}`);
+    throw new Error(`${failures.length} callable(s) missing or broken pre-warm`);
+  }
 
-function assert(condition, message) {
-  if (!condition) throw new Error(`FAIL: ${message}`);
+  console.log(`\n=== Pre-warm Test PASSED — all ${callables.length} callables warm ===\n`);
 }
 
 main().catch(err => {

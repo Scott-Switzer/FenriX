@@ -3721,7 +3721,8 @@ exports.setTeamRole = onCall(CALLABLE_OPTS, async (request) => {
 // extendPhase — BE-N02: professor extends the active phase timer
 // ===========================================================================
 
-exports.extendPhase = onCall(async (request) => {
+exports.extendPhase = onCall(CALLABLE_OPTS, async (request) => {
+  if (isWarmupRequest(request)) return { ok: true, warm: true };
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
   const { gameId, extraSeconds } = request.data || {};
   if (!gameId || typeof extraSeconds !== "number") {
@@ -3750,7 +3751,8 @@ exports.extendPhase = onCall(async (request) => {
 // purchaseCompetitorInsight — BE-N03: player purchases competitor decisions CSV
 // ===========================================================================
 
-exports.purchaseCompetitorInsight = onCall(async (request) => {
+exports.purchaseCompetitorInsight = onCall(CALLABLE_OPTS, async (request) => {
+  if (isWarmupRequest(request)) return { ok: true, warm: true };
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
   const { gameId, round } = request.data || {};
   if (!gameId || typeof round !== "number") {
@@ -3828,7 +3830,8 @@ exports.purchaseCompetitorInsight = onCall(async (request) => {
 // the transaction rejects re-buying the same tier, so the total cost is
 // bounded even if the UI re-enables the button.
 // ===========================================================================
-exports.purchaseChefData = onCall(async (request) => {
+exports.purchaseChefData = onCall(CALLABLE_OPTS, async (request) => {
+  if (isWarmupRequest(request)) return { ok: true, warm: true };
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
   const { gameId, tier } = request.data || {};
   if (!gameId || (tier !== 1 && tier !== 2)) {
