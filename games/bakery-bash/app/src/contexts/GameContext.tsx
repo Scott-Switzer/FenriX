@@ -16,6 +16,7 @@ import {
   type AcquiredCsv,
   type AdType,
   type AuctionTab,
+  type EquipmentGrade,
   type GameConfigParams,
   type GamePhaseString,
   type GameState,
@@ -96,6 +97,9 @@ const initialState: GameState = {
   pricesSubmitted: false,
   adBidsSubmitted: false,
   chefBidsSubmitted: false,
+  equipmentGrade: 'C',
+  cleanlinessGrade: 'B',
+  cleanlinessScore: 75,
   budgetCurrent: null,
   // DEC-21 default: solo / all-roles. The real role + team assignment is
   // written by the backend onto the player doc and the team doc; the
@@ -166,6 +170,14 @@ type GameAction =
   | { type: "SET_AD_BIDS_SUBMITTED"; payload: boolean }
   | { type: "SET_CHEF_BIDS_SUBMITTED"; payload: boolean }
   | { type: "SET_BUDGET"; payload: number | null }
+  | {
+      type: "UPDATE_PLAYER_GRADES";
+      payload: {
+        equipmentGrade: EquipmentGrade;
+        cleanlinessGrade: EquipmentGrade;
+        cleanlinessScore: number;
+      };
+    }
   | { type: "SET_LEADERBOARD"; payload: LeaderboardRanking[] }
   | { type: "SET_LEADERBOARD_ERROR"; payload: string | null }
   | { type: "ADD_ACQUIRED_CSV"; payload: AcquiredCsv }
@@ -371,6 +383,18 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     case "SET_BUDGET": {
       if (state.budgetCurrent === action.payload) return state;
       return { ...state, budgetCurrent: action.payload };
+    }
+
+    case "UPDATE_PLAYER_GRADES": {
+      const { equipmentGrade, cleanlinessGrade, cleanlinessScore } = action.payload;
+      if (
+        state.equipmentGrade === equipmentGrade &&
+        state.cleanlinessGrade === cleanlinessGrade &&
+        state.cleanlinessScore === cleanlinessScore
+      ) {
+        return state;
+      }
+      return { ...state, equipmentGrade, cleanlinessGrade, cleanlinessScore };
     }
 
     case "SET_LEADERBOARD":

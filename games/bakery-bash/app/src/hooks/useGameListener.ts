@@ -10,6 +10,7 @@ import { db } from "../lib/firebase";
 import {
   DEFAULT_UNLOCKED_PRODUCTS,
   PRODUCT_KEYS,
+  type EquipmentGrade,
   type GameConfigParams,
   type LeaderboardRanking,
   type Player,
@@ -153,6 +154,26 @@ export function useGameListener(gameId: string | null, playerId?: string | null)
         } else if (data.teamId === null) {
           dispatch({ type: "SET_TEAM_ID", payload: null });
         }
+
+        // Equipment grade + cleanliness — written by the backend maintenance
+        // system. Fall back to the GameContext defaults if not yet present.
+        const VALID_GRADES: EquipmentGrade[] = ['F', 'E', 'D', 'C', 'B', 'A'];
+        const equipmentGrade: EquipmentGrade =
+          VALID_GRADES.includes(data.equipmentGrade as EquipmentGrade)
+            ? (data.equipmentGrade as EquipmentGrade)
+            : 'C';
+        const cleanlinessGrade: EquipmentGrade =
+          VALID_GRADES.includes(data.cleanlinessGrade as EquipmentGrade)
+            ? (data.cleanlinessGrade as EquipmentGrade)
+            : 'B';
+        const cleanlinessScore: number =
+          typeof data.cleanlinessScore === 'number' && Number.isFinite(data.cleanlinessScore)
+            ? Math.max(0, Math.min(100, data.cleanlinessScore))
+            : 75;
+        dispatch({
+          type: 'UPDATE_PLAYER_GRADES',
+          payload: { equipmentGrade, cleanlinessGrade, cleanlinessScore },
+        });
 
         const lrr = data.lastRoundResult;
         if (lrr && typeof lrr === "object" && typeof lrr.round === "number") {
