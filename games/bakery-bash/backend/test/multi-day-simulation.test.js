@@ -3,7 +3,7 @@
  *
  * Pins the contract:
  *   - 30 daily sub-simulations per round (configurable via MULTI_DAY.daysPerRound)
- *   - cost / loan-shark / burglary / budget update happen ONCE per month, not per day
+ *   - cost / loan-shark / budget update happen ONCE per month, not per day
  *   - per-day customer counts vary because of the demand multiplier
  *   - same gameId/round = same monthly outcome (reproducibility)
  */
@@ -103,13 +103,6 @@ describe('runMonthlySimulation', () => {
     const r2 = runMonthlySimulation([fakePlayer('p_a')], prefs, config, { gameId: 'g1', round: 2 });
     assert.notEqual(r1[0].revenueGross, r2[0].revenueGross,
       'different rounds should produce different revenueGross via day*round noise seeds');
-  });
-
-  it('rolls burglary at most once per month, not once per day', () => {
-    const dirtyPlayer = fakePlayer('p_a', { cleanliness_pct: 10 });
-    const out = runMonthlySimulation([dirtyPlayer], prefs, config, { gameId: 'g1', round: 1 });
-    const burgledDays = out[0].dailyResults.filter((d) => d.burglary).length;
-    assert.ok(burgledDays <= 1, `expected ≤1 burgled day, got ${burgledDays}`);
   });
 
   // ---- Review-fix tests (PR #110 follow-ups) ----

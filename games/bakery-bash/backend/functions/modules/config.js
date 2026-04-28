@@ -121,7 +121,7 @@ const DEFAULT_UNLOCKED_PRODUCTS = ['croissant', 'bagel', 'coffee'];
  *   $500 per unlock × 3 lockable products = $1,500 max spend, or ~15%
  *   of the starting budget. Affordable in early rounds; a meaningful
  *   trade-off against chef bids ($20–$55/round floor), ad bonuses
- *   ($80–$400 of value), and weathering burglary events ($200 each).
+ *   ($80–$400 of value).
  */
 const PRODUCT_UNLOCK_COST = 500;
 
@@ -198,7 +198,7 @@ const AD_TYPES = ['TV', 'Billboard', 'Radio', 'Newspaper'];
 // sub-simulations, each with a per-day demand multiplier sampled
 // deterministically from [demandVariabilityMin, demandVariabilityMax].
 // Daily revenue uses independent Gaussian noise (seed includes day index).
-// Cost / loan-shark / burglary / budget update happen ONCE per month at
+// Cost / loan-shark / budget update happen ONCE per month at
 // the wrapper level, NOT per day — see multi-day-simulation.js. Monthly
 // KPIs (revenue, customer count, etc.) are sums across the days.
 const MULTI_DAY = {
@@ -330,8 +330,6 @@ const DEFAULT_GAME_CONFIG = {
   //   adBonuses (TV)       $400       (was $20k)
   //   revenue formula base $10        (was $500)
   //   satisfactionCoeff    1.2        (was 60)
-  //   curveball burglary   $200       (was $10k)
-  //
   // Loan shark interest (10%) is a percentage so it doesn't scale.
   // Players can absolutely go into debt — see `loan-shark.js`.
   startingBudget: 10000,
@@ -477,14 +475,6 @@ const DEFAULT_GAME_CONFIG = {
   returningCustomerBonuses: {
     excellent: 0.15,
     good: 0.08,
-  },
-
-  curveballs: {
-    burglaryThreshold: 40,
-    burglaryChance: 0.25,
-    // Balance pass 16: 50× down. $200 burglary on a $10k budget is a
-    // 2% sting — same proportional pain as the old $10k on $500k.
-    burglaryAmount: 200,
   },
 
   // Balance pass 16: data-purchase costs rescaled 50× to stay proportional
@@ -660,16 +650,6 @@ function mergeConfig(rawConfig) {
     returningCustomerBonuses: {
       excellent: numberOrDefault(rawReturning.excellent, d.returningCustomerBonuses.excellent),
       good:      numberOrDefault(rawReturning.good,      d.returningCustomerBonuses.good),
-    },
-
-    // Pass-through curveballs config so simulation.js can read tunable
-    // burglary parameters from the merged config rather than falling back
-    // to inlined defaults. Keeps cfg.curveballs.burglaryAmount etc.
-    // accessible to consumers (was undefined pre-fix).
-    curveballs: {
-      burglaryThreshold: numberOrDefault((raw.curveballs || {}).burglaryThreshold, d.curveballs.burglaryThreshold),
-      burglaryChance:    numberOrDefault((raw.curveballs || {}).burglaryChance,    d.curveballs.burglaryChance),
-      burglaryAmount:    numberOrDefault((raw.curveballs || {}).burglaryAmount,    d.curveballs.burglaryAmount),
     },
 
     competitorInsightCost: numberOrDefault(raw.competitorInsightCost, d.competitorInsightCost),

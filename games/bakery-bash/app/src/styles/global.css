@@ -3936,7 +3936,7 @@ h3 { font-size: 0.7rem; }
 .results-phase__team-name       { flex: 1; }
 .results-phase__team-revenue    { font-weight: bold; }
 
-/* ── Curveball event cards (burglary, food-safety inspection) ──────── */
+/* ── Curveball event cards (food-safety inspection) ──────────────── */
 .results-phase__event-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -3952,11 +3952,6 @@ h3 { font-size: 0.7rem; }
   border-radius: 10px;
   border: 2px solid var(--caramel);
   background: var(--cream);
-}
-
-.event-card--burglary {
-  border-color: #ef4444;
-  background: #fff1f1;
 }
 
 .event-card--inspection {

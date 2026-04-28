@@ -73,8 +73,7 @@ const {
 // Helpers
 // ---------------------------------------------------------------------------
 
-// BUG-3 fix: deterministic seeded PRNG (Mulberry32) for burglary so
-// retryStuckSimulation produces identical results.
+// Deterministic seeded PRNG (Mulberry32) for reproducible noise seeds.
 function _hashStringToInt(s) {
   let h = 2166136261 >>> 0;
   for (let i = 0; i < s.length; i++) {
@@ -593,27 +592,6 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
       bakeryName: p.bakeryName,
     });
 
-    // --- Burglar curveball (BE-N06) — fires when cleanliness is critically low ---
-    // P2: skip in per-day inner calls; wrapper rolls it once per month so the
-    // burglary chance isn't multiplied 30× across daily sub-simulations.
-    let burglary = false;
-    let actualBurglaryAmount = 0;
-    let budgetAfterBurglary = budgetAfter;
-    if (!skipCostAccounting) {
-      const burglaryThreshold = (config && config.curveballs && config.curveballs.burglaryThreshold) || 40;
-      const burglaryChance = (config && config.curveballs && config.curveballs.burglaryChance) || 0.25;
-      const burglaryAmount = (config && config.curveballs && config.curveballs.burglaryAmount) || 10000;
-      const cleanlinessPct = typeof p.cleanliness_pct === 'number' ? p.cleanliness_pct : undefined;
-      // BUG-3 fix: seeded PRNG for deterministic burglary.
-      const burglarySeed = `${gameId || 'game'}:${round}:${p.playerId}:burglary`;
-      const burglaryRng = _mulberry32(_hashStringToInt(burglarySeed));
-      if (cleanlinessPct != null && cleanlinessPct < burglaryThreshold && burglaryRng() < burglaryChance) {
-        burglary = true;
-        actualBurglaryAmount = burglaryAmount;
-        budgetAfterBurglary = Math.max(0, budgetAfter - burglaryAmount);
-      }
-    }
-
     results.push({
       playerId: p.playerId,
       displayName: p.displayName,
@@ -623,7 +601,7 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
       amountBorrowed,
       interestCharged,
       totalSpent,
-      budgetAfter: budgetAfterBurglary,
+      budgetAfter,
       customerCount,
       perProductCustomers,
       aggregateSatisfactionPct: postSelloutAggregate,
@@ -643,8 +621,6 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
       csvRow,
       productPrices: resolvedPricesPerPlayer[p.playerId] || {},
       revenueBreakdown,
-      burglary,
-      burglaryAmount: burglary ? actualBurglaryAmount : 0,
     });
   }
 

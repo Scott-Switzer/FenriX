@@ -4,7 +4,7 @@
  * The game starts on January 1st and each round corresponds to one
  * calendar month (Round 1 = January, Round 2 = February, ...). These
  * helpers let UI surfaces like the round-briefing screen, event
- * reports (burglary / inspection dates), and the results CSV talk
+ * reports (inspection dates), and the results CSV talk
  * about rounds in terms of real month names and day-of-month numbers.
  *
  * The "year" never matters — we only expose month names and day counts.

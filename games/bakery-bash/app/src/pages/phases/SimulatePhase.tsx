@@ -87,9 +87,6 @@ export function SimulatePhase() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const burglary = Boolean(latest?.burglary);
-  const burglaryAmount = Number(latest?.burglaryAmount ?? 0);
-
   return (
     <section className={`simulate-phase simulate-phase--pixel ${isNight ? "simulate-phase--night" : "simulate-phase--day"}`}>
       {/* Top bar — V9 (Apr 26): replaced "Day N / 30" with the round
@@ -105,13 +102,6 @@ export function SimulatePhase() {
           Profit: <strong>{targetRevenue > 0 ? `$${displayRevenue.toLocaleString()}` : "Calculating…"}</strong>
         </div>
       </div>
-
-      {burglary && (
-        <div className="simulate-phase__burglar-banner" role="alert">
-          🔓 Your bakery was broken into! A maintenance deficit left you vulnerable.
-          {burglaryAmount > 0 ? ` –$${burglaryAmount.toLocaleString()}` : ""}
-        </div>
-      )}
 
       <div className="simulate-phase__main">
         <div className="simulate-phase__bakery-visual">

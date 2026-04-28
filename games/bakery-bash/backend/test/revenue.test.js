@@ -63,17 +63,15 @@ describe('runSimulation skipCostAccounting flag', () => {
     returningCustomersPending: 0,
     auctionResults: { adWins: [], adBidPaid: 0, chefsWon: [], chefBidPaid: 0 },
     priorSubmittedPrices: [],
-    cleanliness_pct: 5, // very low — would normally roll burglary
   };
   const prefs = { modifiers: { croissant: 1, cookie: 1, bagel: 1 } };
 
-  it('skipCostAccounting=true zeros cost / loan-shark / burglary / budget update', () => {
+  it('skipCostAccounting=true zeros cost / loan-shark / budget update', () => {
     const r = runSimulation([player], prefs, config, { gameId: 'g', round: 1, skipCostAccounting: true })[0];
     assert.equal(r.totalSpent, 0, 'no cost charged');
     assert.equal(r.amountBorrowed, 0, 'no borrow');
     assert.equal(r.interestCharged, 0, 'no interest');
     assert.equal(r.budgetAfter, player.budgetCurrent, 'budget unchanged');
-    assert.equal(r.burglary, false, 'no burglary roll');
   });
 
   it('skipCostAccounting=false (default) preserves prior behavior', () => {

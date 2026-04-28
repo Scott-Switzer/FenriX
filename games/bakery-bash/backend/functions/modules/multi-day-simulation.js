@@ -6,7 +6,7 @@
  * with an independent demand-variability multiplier and noise seed. Returns
  * monthly aggregates with the daily rows attached for CSV export.
  *
- * Cost / loan-shark / burglary / budget update happen ONCE per month at the
+ * Cost / loan-shark / budget update happen ONCE per month at the
  * wrapper level using monthly aggregates, NOT per day. Per-day runSimulation
  * calls use skipCostAccounting=true so they only emit customer / revenue /
  * satisfaction. Without that flag a 30-day month would charge stock cost
@@ -25,8 +25,8 @@
  *
  * Reproducibility: revenue and customer outcomes are reproducible per
  * gameId/round/day via seeded gaussianNoise + the FNV-1a demand multiplier.
- * Curveballs (burglary roll, burgled-day index) use a seeded Mulberry32 PRNG
- * keyed by `${gameId}:${round}:${playerId}:burglary` so retryStuckSimulation
+ * Reproducibility: outcomes are deterministic per gameId/round/day via seeded
+ * Mulberry32 PRNG + FNV-1a demand multiplier so retryStuckSimulation
  * produces bitwise-identical results.
  *
  * Pure: no Firebase deps.
@@ -78,9 +78,8 @@ function _num(v) {
 }
 
 /**
- * Deterministic seeded PRNG (Mulberry32). Used for burglary roll and
- * burgled-day index so retryStuckSimulation produces bitwise-identical
- * results. Seed is `${gameId}:${round}:${playerId}:burglary`.
+ * Deterministic seeded PRNG (Mulberry32). Used for demand variability and
+ * noise so retryStuckSimulation produces bitwise-identical results.
  */
 function _hashStringToInt(s) {
   let h = 2166136261 >>> 0;
@@ -104,8 +103,8 @@ function runMonthlySimulation(players, roundPreferences, cfg = config, { gameId 
   const days = (cfg.MULTI_DAY && cfg.MULTI_DAY.daysPerRound) || 30;
 
   // Run N daily sims. skipCostAccounting=true means each daily call only
-  // produces customer / revenue / satisfaction (no cost, no loan-shark, no
-  // burglary, no budget update). The wrapper handles all of those once at
+  // produces customer / revenue / satisfaction (no cost, no loan-shark,
+  // no budget update). The wrapper handles all of those once at
   // the monthly level below.
   //
   // Demand is scaled by `dayMult / days` per day, so summing across the
@@ -265,34 +264,6 @@ function runMonthlySimulation(players, roundPreferences, cfg = config, { gameId 
       cfg,
     );
 
-    // ---- Roll burglary ONCE per month (deterministic via seeded PRNG) ----
-    const burglaryThreshold = (cfg && cfg.curveballs && cfg.curveballs.burglaryThreshold) || 40;
-    const burglaryChance = (cfg && cfg.curveballs && cfg.curveballs.burglaryChance) || 0.25;
-    const burglaryAmount = (cfg && cfg.curveballs && cfg.curveballs.burglaryAmount) || 10000;
-    let burglary = false;
-    let actualBurglaryAmount = 0;
-    let budgetAfterBurglary = budgetAfter;
-    // BUG-3 fix: replace Math.random() with seeded PRNG so
-    // retryStuckSimulation produces bitwise-identical results.
-    const burglarySeed = `${gameId}:${round}:${p.playerId || p.uid || 'unknown'}:burglary`;
-    const burglaryRng = _mulberry32(_hashStringToInt(burglarySeed));
-    if (typeof p.cleanliness_pct === 'number'
-        && p.cleanliness_pct < burglaryThreshold
-        && burglaryRng() < burglaryChance) {
-      burglary = true;
-      actualBurglaryAmount = burglaryAmount;
-      budgetAfterBurglary = Math.max(0, budgetAfter - burglaryAmount);
-    }
-    // Pick a random day in the month for the burglary so it doesn't
-    // always hit mid-month. Uses the same seeded stream for determinism.
-    const burgledDayIndex = (burglary && daily.length > 0)
-      ? Math.floor(burglaryRng() * daily.length)
-      : -1;
-    if (burglary && daily[burgledDayIndex]) {
-      daily[burgledDayIndex].burglary = true;
-      daily[burgledDayIndex].burglaryAmount = actualBurglaryAmount;
-    }
-
     // ---- Apportion loan-shark deduction across days by gross share ----
     // So sum(daily.revenueNet) === monthly.revenueNet, and per-day loan
     // figures sum back to the monthly figure. If revenueGross is zero,
@@ -310,8 +281,6 @@ function runMonthlySimulation(players, roundPreferences, cfg = config, { gameId 
         aggregateSatisfactionPct: d.aggregateSatisfactionPct,
         perProductCustomers: d.perProductCustomers,
         perProductSatisfaction: d.perProductSatisfaction,
-        burglary: d.burglary || false,
-        burglaryAmount: d.burglaryAmount || 0,
         csvRow: d.csvRow,
       };
     });
@@ -351,7 +320,7 @@ function runMonthlySimulation(players, roundPreferences, cfg = config, { gameId 
       amountBorrowed,
       interestCharged,
       totalSpent,
-      budgetAfter: budgetAfterBurglary,
+      budgetAfter,
       customerCount,
       perProductCustomers: monthlyPerProductCustomers,
       aggregateSatisfactionPct,
@@ -367,8 +336,6 @@ function runMonthlySimulation(players, roundPreferences, cfg = config, { gameId 
       csvRow: monthlyCsvRow,
       productPrices: last.productPrices,
       revenueBreakdown: last.revenueBreakdown,
-      burglary,
-      burglaryAmount: actualBurglaryAmount,
       // Daily breakdown for CSV per-day rows.
       dailyResults: dailyApportioned,
     });

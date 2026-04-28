@@ -2349,8 +2349,6 @@ async function runSimulationAndPersist(gameRef, round, config) {
           chefsWon: Array.isArray(r.chefsWon) ? r.chefsWon : [],
           chefWon: Array.isArray(r.chefsWon) && r.chefsWon.length > 0 ? r.chefsWon[0].name || r.chefsWon[0].id || null : null,
           chefBidPaid: r.chefBidPaid || 0,
-          burglary: r.burglary || false,
-          burglaryAmount: r.burglaryAmount || 0,
           // POST-01 follow-up: surface submitted staff counts so the
           // frontend CSV download (RoundHeader.tsx / serializeRow) fills
           // in the per-station sous-chef + maintenance-guy columns
@@ -2408,7 +2406,6 @@ async function runSimulationAndPersist(gameRef, round, config) {
                 interestCharged: d.interestCharged || 0,
                 customerCount: d.customerCount,
                 aggregateSatisfactionPct: d.aggregateSatisfactionPct,
-                burglary: d.burglary || false,
               }))
             : [],
         },
@@ -2458,8 +2455,6 @@ async function runSimulationAndPersist(gameRef, round, config) {
         adPaid: r.adBidPaid || 0,
         chefsWon: Array.isArray(r.chefsWon) ? r.chefsWon : [],
         chefBidPaid: r.chefBidPaid || 0,
-        burglary: r.burglary || false,
-        burglaryAmount: r.burglaryAmount || 0,
         computedAt: FieldValue.serverTimestamp(),
       });
 
