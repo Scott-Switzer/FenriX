@@ -376,6 +376,79 @@ fine even at 70 players.
 
 ---
 
+### T3.4 — Drop joinGame / submitDecision lock contention — ✅ SHIPPED (PR #119)
+
+**Why**: T3.3's sharding fixed `game.submittedCount`. The 70-player practice
+run on 2026-04-27 surfaced TWO more hot-doc contention points T3.3 didn't
+cover:
+
+1. `joinGame` and `createTeam` did `transaction.update(gameRef,
+   { totalPlayers: FieldValue.increment(1) })` inside the txn body. With 70
+   simultaneous joiners that's a 70-way pessimistic write lock on the same
+   doc — the Firestore Admin SDK exhausted its retry budget on most calls
+   with `10 ABORTED: Transaction lock timeout`. Result on the 70-player
+   stress test (post-PROJECT-ID fix, pre-T3.4 fix): **20/70 joins
+   succeeded, 50 returned INTERNAL**, median join latency 23 s.
+2. `submitDecision` still held a vestigial `transaction.update(gameRef,
+   { updatedAt })` from before T3.3. With 70 concurrent submits this re-
+   introduced the exact contention T3.3 was designed to remove. **60/70
+   submits failed under load.**
+
+**The fix** (mirror of T2.2's "move out of the txn" idea, applied to atomic
+counters):
+
+- joinGame / createTeam: keep per-uid writes (player + roster + decision
+  docs) inside the transaction; move the shared-doc atomic increments
+  (`game.totalPlayers`, `team.memberCount`, `team.roleAssignments.${uid}`)
+  to a post-transaction `Promise.all([...])`. Outside-the-txn FieldValue
+  ops don't take pessimistic write locks — they serialize at the doc level
+  via Firestore's atomic counter machinery.
+- submitDecision: removed the vestigial `gameRef.update({ updatedAt })`,
+  moved the team-pending-doc mirror outside the txn, skipped the team-doc
+  + team-pending reads when role is `solo` or `finance` (those bypass the
+  price gate, so the reads were pure overhead).
+- Bonus: `mergeConfig` was silently dropping the `playerCap` field — the
+  per-game override never took effect and every game was capped at the
+  hardcoded 20 fallback. Added `playerCap: 20` to `DEFAULT_GAME_CONFIG`
+  and the corresponding pass-through line in `mergeConfig`.
+
+**Steps**
+- [x] joinGame transaction split + post-txn `gameRef.update({ totalPlayers })`
+- [x] createTeam transaction split + post-txn `gameRef.update({ totalPlayers })`
+- [x] submitDecision: drop vestigial `gameRef.update({ updatedAt })`,
+      move team-pending mirror outside the txn, gate team reads on role
+- [x] `playerCap` config pass-through in `mergeConfig` + DEFAULT
+- [x] test-70-players.js seed config + decision generator + failure logging
+      (the existing test had a broken menu generator that disabled the
+      `cookie` base product — fix unblocked the contention path)
+
+**Verification on the local emulator (Apr 27 evening run, post-fix):**
+
+| Scenario | Before T3.4 | After T3.4 |
+|---|---|---|
+| Joins succeeded | 20 / 70 | **70 / 70** |
+| Joins failed (lock-timeout) | 50 (INTERNAL) | **0** |
+| All-joins wall-clock | catastrophic | 19.4 s |
+| Concurrent submitDecisions | 60 / 70 timed out | **70 / 70 in 735 ms** |
+| submitDecision median / p99 | unmeasurable | 170 ms / 672 ms |
+| Lock-timeout errors in functions log | many | 0 |
+| 25-player sharded-counter side test | 1 / 25 (24 deadline) | **25 / 25 in 283 ms** |
+
+Emulator latency is more pessimistic than production Firestore (no
+hot-spot mitigation in the local jar) — the 14 s p50 join latency
+should be sub-second in production. The point is **lock-timeout errors
+are gone and every player succeeds**.
+
+> **Status:** Shipped in [#119](https://github.com/fenrix-ai/FenriX/pull/119).
+> Bundled with snapshot/restore (P0-1) + multi-day fix + test drift cleanup.
+
+**Effort**: ~2 hours (incl. test diagnosis)
+**Risk**: Low. Per-uid atomicity is preserved; the relaxed counter only
+lags by in-flight joins (capacity-check tolerates ±N where N is parallel
+joiners; for a 70-cap on a 70-player class this is fine).
+
+---
+
 ### T3.3 — Shard `game.submittedCount` — ✅ SHIPPED
 
 **Why**: every `submitDecision` runs `FieldValue.increment(1)` on the game

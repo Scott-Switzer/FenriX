@@ -211,6 +211,39 @@ describe('runMonthlySimulation', () => {
     }
   });
 
+  it('returningCustomersPending is applied ONCE per month, not 30x (multi-day bug fix)', () => {
+    // Bug discovered while building the strategy tournament: the wrapper
+    // passes the player struct to runSimulation 30 times per round, and the
+    // player's `returningCustomersPending` (e.g., 100) gets seeded into the
+    // demand pool every single day. Over 30 days that's 30*100 = 3000
+    // returning customers contributed to the monthly demand pool when only
+    // 100 actually returned — a multi-round game's customer counts compound
+    // 30x per round and budgets explode.
+    //
+    // Fix: scale returningCustomersPending by 1/daysPerRound before the
+    // daily loop so summing across days gives ≈ the original returning
+    // pool (matching the same approach as demand modifier scaling).
+    const baseline = runMonthlySimulation([fakePlayer('p_a')], prefs, config, {
+      gameId: 'g1', round: 1,
+    });
+    const baseCust = baseline[0].customerCount;
+
+    const withReturning = runMonthlySimulation(
+      [fakePlayer('p_a', { returningCustomersPending: 100 })],
+      prefs, config, { gameId: 'g1', round: 1 },
+    );
+    const cust = withReturning[0].customerCount;
+
+    // Adding 100 returning customers per month should bump monthly customer
+    // count by ≈100 (after foot-traffic + competitive split), NOT by 3000.
+    const delta = cust - baseCust;
+    assert.ok(delta < 500,
+      `returning=100 should bump monthly customers by ~100, got delta=${delta} (cust=${cust} vs baseline=${baseCust}). ` +
+      `If delta >= 3000 the 30x multiplication bug is back.`);
+    assert.ok(delta > 0,
+      `returning=100 should increase customers above baseline; got no change (cust=${cust}, baseline=${baseCust})`);
+  });
+
   it('monthly customer count stays in pre-P2 round-level magnitude (not 30x)', () => {
     // Pre-P2: a team with 200/200/200 stock, 1 sous, $10k budget would
     // typically see a few hundred customers per round. After the day-scale

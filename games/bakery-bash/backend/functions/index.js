@@ -1067,7 +1067,32 @@ exports.joinGame = onCall(CALLABLE_OPTS, async (request) => {
 
   let playerId = auth.uid;
 
+  // P0-2 (2026-04-27): split joinGame into a per-uid transaction (validation
+  // + player + roster + team-auto-create) and post-txn atomic increments
+  // (totalPlayers, memberCount on existing teams). With 70 concurrent joiners,
+  // having `transaction.update(gameRef, { totalPlayers: FieldValue.increment(1) })`
+  // inside the transaction body caused 70-way pessimistic write-lock contention
+  // on the game doc — 50/70 transactions exhausted retries with
+  // `10 ABORTED: Transaction lock timeout`. Moving the increment outside the
+  // transaction lets Firestore's server-side atomic counter handle the
+  // contention; atomic field ops on a `.update()` outside a transaction don't
+  // take a transaction lock, they serialize at the doc level naturally.
+  //
+  // Cap-check correctness: the read of `gSnap.get('totalPlayers')` lags by the
+  // number of in-flight joins. For a 20-cap with 25 concurrent joiners, up to
+  // 5 may slip past the cap. Acceptable for a class with cap >> realistic
+  // attendance; tighten with a sharded counter (PR #103 pattern) if exact
+  // enforcement is needed later.
+  let outcomeNewJoin = false;
+  let outcomeTeamExistedAtTxnTime = false;
+
   await db.runTransaction(async (transaction) => {
+    // P0-2: reset on every retry so a previous-attempt flag doesn't leak
+    // into a retry that may now take the rejoin path or hit a different
+    // tSnap.exists value.
+    outcomeNewJoin = false;
+    outcomeTeamExistedAtTxnTime = false;
+
     const [gSnap, pSnap, cfgSnap, rSnap, tSnap] = await Promise.all([
       transaction.get(gameRef),
       transaction.get(playerRef),
@@ -1127,6 +1152,7 @@ exports.joinGame = onCall(CALLABLE_OPTS, async (request) => {
 
     if (pSnap.exists) {
       // Rejoin: refresh display name / bakery name but do not reset progress.
+      // No counter writes — player already counted from their original join.
       transaction.update(playerRef, {
         displayName,
         bakeryName: effectiveBakeryName,
@@ -1141,6 +1167,11 @@ exports.joinGame = onCall(CALLABLE_OPTS, async (request) => {
       }, { merge: true });
       return;
     }
+
+    // First join: per-uid writes only inside the transaction. The hot-doc
+    // increments (game.totalPlayers, team.memberCount) move below the txn.
+    outcomeNewJoin = true;
+    outcomeTeamExistedAtTxnTime = tSnap.exists;
 
     transaction.set(playerRef, {
       uid: auth.uid,
@@ -1164,7 +1195,25 @@ exports.joinGame = onCall(CALLABLE_OPTS, async (request) => {
       updatedAt: FieldValue.serverTimestamp(),
     });
 
-    // BE-20: create or update the team doc with this player's role assignment
+    transaction.set(rosterRef, {
+      uid: auth.uid,
+      displayName,
+      bakeryName: effectiveBakeryName,
+      joinedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    // BE-20: auto-create the team doc on the legacy team-{N} path when no
+    // one has joined yet. This stays inside the transaction because team
+    // auto-create is a fresh-doc write (no contention) and we want the
+    // team doc and the player doc to land atomically — otherwise a peer
+    // joiner could read an empty team while another player has half-joined.
+    //
+    // Concurrent first-join races on the same teamId are safe: the loser's
+    // transaction observes `tSnap.exists = false` against a stale snapshot,
+    // tries to `set(teamRef, ...)`, and Firestore aborts with a contention
+    // error so the SDK retries; the retry sees `tSnap.exists = true` and
+    // takes the post-txn `team.memberCount` increment path below.
     if (!tSnap.exists) {
       transaction.set(teamRef, {
         name: effectiveBakeryName,
@@ -1178,27 +1227,32 @@ exports.joinGame = onCall(CALLABLE_OPTS, async (request) => {
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
-    } else {
-      transaction.update(teamRef, {
-        [`roleAssignments.${auth.uid}`]: autoRole,
+    }
+  });
+
+  // P0-2: post-transaction hot-doc updates. Atomic FieldValue ops on a plain
+  // .update() outside a transaction don't acquire a pessimistic write lock —
+  // they serialize at the doc level via Firestore's atomic-counter machinery,
+  // which scales to many more concurrent writers. See the comment above the
+  // transaction body for why this matters at 70 concurrent joiners.
+  if (outcomeNewJoin) {
+    const writes = [
+      gameRef.update({
+        totalPlayers: FieldValue.increment(1),
+        updatedAt: FieldValue.serverTimestamp(),
+      }),
+    ];
+    // If the team doc already existed at txn-time, we still owe it a
+    // memberCount bump and the per-uid roleAssignments key.
+    if (outcomeTeamExistedAtTxnTime) {
+      writes.push(teamRef.update({
+        [`roleAssignments.${auth.uid}`]: 'solo',
         memberCount: FieldValue.increment(1),
         updatedAt: FieldValue.serverTimestamp(),
-      });
+      }));
     }
-
-    transaction.set(rosterRef, {
-      uid: auth.uid,
-      displayName,
-      bakeryName: effectiveBakeryName,
-      joinedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-
-    transaction.update(gameRef, {
-      totalPlayers: FieldValue.increment(1),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-  });
+    await Promise.all(writes);
+  }
 
   return { gameId: gameRef.id, playerId };
 });
@@ -1249,11 +1303,18 @@ exports.createTeam = onCall(CALLABLE_OPTS, async (request) => {
   const rosterRef = gameRef.collection('roster').doc(auth.uid);
 
   let resolvedTeamId = baseSlug;
+  // P0-2: track whether this call enrolled a brand-new player so the
+  // post-transaction totalPlayers increment only fires when it should.
+  let createTeamCreatedNewPlayer = false;
 
   await db.runTransaction(async (transaction) => {
     // Reset on every attempt so a Firestore transaction retry doesn't carry
     // a stale suffix from a previous iteration into the slug-collision loop.
     resolvedTeamId = baseSlug;
+    // P0-2: same reset rationale — if a previous attempt set this to true
+    // and then aborted (contention retry), don't carry the stale flag
+    // into a retry that may now be a no-op or a rejoin.
+    createTeamCreatedNewPlayer = false;
 
     const [gSnap, cfgSnap, pSnap] = await Promise.all([
       transaction.get(gameRef),
@@ -1370,12 +1431,26 @@ exports.createTeam = onCall(CALLABLE_OPTS, async (request) => {
         joinedAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
-      transaction.update(gameRef, {
-        totalPlayers: FieldValue.increment(1),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+      // P0-2 (2026-04-27): totalPlayers increment moved below the txn — see
+      // the matching note in joinGame. Tracking new-join via a closure flag
+      // so the post-txn writer knows whether to fire the increment.
+      createTeamCreatedNewPlayer = true;
     }
   });
+
+  // P0-2: post-transaction atomic increment. Same rationale as joinGame —
+  // pulling FieldValue.increment(1) out of the transaction body lets the
+  // server-side counter handle parallel writers without lock contention.
+  // createTeam contention is much lower than joinGame (one team-create per
+  // team versus 9+ joins per team), but the same correctness argument
+  // applies: the increment doesn't need transactional atomicity with the
+  // per-uid player + roster + team writes.
+  if (createTeamCreatedNewPlayer) {
+    await gameRef.update({
+      totalPlayers: FieldValue.increment(1),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
 
   return {
     gameId: gameRef.id,
@@ -2481,9 +2556,26 @@ exports.submitDecision = onCall(CALLABLE_OPTS, async (request) => {
   let roundId = null;
   let _submitDecision_role = null;
   let _submitDecision_displayName = '';
+  // P0-2 follow-up: capture the team pending fields inside the txn body so
+  // the post-txn writer can mirror the draft outside the transaction's lock
+  // domain. Inside the txn, the per-team `teams/{teamId}/state/pending` doc
+  // was the next contention bottleneck: ~9 teammates submitting decisions
+  // concurrently all wrote to the same pending doc, which caused another
+  // wave of `ABORTED: Transaction lock timeout` failures even after the
+  // joinGame fix. The pending doc is purely a UI mirror; eventual
+  // consistency on it is fine — `set({ merge: true })` outside the txn
+  // handles per-key merges (pricesSubmitted from submitPrices vs.
+  // decisionDraft.* from submitDecision) correctly without lock contention.
+  let _submitDecision_teamId = null;
+  let _submitDecision_draftFields = null;
 
   try {
     await db.runTransaction(async (transaction) => {
+      // P0-2: reset on retry so a stale prior-iteration capture doesn't leak
+      // into the post-txn writer if the transaction body re-runs.
+      _submitDecision_teamId = null;
+      _submitDecision_draftFields = null;
+
       const [gSnap, pSnap, cfgSnap] = await Promise.all([
         transaction.get(gameRef),
         transaction.get(playerRef),
@@ -2523,34 +2615,38 @@ exports.submitDecision = onCall(CALLABLE_OPTS, async (request) => {
       // doc rather than the caller's own player doc — `submitPrices` no
       // longer cascades that flag onto teammates' player docs, so
       // Operations' own doc never sees it.
-      let teamRoleAssignmentsForGate = null;
-      let teamPendingDraftForGate = null;
-      if (teamId) {
+      //
+      // P0-2 follow-up (2026-04-27): the gate ONLY applies to non-solo,
+      // non-finance roles. Solo players take the early-out below without
+      // any team-doc reads — eliminating ~9-way contention on the team +
+      // team-pending docs in the all-solo stress test, and eliminating
+      // unnecessary reads in mixed teams where most members are solo.
+      // The gate is preserved for ops/advertising via the same reads.
+      const needsPriceGate = teamId
+        && _submitDecision_role !== 'solo'
+        && _submitDecision_role !== 'finance';
+      if (needsPriceGate) {
         const [teamSnap, teamPendingSnap] = await Promise.all([
           transaction.get(gameRef.collection('teams').doc(teamId)),
           transaction.get(teamPendingDocRef(gameRef, teamId)),
         ]);
-        if (teamSnap.exists) {
-          teamRoleAssignmentsForGate = (teamSnap.data() || {}).roleAssignments || null;
-        }
-        if (teamPendingSnap.exists) {
-          teamPendingDraftForGate = (teamPendingSnap.data() || {}).decisionDraft || null;
-        }
-      }
-      const teamHasFinance = teamRoleAssignmentsForGate
-        && Object.values(teamRoleAssignmentsForGate).some((r) => r === 'finance');
-      if (
-        teamHasFinance
-        && _submitDecision_role !== 'solo'
-        && _submitDecision_role !== 'finance'
-      ) {
-        const teamPricesSubmitted = teamPendingDraftForGate
-          && teamPendingDraftForGate.pricesSubmitted === true;
-        if (!teamPricesSubmitted) {
-          throw new HttpsError(
-            'failed-precondition',
-            'Waiting for your Finance teammate to submit prices for this round.',
-          );
+        const teamRoleAssignmentsForGate = teamSnap.exists
+          ? ((teamSnap.data() || {}).roleAssignments || null)
+          : null;
+        const teamPendingDraftForGate = teamPendingSnap.exists
+          ? ((teamPendingSnap.data() || {}).decisionDraft || null)
+          : null;
+        const teamHasFinance = teamRoleAssignmentsForGate
+          && Object.values(teamRoleAssignmentsForGate).some((r) => r === 'finance');
+        if (teamHasFinance) {
+          const teamPricesSubmitted = teamPendingDraftForGate
+            && teamPendingDraftForGate.pricesSubmitted === true;
+          if (!teamPricesSubmitted) {
+            throw new HttpsError(
+              'failed-precondition',
+              'Waiting for your Finance teammate to submit prices for this round.',
+            );
+          }
         }
       }
 
@@ -2636,26 +2732,27 @@ exports.submitDecision = onCall(CALLABLE_OPTS, async (request) => {
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-      // T2.2: mirror the team-shared draft to one per-team doc so other
-      // teammates' UIs can react without us having to fan out to each
-      // teammate's player doc. Solo players (no teamId) skip this — their
-      // own player doc IS the source of truth.
-      if (teamId) {
-        transaction.set(teamPendingDocRef(gameRef, teamId), {
-          decisionDraft: draftFields,
-          updatedByUid: uid,
-          updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
-      }
+      // P0-2 follow-up: capture the team pending fields the post-txn writer
+      // will use. The actual write moves below the transaction — see the
+      // detailed rationale at the end of this function.
+      _submitDecision_teamId = teamId || null;
+      _submitDecision_draftFields = draftFields;
 
       // T3.3: submittedCount is no longer incremented here. The single-doc
       // FieldValue.increment(1) was the next contention point at 25–70 students;
       // it's been replaced by per-uid shard writes after the transaction
       // (writeUidToSubmittedCountShard below) plus an aggregator trigger
       // (onSubmittedCountShardWritten) that recomputes game.submittedCount.
-      transaction.update(gameRef, {
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+      //
+      // P0-2 follow-up (2026-04-27): the leftover `transaction.update(gameRef,
+      // { updatedAt: ... })` here re-introduced 70-way write-lock contention
+      // that the T3.3 sharding was designed to eliminate. The 70-player
+      // stress test was hitting `60/70 deadline-exceeded` on this single
+      // line. game.updatedAt isn't read by anything that matters (FE
+      // listeners watch phase/round/submittedCount, not updatedAt), so the
+      // write is removed entirely. If a future feature needs a "game last
+      // touched" timestamp, derive it from the `players/{uid}.updatedAt`
+      // we already write or add a sharded equivalent.
     });
   } catch (err) {
     // Re-raise HttpsError untouched so Firebase Functions surfaces the
@@ -2671,6 +2768,28 @@ exports.submitDecision = onCall(CALLABLE_OPTS, async (request) => {
       stack: err && err.stack,
     });
     throw new HttpsError('internal', `submitDecision failed: ${err && err.message ? err.message : err}`);
+  }
+
+  // P0-2 follow-up: mirror the team draft to the per-team pending doc
+  // OUTSIDE the transaction. Same rationale as the joinGame post-txn
+  // increments — `set({ merge: true })` outside a transaction does not
+  // take a pessimistic write lock, so 9 teammates submitting concurrently
+  // (worst case, one team) merge cleanly via field-level updates instead
+  // of contending on the same doc. Best-effort: a failure here doesn't
+  // roll back the player's decision (the transaction above committed
+  // their personal player + decision docs); the team UI mirror just lags.
+  if (_submitDecision_teamId && _submitDecision_draftFields) {
+    try {
+      await teamPendingDocRef(gameRef, _submitDecision_teamId).set({
+        decisionDraft: _submitDecision_draftFields,
+        updatedByUid: uid,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    } catch (mirrorErr) {
+      logger.warn('submitDecision team-pending mirror failed — non-fatal.', {
+        gameId, uid, teamId: _submitDecision_teamId, error: mirrorErr && mirrorErr.message,
+      });
+    }
   }
 
   // T3.3: bump the sharded submission counter. The aggregator trigger

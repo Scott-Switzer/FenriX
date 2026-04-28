@@ -17,7 +17,7 @@ const { getAuth, connectAuthEmulator, signInAnonymously } = require("firebase/au
 const { httpsCallable } = require("firebase/functions");
 
 // ─── Config ───────────────────────────────────────────────────
-const PROJECT_ID = "demo-bakery-bash-54d12";
+const PROJECT_ID = "bakery-bash-54d12";
 const HOST = "127.0.0.1";
 const FUNCTIONS_PORT = 5001;
 const AUTH_PORT = 9099;
@@ -96,32 +96,35 @@ function generateDecision(playerIndex, gameId, budget) {
 
   const chefBidAmount = playerIndex % 5 === 0 ? 20 + (playerIndex % 40) : 0;
 
-  // Menu always covers all three categories.
+  // Menu: base products (croissant, cookie, bagel) cannot be disabled —
+  // the validator rejects `menu.cookie === false`. Optional products are
+  // sandwich, coffee, matcha (NOT latte/matchaLatte — those names don't
+  // match PRODUCT_KEYS in modules/config.js).
   const menu = {
-    croissant: true, // sweet
-    cookie: playerIndex % 2 === 0, // sweet
-    bagel: true, // savory
-    sandwich: playerIndex % 3 === 0, // savory
-    latte: true, // drink
-    matchaLatte: playerIndex % 4 === 0, // drink
+    croissant: true,
+    cookie: true,
+    bagel: true,
+    sandwich: playerIndex % 3 === 0,
+    coffee: true,
+    matcha: playerIndex % 4 === 0,
   };
 
   const productPrices = {
     croissant: 4 + (playerIndex % 5),
-    cookie: menu.cookie ? 3 + (playerIndex % 4) : 0,
+    cookie: 3 + (playerIndex % 4),
     bagel: 3 + (playerIndex % 6),
     sandwich: menu.sandwich ? 5 + (playerIndex % 5) : 0,
-    latte: 5 + (playerIndex % 4),
-    matchaLatte: menu.matchaLatte ? 6 + (playerIndex % 5) : 0,
+    coffee: 5 + (playerIndex % 4),
+    matcha: menu.matcha ? 6 + (playerIndex % 5) : 0,
   };
 
   let quantities = {
     croissant: 15 + (playerIndex % 20),
-    cookie: menu.cookie ? 10 + (playerIndex % 15) : 0,
+    cookie: 10 + (playerIndex % 15),
     bagel: 15 + (playerIndex % 20),
     sandwich: menu.sandwich ? 10 + (playerIndex % 15) : 0,
-    latte: 15 + (playerIndex % 20),
-    matchaLatte: menu.matchaLatte ? 10 + (playerIndex % 15) : 0,
+    coffee: 15 + (playerIndex % 20),
+    matcha: menu.matcha ? 10 + (playerIndex % 15) : 0,
   };
 
   const staffCost = staffCount * 50;
@@ -221,6 +224,9 @@ async function main() {
 
   await gameRef.collection("config").doc("params").set({
     startingBudget: STARTING_BUDGET,
+    // Default playerCap is 20; raise it so the 70-player stress test
+    // exercises the contended-write path rather than just hitting the cap.
+    playerCap: PLAYER_COUNT + 10,
     costPerStaffPerRound: 50,
     unitCostPerProduct: 1,
     revenueModel: {
@@ -350,6 +356,18 @@ async function main() {
     console.log(
       `  ⏱️  Submissions: ${submitElapsed}ms (${submitFailures.length} failures)`
     );
+    if (submitFailures.length > 0) {
+      // P0-2 debug: surface the first few error codes/messages so we can tell
+      // contention aborts (deadline-exceeded / aborted / internal) apart
+      // from validation rejects (already-exists / failed-precondition).
+      const summary = {};
+      for (const f of submitFailures) {
+        const code = f.reason?.code || f.reason?.message?.slice(0, 40) || "unknown";
+        summary[code] = (summary[code] || 0) + 1;
+      }
+      console.log("  Failure breakdown:", summary);
+      console.log("  First 3 errors:", submitFailures.slice(0, 3).map(f => f.reason?.message));
+    }
     assert(submitFailures.length === 0, `${submitFailures.length} submissions failed`);
 
     // Verify all decision docs exist (race-condition check)

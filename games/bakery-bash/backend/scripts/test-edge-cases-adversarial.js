@@ -142,7 +142,7 @@ async function main() {
 
   for (const t of bidTests) {
     try {
-      await submitBids({ gameId: g3, bidType: "ad", bids: t.payload });
+      await submitBids({ gameId: g3, bidType: "ad", adBids: t.payload });
       if (t.shouldWork) {
         console.log(`  ✓ ${t.label}: accepted`);
       } else {

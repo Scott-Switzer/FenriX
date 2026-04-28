@@ -298,6 +298,10 @@ const DEFAULT_GAME_CONFIG = {
   // Loan shark interest (10%) is a percentage so it doesn't scale.
   // Players can absolutely go into debt — see `loan-shark.js`.
   startingBudget: 10000,
+  // Default player cap matches the historical hardcoded fallback in
+  // joinGame / createTeam. Override per-game via `config/params.playerCap`
+  // for larger classes (e.g., the 70-student Apr 28 playtest).
+  playerCap: 20,
   // Balance pass 16: $500 → $10 (50× scale-down). At $10 base, 4 sous
   // chefs cost $77.50/round = $387.50 over 5 rounds (~4% of $10k budget).
   // Chef bid floors rescale automatically: novel $20, intermediate $35,
@@ -548,6 +552,13 @@ function mergeConfig(rawConfig) {
     startingBudget:     numberOrDefault(raw.startingBudget,     d.startingBudget),
     sousChefBaseCost:   numberOrDefault(raw.sousChefBaseCost,   d.sousChefBaseCost),
     unitCostPerProduct: numberOrDefault(raw.unitCostPerProduct, d.unitCostPerProduct),
+    // P0-2 follow-up (2026-04-27): playerCap was being read by joinGame /
+    // createTeam via `mergeConfig(...)..playerCap`, but mergeConfig wasn't
+    // passing the field through — so the per-game config override was silently
+    // dropped and the cap stayed at the hardcoded 20-fallback in index.js.
+    // Pass it through so a professor seeding `playerCap: 80` for a 70-student
+    // class actually raises the cap.
+    playerCap:          numberOrDefault(raw.playerCap,          d.playerCap),
 
     revenueCoefficients: {
       base:              numberOrDefault(rawRevenue.base,              d.revenueCoefficients.base),

@@ -148,10 +148,15 @@ async function dumpDoc(docRef, opts) {
 }
 
 async function dumpCollection(collRef, opts) {
-  const snap = await collRef.get();
+  // listDocuments() returns refs for "ghost parent" docs — paths that exist
+  // only as parents of subcollections (e.g. csvRows/{uid} above
+  // csvRows/{uid}/rounds/{r}). collRef.get() would skip them and the
+  // restore "clean" pass would then delete the live subcollection docs as
+  // drift. dumpDoc handles !exists, so ghost parents round-trip safely.
+  const refs = await collRef.listDocuments();
   const docs = [];
-  for (const d of snap.docs) {
-    docs.push(await dumpDoc(d.ref, opts));
+  for (const ref of refs) {
+    docs.push(await dumpDoc(ref, opts));
   }
   return docs;
 }
@@ -171,11 +176,16 @@ function countDocs(node) {
  * "games/<id>" prefix — passing null derives it from the dumped root id.
  */
 function* walkDocs(docNode, parentPath) {
-  if (!docNode || !docNode.exists) return;
+  if (!docNode) return;
   const docPath = parentPath
     ? `${parentPath}/${docNode.id}`
     : `games/${docNode.id}`;
-  yield { path: docPath, data: docNode.data };
+  // Ghost-parent docs (exists=false but with subcollections) carry no data
+  // to write but still must be traversed so their leaf descendants are
+  // included in the write list — see csvRows/{uid}/rounds/{r}.
+  if (docNode.exists) {
+    yield { path: docPath, data: docNode.data };
+  }
   if (!docNode.subcollections) return;
   for (const [collName, docs] of Object.entries(docNode.subcollections)) {
     for (const d of docs) {

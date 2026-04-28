@@ -89,6 +89,24 @@ function runMonthlySimulation(players, roundPreferences, cfg = config, { gameId 
   // customer count and revenue would be ~30x pre-P2 and the existing
   // economy (auction bonuses, sous chef costs, starting budget) would be
   // wildly mis-calibrated.
+  //
+  // returningCustomersPending: customer-allocation seeds each team's
+  // returning pool BEFORE the competitive split, and the daily inner
+  // runSimulation runs that seeding 30x. Without correction a team entering
+  // the round with returning=100 would contribute 30*100=3000 returning
+  // customers to the monthly demand pool — multi-round games compound this
+  // 30x per round and budgets explode.
+  //
+  // Fix: apply the full returning pool on day 0 only, zero on other days.
+  // This keeps the month-total consistent with pre-P2 semantics while
+  // avoiding the per-day integer-rounding loss that scaling by 1/days
+  // would produce for small returning counts.
+  const playersDay0 = players;
+  const playersOtherDays = players.map((p) => ({
+    ...p,
+    returningCustomersPending: 0,
+  }));
+
   const dailyResultsByPlayer = new Map();
   for (const p of players) {
     dailyResultsByPlayer.set(p.playerId, []);
@@ -98,7 +116,8 @@ function runMonthlySimulation(players, roundPreferences, cfg = config, { gameId 
     const dayMult = demandMultiplierForDay(gameId, round, day, cfg);
     const dayScale = dayMult / days;
     const dayPrefs = dayPreferences(roundPreferences, dayScale);
-    const dayResults = runSimulation(players, dayPrefs, cfg, {
+    const dayPlayers = day === 0 ? playersDay0 : playersOtherDays;
+    const dayResults = runSimulation(dayPlayers, dayPrefs, cfg, {
       gameId, round, day, skipCostAccounting: true,
     });
     for (const r of dayResults) {
