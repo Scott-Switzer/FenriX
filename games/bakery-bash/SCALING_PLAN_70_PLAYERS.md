@@ -201,12 +201,23 @@ contention, no cascade.
 > `pendingBids` / `pendingDecision` write it always did (so the submitter's
 > UI reads exactly as before); the team-shared draft is mirrored once to
 > `teams/{teamId}/state/pending` so other teammates can subscribe without
-> us having to fan out into their player docs. `submitPrices` is
-> intentionally untouched — its cascade is a separate concern (Finance
-> rarely races with Operations) and would have widened the diff. Round
-> transitions clear the team doc via the new `resetPendingTeamStateForRound`
-> alongside the existing per-player reset. Solo players (no `teamId`) skip
-> the team mirror; their player doc remains the only source of truth.
+> us having to fan out into their player docs. Round transitions clear
+> the team doc via the new `resetPendingTeamStateForRound` alongside the
+> existing per-player reset. Solo players (no `teamId`) skip the team
+> mirror; their player doc remains the only source of truth.
+>
+> **Follow-up shipped:** `submitPrices` was intentionally left out of #111
+> for diff-size reasons; it's now folded onto the same per-team pending
+> doc — `productPrices` / `pricesSubmitted` / optional menu picks all flow
+> through `decisionDraft` instead of cascading onto every teammate's player
+> doc. The follow-up also fixed a subtle reset bug from #111 where
+> `set(..., { merge: true })` deep-merged empty maps and left the previous
+> round's `menu` / `quantities` / `staffCounts` populated on the team doc
+> (the player-doc reset uses dot-paths and was unaffected). The reset now
+> uses a full overwrite — safe because phase has already flipped to
+> `email` and every submit callable rejects with `failed-precondition` —
+> with a parallel `db.getAll` carrying `productPrices` across the
+> transition for the POST-01 default-prices semantic.
 
 **Effort**: ~3 hours
 **Risk**: Medium. Touches FE state. Test with the multi-tab pattern from PR #98.
