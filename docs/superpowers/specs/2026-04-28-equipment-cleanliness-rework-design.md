@@ -1,164 +1,219 @@
-# Equipment & Cleanliness Rework — Bakery Bash
+# Equipment & Cleanliness Rework — Bakery Bash (v5)
 
-**Status:** Design — pending implementation plan
+**Status:** Design — Friday-achievable scope
 **Date:** 2026-04-28
-**Scope:** `games/bakery-bash` revenue formula, satisfaction systems, and supporting state.
+**Target ship:** Friday 2026-05-01 (3 working days)
+**Scope:** `games/bakery-bash` — bolt new mechanics onto the existing revenue pipeline; remove dead/legacy systems; reshape CSV.
 
 ---
 
 ## 1. Problem
 
-The current game has three under-leveraged systems:
+The game has three under-leveraged systems plus a CSV that doesn't match the publishing-team's published dataset schema:
 
-1. **Maintenance** is a dead end. Players submit `maintenanceTasks` in the decision payload, but `runSimulation` never reads them. The four bars (cleanliness, oven, slicer, espresso) stay at 100 forever. The only consequence in the entire codebase is that cleanliness < 40 triggers a burglary roll.
-2. **Customer satisfaction** has a real feedback loop (fill rate → foot traffic → returning customers) but it's attenuated by ad wins and chef quality, and isn't tied to the things players see in the world (cleanliness, equipment).
-3. **Chef satisfaction** works as a kitchen-cohesion penalty (sous chef count → output multiplier) but is a synthetic concept that students don't have visibility into via the dataset.
+1. **Maintenance is a dead end.** [simulation.js:558](games/bakery-bash/backend/functions/modules/simulation.js:558) reads `p.cleanliness_pct`, but **nothing in the backend ever writes it**, so the burglary trigger never fires. The four `MaintenanceBars` ([game.ts:195](games/bakery-bash/app/src/types/game.ts:195)) sit on client state forever at 100.
+2. **Chef satisfaction** ([chef-system.js:240](games/bakery-bash/backend/functions/modules/chef-system.js:240)) penalizes throughput as sous chefs grow past 4. It's an internal multiplier students don't see and can't analyze.
+3. **CSV columns** like `chef_satisfaction_score` and `avg_machine_health_pct` ([csv-export.js:83,108](games/bakery-bash/backend/functions/modules/csv-export.js:83)) export game-internal concepts that don't appear in the published student dataset.
 
-Meanwhile, the student dataset (already published) contains a different set of variables that don't match the current game model:
-
-```
-bakery_id, location_type, bakery_size, storefront_color, traffic_zone, parking_spots,
-head_chef_tradition, chef_count_total, chef_skill_level, sous_chef_count,
-maintenance_staff_count, owner_years_experience, equipment_grade, cleanliness_grade,
-price_*, qty_*, ad_spend_*, primary_ad_channel,
-customer_satisfaction, yelp_review_count, total_units_sold
-```
-
-The rework brings the game's revenue formula into alignment with this dataset, makes Maintenance a real strategic lever, and removes chef satisfaction as a player-visible concept.
-
----
+Goal: make `equipment_grade` and `cleanliness_grade` real, driven mechanics; remove the dead/legacy concepts; align the CSV.
 
 ## 2. Goals
 
-- **Maintenance becomes meaningful**: `maintenance_staff_count` and `equipment_grade` drive customer satisfaction and (for equipment) production capacity.
-- **Equipment is a strategic investment ladder**: F → A grades, with one tier upgrade purchasable per round.
-- **Cleanliness is a per-round operational lever**: drifts based on staffing vs. customer volume.
-- **Chef satisfaction is removed** as a player-visible system. Output is driven directly by chef stats.
-- **Dataset matches the game**: every column in the CSV maps to a real variable the game actually tracks. Columns from the originally-published dataset that have no in-game source are removed (the dataset must be regenerated).
+- **Equipment grade** (A–F) is a player-visible strategic stat: capacity multiplier + satisfaction multiplier. Upgrades cost cash, one tier per round.
+- **Cleanliness grade** (A–F) drifts each round based on `maintenance_staff_count` versus customer volume. Affects satisfaction.
+- **Maintenance staff count** is a Decide-phase input replacing the dead `maintenanceTasks` array.
+- **Chef satisfaction is removed** as a concept. Capacity becomes `(base + specialty + sous chef contributions) × equipment_factor_capacity`. No morale multiplier.
+- **MaintenanceBars are removed** (state, UI, decision input) — replaced by the single `cleanlinessGrade` plus a fixed `equipmentGrade`.
+- **Burglary curveball is removed** (currently dead code anyway).
+- **CSV is realigned** with the new mechanics.
 
-## 3. Non-Goals
+## 3. Non-Goals (deferred)
 
-- No changes to ad channels (the in-game `TV/Billboard/Radio/Newspaper` vs. dataset `instagram/tiktok` mismatch is a separate concern).
-- No changes to product catalog (8 products in the dataset vs. 6 currently in code is out of scope here — addressed in a future rework).
-- No changes to revenue scale or starting cash ($10,000) — the post-Apr-2026 rescale is the baseline.
-- No backwards-compatibility shim for old `MaintenanceBars` state. Existing in-flight games may need to be reset.
-- No premium/basic product split (considered and dropped — narrow multipliers do the balancing work).
-- **No new bakery-attribute variables added to the game.** The formula in this spec only references state that's already in the game today (or added explicitly by this rework). Dataset columns that have no in-game source are filled with noise — see §4.2.
+- Step 1–9 pipeline rewrite from the v4 spec — **dropped**. The existing `getFootTrafficModifier` / `getReturningCustomerBonus` / `customer-allocation.js` model stays intact.
+- `tradition_factor` — **dropped**. Chef nationality already affects output via `chef.specialties` ([chef-system.js:174](games/bakery-bash/backend/functions/modules/chef-system.js:174)); no extra lever needed.
+- `PRODUCT_SPECIALTIES` constant — **not needed** (no tradition_factor).
+- `hireOrder` field on chefs — **not needed**. The CSV continues to export per-chef columns rather than a single derived "head chef".
+- Ad channel rename (TV → Instagram/TikTok), product-catalog expansion (6 → 8 products), `yelp_review_count`, `location_type`, `traffic_zone`, `bakery_size`, etc. — **out of scope**. The CSV ships with what's actually in the game.
+- No backwards-compat shim. In-flight games may need to be reset.
 
 ---
 
-## 4. Variables Used
+## 4. Code Surface
 
-Every variable in the formula is either already in the game or added explicitly by this rework. Anything not in this table is **not** in the formula, **not** in player state, and **not** in the CSV export.
+### 4.1 Insertion points (where new code goes)
 
-| Variable | In game? | Role |
+| Where | What happens |
+|---|---|
+| [simulation.js:181](games/bakery-bash/backend/functions/modules/simulation.js:181) | DELETE the `calculateChefSatisfactionScore` call. |
+| [simulation.js:195](games/bakery-bash/backend/functions/modules/simulation.js:195) | REPLACE `calculateEffectiveOutput(supplyCapped, chefSatisfactionScore)` with `supplyCapped × equipmentFactorCapacity(player.equipmentGrade)`. |
+| [simulation.js:203](games/bakery-bash/backend/functions/modules/simulation.js:203) | After `fillRateToSatisfactionPct(fillRate)`, multiply by `cleanlinessFactor(cleanlinessGrade) × equipmentFactorSatisfaction(equipmentGrade)`, clamp [0, 100]. |
+| [simulation.js:216](games/bakery-bash/backend/functions/modules/simulation.js:216) | DROP `chefSatisfactionScore` from return; ADD `equipmentGrade`, `cleanlinessGrade`, `cleanlinessScoreNext`. |
+| [simulation.js:482-510](games/bakery-bash/backend/functions/modules/simulation.js:482) (cost accounting) | If `decision.equipmentUpgradePurchased`, add tier cost to `totalSpent` and bump `player.equipmentGrade` for the round result. |
+| [simulation.js:548-567](games/bakery-bash/backend/functions/modules/simulation.js:548) | DELETE the entire burglary block. |
+| New point — after revenue calc, before pushing result | Compute `cleanlinessScoreNext = clamp(0,100, currentScore + maintenance_staff_count*20 - customers*0.20)`; derive next grade. Include in result so `index.js` writes it back to player state for next round. |
+
+### 4.2 Removals (file-level)
+
+| File | What to remove |
+|---|---|
+| [game.ts:178-200](games/bakery-bash/app/src/types/game.ts:178) | `MaintenanceTask` enum, `MaintenanceBars` interface |
+| [game.ts:346](games/bakery-bash/app/src/types/game.ts:346) | `maintenanceTasks` from `PendingDecisionDraft` |
+| [game.ts:418,665,670](games/bakery-bash/app/src/types/game.ts:418) | `chefSatisfactionScore`, `chefSatisfactionScores`, `chefDepartures`, `maintenanceBars` from GameState/RoundResult |
+| [chef-system.js:240-260](games/bakery-bash/backend/functions/modules/chef-system.js:240) | `calculateChefSatisfactionScore`, `calculateEffectiveOutput` (remove from exports too) |
+| [config.js](games/bakery-bash/backend/functions/modules/config.js) (~line 465-487) | `chefSatisfactionThreshold/Decay/Floor`, `curveballs.burglaryThreshold/Chance/Amount` |
+| [simulation.js:548-567](games/bakery-bash/backend/functions/modules/simulation.js:548) | Burglary block + `burglary`, `burglaryAmount` from result push |
+| [multi-day-simulation.js:279-285](games/bakery-bash/backend/functions/modules/multi-day-simulation.js:279) | Burglary mirror block |
+| [csv-export.js:83,107-108](games/bakery-bash/backend/functions/modules/csv-export.js:83) | `chef_satisfaction_score`, `avg_cleanliness_pct`, `avg_machine_health_pct` columns + their writes (lines 265, 302-303) |
+
+### 4.3 Additions
+
+**Config additions** in `config.js` (alongside `DEFAULT_GAME_CONFIG` and module exports):
+
+```js
+// Equipment ladder
+const EQUIPMENT_GRADES = ['F', 'E', 'D', 'C', 'B', 'A'];
+
+const EQUIPMENT_TIER_COSTS = {
+  // cost to upgrade FROM the listed grade (i.e., 'F' = cost to go F→E)
+  F: 400, E: 600, D: 800, C: 1000, B: 1200, A: 0, // A is max, no further upgrade
+};
+
+const EQUIPMENT_CAPACITY_FACTOR = {
+  F: 0.90, E: 0.94, D: 0.97, C: 1.00, B: 1.03, A: 1.07,
+};
+
+const EQUIPMENT_SATISFACTION_FACTOR = {
+  F: 0.95, E: 0.97, D: 0.99, C: 1.00, B: 1.02, A: 1.05,
+};
+
+const CLEANLINESS_SATISFACTION_FACTOR = {
+  F: 0.90, E: 0.94, D: 0.97, C: 1.00, B: 1.03, A: 1.07,
+};
+
+// Cleanliness grade bands [min, max) on the 0-100 internal score.
+// Order matches EQUIPMENT_GRADES (F at the bottom, A at top).
+const CLEANLINESS_BANDS = [
+  { grade: 'F', min:  0, max: 17  },
+  { grade: 'E', min: 17, max: 34  },
+  { grade: 'D', min: 34, max: 51  },
+  { grade: 'C', min: 51, max: 68  },
+  { grade: 'B', min: 68, max: 85  },
+  { grade: 'A', min: 85, max: 101 },  // 100 falls in A
+];
+
+// Drift: per-round Δ on the 0-100 cleanliness score.
+const CLEANLINESS_STAFF_BOOST_PER_HEAD = 20;   // each maintenance staffer adds +20 to score
+const CLEANLINESS_DRAIN_PER_CUSTOMER   = 0.20; // each customer subtracts 0.20
+
+// Maintenance staff cost per round
+const MAINTENANCE_STAFF_COST = 20;
+
+// Defaults applied to new players
+const DEFAULT_EQUIPMENT_GRADE = 'C';
+const DEFAULT_CLEANLINESS_SCORE = 75;     // mid-B
+const DEFAULT_MAINTENANCE_STAFF_COUNT = 2; // the comfort line at typical traffic
+```
+
+All seven of those plus `EQUIPMENT_GRADES` and `CLEANLINESS_BANDS` get added to `module.exports`.
+
+**Pure helpers** — new file `backend/functions/modules/equipment-cleanliness.js`:
+
+```js
+function equipmentFactorCapacity(grade) { ... }       // table lookup with fallback to 1.00
+function equipmentFactorSatisfaction(grade) { ... }   // ditto
+function cleanlinessFactor(grade) { ... }             // ditto
+function gradeFromScore(score) { ... }                // walks CLEANLINESS_BANDS
+function cleanlinessDriftDelta(staff, customers) { ... } // pure math
+function nextEquipmentGrade(grade) { ... }            // returns the next-up grade or null at A
+function tierUpgradeCost(currentGrade) { ... }        // returns cost from F/E/D/C/B; returns null for A (no upgrade available)
+```
+
+**Type additions** in `game.ts`:
+
+```typescript
+export type EquipmentGrade = 'F' | 'E' | 'D' | 'C' | 'B' | 'A';
+
+// Add to GameState:
+//   equipmentGrade: EquipmentGrade;
+//   cleanlinessScore: number;     // 0-100 internal
+//   cleanlinessGrade: EquipmentGrade;  // derived; cached for UI
+
+// Add to PendingDecisionDraft:
+//   equipmentUpgradePurchased: boolean;
+// (Maintenance staff count REUSES existing decision.staffCounts.maintenanceGuys —
+//  no new field. The DecidePhase UI just gets a new control that writes into it.)
+```
+
+**Decision validation** in `decision-validation.js`: extend the validator to allow `equipmentUpgradePurchased` (boolean, default false) and `staffCounts.maintenanceGuys` (non-negative int, default 2). Validation is light — server enforces "can only afford if budget allows" at simulation time.
+
+**Maintenance staff source of truth**: throughout this spec, `maintenance_staff_count` refers to `decision.staffCounts.maintenanceGuys` ([csv-export.js:307](games/bakery-bash/backend/functions/modules/csv-export.js:307)). Existing field, new UI control, new CSV column header — but no new data path.
+
+**Player-state initialization**: when a new player joins a game (in `index.js`'s join handler — wherever player state is seeded), initialize:
+```js
+equipmentGrade: DEFAULT_EQUIPMENT_GRADE,
+cleanlinessScore: DEFAULT_CLEANLINESS_SCORE,
+cleanlinessGrade: 'B',
+```
+
+---
+
+## 5. Equipment Ladder
+
+**Costs** (one-tier-per-round):
+
+| Upgrade | Cost |
+|---|---|
+| F → E | $400 |
+| E → D | $600 |
+| D → C | $800 |
+| C → B | $1,000 |
+| B → A | $1,200 |
+| **F→A total** | **$5,000** |
+
+**Multipliers**:
+
+| Grade | Capacity factor | Satisfaction factor |
 |---|---|---|
-| `bakery_id` | existing (Firestore doc ID) | identifier |
-| `sous_chef_count` | existing | capacity (linear bonus, +10% per chef) |
-| `head_chef_tradition` | existing as `ChefNationality` ([game.ts:231](games/bakery-bash/app/src/types/game.ts:231)): `american`/`french`/`italian`/`japanese` | demand-share booster — products matching the head chef's nationality get +20% share |
-| `chef_skill_level` | existing as `ChefSkillTier` ([game.ts:257](games/bakery-bash/app/src/types/game.ts:257)): `novel`/`intermediate`/`advanced` | capacity multiplier (existing tier-based) |
-| `chef_count_total` | derivable (sous + specialty) | reported in CSV; not used as a formula input on its own |
-| `maintenance_staff_count` | **NEW (this rework)** | drives `cleanliness_grade` drift; $20/round per staff |
-| `equipment_grade` | **NEW (this rework)** | capacity AND satisfaction multipliers; A–F ladder |
-| `cleanliness_grade` | **NEW (this rework)** | satisfaction multiplier; A–F, drifts per round |
-| `price_*` | existing | demand share + revenue |
-| `qty_*` | existing | supply ceiling |
-| `ad_spend_*` | existing (channel rename out of scope) | foot traffic, diminishing returns per channel |
-| `customer_satisfaction` | existing | output; feeds next round's foot traffic via reputation |
-| `total_units_sold` | derivable from existing | output |
-| `revenue` | derivable from existing | output |
+| F | 0.90 | 0.95 |
+| E | 0.94 | 0.97 |
+| D | 0.97 | 0.99 |
+| C | 1.00 | 1.00 |
+| B | 1.03 | 1.02 |
+| A | 1.07 | 1.05 |
 
-### 4.1 Removed from the dataset
+C is the default starting grade. Each grade above C gives +3% capacity and +1–2% satisfaction; below C is symmetric.
 
-These columns appear in the published student dataset but have **no in-game source** and are **fully removed** by this rework — no game state, no random noise, no CSV column:
-
-`location_type`, `bakery_size`, `storefront_color`, `traffic_zone`, `parking_spots`, `owner_years_experience`, `primary_ad_channel`, `yelp_review_count`.
-
-The CSV export schema must be regenerated to drop these columns. The published student dataset that contains them is stale and must be re-emitted before student testing begins.
-
-### 4.2 "Head chef" definition
-
-The dataset row reports a single `head_chef_tradition` and `chef_skill_level`. Definition: the bakery's **highest-tier specialty chef** (advanced > intermediate > novel; ties broken by hire order). If the bakery has no specialty chef hired, `head_chef_tradition = american` and `chef_skill_level = novel` (the implicit default head chef).
-
-To support tie-breaking, each specialty chef object must carry a **`hireOrder: number`** field, written at hire time (monotonically increasing per bakery). This is a small schema addition; see §9.1.
-
-### 4.3 Product → nationality mapping
-
-Step 2's `tradition_factor` checks whether a product matches the head chef's nationality. The current code has the inverse mapping — `CHEF_NATIONALITIES[nationality].specialties: string[]` ([config.js:220-248](games/bakery-bash/backend/functions/modules/config.js:220)). Computing a `product → nationality[]` lookup at simulation time is fine but couples the simulation to the chef-system module.
-
-**Add a canonical `PRODUCT_SPECIALTIES` constant in `config.js`** that maps each product key to the nationalities that consider it a specialty (most products → exactly one nationality; some may belong to multiple, e.g., bagel could be both american and italian). Derive this from `CHEF_NATIONALITIES` at module load to keep the two in sync, or hand-write it for clarity. Single source of truth for the matching rule.
+**Decide-phase decision**: a single boolean `equipmentUpgradePurchased`. If true and the player has cash to cover the next-tier cost, simulation deducts the cost and bumps the grade by one tier. If they can't afford or are already at A, the flag is silently ignored.
 
 ---
 
-## 5. Revenue Formula Pipeline
+## 6. Cleanliness Drift
 
+**Score** is an internal 0–100 integer; **grade** is derived per `CLEANLINESS_BANDS`.
+
+**Per-round delta** (applied at end of round, after revenue):
 ```
-Step 1 — Customer footfall
-  base = existing baseline customer pool (unchanged from current game)
-  ads  = 1 + Σ ad_lift(channel, spend)
-         // ad_lift: per-channel diminishing-returns curve; e.g.,
-         //   lift(spend) = α_channel × log(1 + spend / scale_channel)
-         // Channels are the existing in-game set (TV, Billboard, Radio,
-         // Newspaper). Channel rename to match the dataset (Instagram /
-         // TikTok) is out of scope.
-  rep  = 1 + β × (prior_customer_satisfaction − 50) / 50
-         // β around 0.40 — a 50-point swing in prior sat moves traffic ±20%.
-         // Replaces the old getReturningCustomerBonus discrete-tier mechanism.
-  customers = base × ads × rep
-
-Step 2 — Per-product demand share
-  for each product p:
-    price_factor_p   = price_elasticity(price_p, anchor_price_p)
-                       // existing fair-price anchors per product
-    tradition_factor = matches(head_chef_tradition, p) ? 1.20 : 1.00
-                       // e.g., french head chef → croissant +20%
-                       // Mapping nationality → favored products lives in
-                       // the existing PRODUCT_CATALOG metadata.
-    popularity_p     = base_share_p × price_factor_p × tradition_factor
-    demand_p         = customers × normalize(popularity_p across menu)
-
-Step 3 — Production capacity
-  kitchen_strength = (1 + 0.10 × sous_chef_count)
-                   × skill_multiplier(chef_skill_level)
-                       // existing tier-based: novel 1.0, intermediate 1.5,
-                       // advanced 2.0 (or whatever the current tier table is)
-                   × equipment_factor_capacity(equipment_grade)
-
-  capacity_p = base_throughput_p × kitchen_strength
-
-Step 4 — Units sold
-  qty_sold_p       = min(qty_stocked_p, min(demand_p, capacity_p))
-  total_units_sold = Σ qty_sold_p
-
-Step 5 — Customer satisfaction (output)
-  fill_rate_p   = qty_sold_p / demand_p          // existing tier table
-  fill_sat      = weighted_avg(fill_rate_p → satisfactionPct)
-
-  customer_satisfaction = fill_sat
-                        × cleanliness_factor(cleanliness_grade)
-                        × equipment_factor_satisfaction(equipment_grade)
-  // Note: prices already affect satisfaction indirectly via Step 2's
-  // price_factor (which shapes demand → fill rate → fill_sat).
-
-Step 6 — Cleanliness drift
-  Δ = (maintenance_staff_count × 20) − (customers × 0.20)
-  cleanliness_score_next = clamp(0, 100, cleanliness_score + Δ)
-  cleanliness_grade_next = grade_from_score(cleanliness_score_next)
-
-Step 7 — Equipment upgrade (optional, one tier per round)
-  if upgrade_purchased:
-    cash -= tier_cost(current_grade → next_grade)
-    equipment_grade = next_grade
-
-Step 8 — Revenue
-  revenue = Σ (price_p × qty_sold_p)
+Δ = (maintenance_staff_count × 20) − (allocated_customers × 0.20)
+cleanlinessScoreNext = clamp(0, 100, cleanlinessScore + Δ)
 ```
 
-### 5.1 Multiplier tables
+`allocated_customers` = `customerCount` from the round's allocation result (the post-competitive-split per-player customer count).
 
-**Equipment factor — capacity** (~19% spread, C is neutral):
+**Behavior at typical 200 customers/round**:
 
-| Grade | Factor |
+| Maintenance staff | Δ | Effect |
+|---|---|---|
+| 0 | −40 | Slips ~2 grades |
+| 1 | −20 | Slips ~1 grade |
+| 2 | 0 | Steady |
+| 3 | +20 | Improves ~1 grade |
+| 4 | +40 | Improves ~2 grades |
+
+**Cost**: `MAINTENANCE_STAFF_COST = $20/round per staffer`. 2 staff = $40/round (~0.9% of typical revenue).
+
+**Multiplier on satisfaction**:
+
+| Grade | Cleanliness factor |
 |---|---|
 | F | 0.90 |
 | E | 0.94 |
@@ -167,238 +222,115 @@ Step 8 — Revenue
 | B | 1.03 |
 | A | 1.07 |
 
-**Equipment factor — satisfaction** (~11% spread, C is neutral):
+**Combined revenue swing** (F-everything vs. A-everything across capacity, equipment-sat, cleanliness-sat): `0.90 × 0.95 × 0.90` = 0.770 worst case; `1.07 × 1.05 × 1.07` = 1.202 best case; **swing 1.56×**. Comparable to a winning ad slate or 4-sous-chef investment.
 
-| Grade | Factor |
+---
+
+## 7. CSV Changes
+
+**Drop columns** ([csv-export.js:83,107,108](games/bakery-bash/backend/functions/modules/csv-export.js:83)):
+- `chef_satisfaction_score`
+- `avg_cleanliness_pct`
+- `avg_machine_health_pct`
+
+**Add columns** (in their place, in the staff/maintenance section):
+- `equipment_grade` — string, A-F
+- `cleanliness_grade` — string, A-F
+- `cleanliness_score` — int 0-100
+- `maintenance_staff_count` — int (replaces `maintenance_guy_count` semantically — same data, but rename)
+- `equipment_upgrade_purchased` — bool
+
+**Rename**: `maintenance_guy_count` → `maintenance_staff_count` (keeps the data flow at `decision.staffCounts.maintenanceGuys`; just relabel in the column definition).
+
+**Keep unchanged**: all per-product columns, `revenue`, `customer_count`, `aggregate_satisfaction_pct`, specialty chef slots, sous chef counts, ad type. These map cleanly to what students will see.
+
+The professor extras (`player_id`, `bakery_name`, `display_name`) stay as-is.
+
+---
+
+## 8. UI Changes
+
+### 8.1 StatusTab ([app/src/components/game/tabs/StatusTab.tsx](games/bakery-bash/app/src/components/game/tabs/StatusTab.tsx))
+
+Replace the 4 health bars with two grade displays:
+- **Equipment Grade** — large letter (A-F) with color (A green → F red), small caption "purchase upgrades during Decide phase"
+- **Cleanliness Grade** — large letter (A-F) with the same color scale, small caption "improve by hiring maintenance staff"
+
+Color scale (reuse the `healthColor` palette concept):
+- A → sage (var(--sage))
+- B → lime (var(--lime))
+- C → honey (var(--honey))
+- D → honey
+- E → berry (var(--berry))
+- F → berry
+
+Drop the old `HealthBar` component and the `useGame().maintenanceBars` access.
+
+### 8.2 DecidePhase
+
+Add two controls (location TBD by implementer — likely in the staff/operations section):
+
+1. **Maintenance Staff** — number input or +/- stepper, default 2, bounded 0-10. Writes to `decision.staffCounts.maintenanceGuys` (existing field).
+2. **Upgrade Equipment This Round** — checkbox or button labeled `Upgrade to <next-grade> ($X)`, where X is `tierUpgradeCost(currentGrade)`. Disabled if at A grade. Writes to `decision.equipmentUpgradePurchased` (new field).
+
+Both submit through the existing decision pipeline.
+
+---
+
+## 9. Acceptance Criteria
+
+Each must be objectively verifiable before merge:
+
+1. **Equipment factor applied to capacity.** A bakery at A grade produces 1.07× the units of a bakery at C grade with identical other inputs (verifiable by unit test on `computePlayerOutputAndSatisfaction`).
+2. **Equipment + cleanliness factors applied to satisfaction.** Per-product `satisfactionPct` is multiplied by both factors and clamped to [0, 100].
+3. **Cleanliness drift correct.** At 200 allocated customers and 0/2/4 maintenance staff, `cleanlinessScoreNext - cleanlinessScore` is exactly −40 / 0 / +40 (unit test).
+4. **Equipment upgrade flow works.** Setting `equipmentUpgradePurchased=true` deducts the tier cost from `totalSpent` and bumps `equipmentGrade` by one. Insufficient budget → flag ignored, grade unchanged. At A → flag ignored.
+5. **Chef satisfaction fully gone.** `grep -rE "chefSatisfaction|chef_satisfaction|calculateEffectiveOutput|calculateChefSatisfactionScore" games/bakery-bash/{app/src,backend/functions}` returns empty.
+6. **MaintenanceBars fully gone.** `grep -rE "MaintenanceBars|maintenanceBars|MaintenanceTask|maintenanceTasks" games/bakery-bash/{app/src,backend/functions}` returns empty.
+7. **Burglary fully gone.** `grep -rE "burglary|Burglary" games/bakery-bash/{app/src,backend/functions}` returns empty (apart from CHANGELOG/comments).
+8. **CSV columns aligned.** New CSV exports contain `equipment_grade`, `cleanliness_grade`, `cleanliness_score`, `maintenance_staff_count`, `equipment_upgrade_purchased`. They do NOT contain `chef_satisfaction_score`, `avg_cleanliness_pct`, `avg_machine_health_pct`, `maintenance_guy_count`.
+9. **Existing tests still pass.** `npm test` in `backend/` passes after the rework. New tests added for equipment/cleanliness helpers and drift.
+10. **Round-trip game.** A 5-round game can be played end-to-end with the new mechanics; equipment grade changes when upgrades are purchased; cleanliness grade drifts visibly with maintenance staffing.
+
+---
+
+## 10. Out-of-the-Loop Items
+
+Things implementer should know but are not direct work:
+
+- **`p.cleanliness_pct` is dead state.** The simulation reads it but it's never written. Once burglary is removed, the field can be deleted from anywhere it leaks (likely none beyond the burglary block).
+- **`avg_cleanliness_pct` and `avg_machine_health_pct` are blank in current CSVs** ([csv-export.js:297](games/bakery-bash/backend/functions/modules/csv-export.js:297) explicitly notes the feature is unimplemented). Removing the columns is a no-op for output content — just relabels the schema.
+- **Decision validation is permissive.** [decision-validation.js](games/bakery-bash/backend/functions/modules/decision-validation.js) doesn't currently validate `staffCounts` or `maintenanceGuys` — those flow through unchecked. Adding `maintenanceStaffCount` validation is a small bonus but not strictly required for Friday.
+
+---
+
+## 11. Files Likely To Change
+
+| File | Why |
 |---|---|
-| F | 0.95 |
-| E | 0.97 |
-| D | 0.99 |
-| C | 1.00 |
-| B | 1.02 |
-| A | 1.05 |
-
-**Cleanliness factor — satisfaction** (~19% spread, C is neutral):
-
-| Grade | Factor |
-|---|---|
-| F | 0.90 |
-| E | 0.94 |
-| D | 0.97 |
-| C | 1.00 |
-| B | 1.03 |
-| A | 1.07 |
-
-**Combined revenue swing** (F-everything vs. A-everything across all three multipliers):
-- Worst case: 0.90 × 0.95 × 0.90 = **0.770**
-- Best case: 1.07 × 1.05 × 1.07 = **1.202**
-- Swing: **1.56×**
-
-Comparable in magnitude to a winning ad slate (+30% foot traffic capped) or a 4-sous-chef investment (+40% capacity). Major lever, not runaway dominant. C is the default starting grade and is intentionally neutral (1.00) on every factor.
+| `backend/functions/modules/config.js` | Add equipment/cleanliness config. Remove burglary + chef-sat tunables. |
+| `backend/functions/modules/equipment-cleanliness.js` (NEW) | Pure helpers (factors, drift, grade lookup). |
+| `backend/functions/modules/simulation.js` | Insertion points per §4.1; remove burglary; remove chef-sat call. |
+| `backend/functions/modules/multi-day-simulation.js` | Mirror burglary removal. |
+| `backend/functions/modules/chef-system.js` | Delete `calculateChefSatisfactionScore`, `calculateEffectiveOutput`. |
+| `backend/functions/modules/csv-export.js` | Drop and add columns per §7. |
+| `backend/functions/modules/decision-validation.js` | Add `maintenanceStaffCount` and `equipmentUpgradePurchased` validation. |
+| `backend/functions/index.js` | Initialize new player-state fields on join; persist `cleanlinessScoreNext` and `equipmentGrade` between rounds. |
+| `app/src/types/game.ts` | Add `EquipmentGrade`, equipment/cleanliness fields. Remove `MaintenanceBars`, `MaintenanceTask`, chef-sat fields. |
+| `app/src/components/game/tabs/StatusTab.tsx` | Replace bars with grade displays. |
+| `app/src/pages/phases/DecidePhase.tsx` (or wherever the operations section lives) | Add maintenance staff input + equipment upgrade control. |
+| `app/src/contexts/GameContext.tsx` | Drop `maintenanceBars` from context, add `equipmentGrade`, `cleanlinessGrade`. |
+| `app/src/components/game/RoundHeader.tsx` | If it references `maintenanceBars`, replace with grade display or remove. |
+| `app/src/pages/phases/ResultsPhase.tsx`, `SimulatePhase.tsx`, `ProfessorLeaderboardPage.tsx` | Audit for `chef_satisfaction_score` / `maintenanceBars` references; fix or delete. |
+| `backend/test/*.test.js` | Update affected tests; add coverage for new helpers and drift. |
 
 ---
 
-## 6. Equipment Upgrade Mechanic
+## 12. Estimated Effort
 
-### 6.1 Tier costs
+- **Backend wiring** (config, helpers, simulation insertion, removals, validation): ~1 day
+- **CSV reshape** + tests: ~0.5 day
+- **UI** (StatusTab, DecidePhase controls, context cleanup): ~0.5–1 day
+- **Smoke testing** + balance harness check: ~0.5 day
 
-| Upgrade | Cost | Rationale |
-|---|---|---|
-| F → E | $400 | <1 round of revenue; quick early bump |
-| E → D | $600 | 1 round of saving; commits the player |
-| D → C | $800 | 1–2 rounds; competitive threshold |
-| C → B | $1,000 | Matches product-unlock cost; real trade-off |
-| B → A | $1,200 | Endgame luxury; only reachable by leaders |
-| **Total path F→A** | **$5,000** | ~50% of starting cash, full game arc |
-
-Anchored to existing economy: starting cash $10k, engaged revenue ~$4.4k/round, product unlock $500. C→B at $1,000 deliberately costs more than skipping a single ad slate ($300) + one sous chef ($30) + stock ($280) = $610 — buying it forces a real trade.
-
-### 6.2 Constraints
-
-- **One tier per round.** No skipping. Stops cash-rich late-game players from buying A in a single shot.
-- **No degradation.** Once at a grade, stays at that grade unless explicitly downgraded by a future event (out of scope here).
-- **Default starting grade: C.** The dataset can introduce variance across bakeries (some start at B or D), but the canonical starting grade is C.
-- **Decision lives in the Decide phase**, alongside other player decisions (ads, chefs, stock).
-
----
-
-## 7. Cleanliness Drift Mechanic
-
-### 7.1 Scoring
-
-Internal score 0–100, mapped to letter grades:
-
-| Score range | Grade |
-|---|---|
-| [0, 16) | F |
-| [16, 33) | E |
-| [33, 50) | D |
-| [50, 67) | C |
-| [67, 83) | B |
-| [83, 100] | A |
-
-Default starting score: **75** (mid-B). High enough to give players a few rounds of grace before drift bites.
-
-### 7.2 Per-round delta
-
-```
-Δcleanliness = (maintenance_staff_count × 20) − (customers × 0.20)
-cleanliness_score_next = clamp(0, 100, cleanliness_score + Δ)
-```
-
-In this formula, `customers` means **the player's allocated customer count for the round, after the competitive split** — i.e., the number of customers that actually walked into this player's bakery, not the total system-wide demand. This is the same value used elsewhere in the simulation as the per-player customer count.
-
-At typical engaged-play traffic (~200 customers/round per player):
-
-| Maintenance staff | Net Δ | Behavior |
-|---|---|---|
-| 0 | –40/round | Slips ~2 grades per round |
-| 1 | –20/round | Slips 1 grade per round |
-| 2 | 0 | Steady-state |
-| 3 | +20/round | Improves 1 grade per round |
-| 4 | +40/round | Improves 2 grades per round |
-
-**2 maintenance staff is the comfort line at typical traffic.** Below that you're losing ground; above it you're banking grade for high-traffic rounds ahead.
-
-### 7.3 Cost
-
-**Maintenance staff cost: $20/round each.**
-
-Sits between the 1st sous chef ($10) and 4th sous chef ($30). 2 staff = $40/round = ~0.9% of typical revenue — fair price for keeping cleanliness from slipping.
-
----
-
-## 8. What Gets Removed
-
-### 8.1 Chef satisfaction (entirely)
-
-- Delete `chefSatisfactionScores` from `GameState`.
-- Delete `chefSatisfactionScore` from `RoundResult`.
-- Delete `chefDepartures` from `RoundResult`.
-- Delete `calculateChefSatisfactionScore` and `calculateEffectiveOutput` from `chef-system.js`.
-- Delete `chefSatisfactionThreshold`, `chefSatisfactionDecay`, `chefSatisfactionFloor` from config.
-- Output is now `kitchen_strength × base_throughput` directly — no morale multiplier.
-- Remove the StaffTab "Sous Chef Efficiency" label and the ResultsPhase chef-satisfaction display.
-
-### 8.2 MaintenanceBars (entirely)
-
-- Delete `MaintenanceBars` interface from `types/game.ts`.
-- Delete `maintenanceBars` from `GameState`.
-- Delete `MaintenanceTask` enum and `maintenanceTasks` from `PendingDecisionDraft`.
-- Delete StatusTab and any UI that displays the four bars.
-- **Delete the burglary curveball entirely.** Cleanliness's only consequence is now the satisfaction multiplier in Step 5. Remove `burglaryThreshold`, `burglaryChance`, and `burglaryAmount` from config; remove the burglary code path from `runSimulation`.
-
-### 8.3 Existing satisfaction code
-
-- `calculatePerProductSatisfaction` and `calculateAggregateSatisfaction` stay as the foundation (Step 5 of the new pipeline).
-- `getFootTrafficModifier` is **deleted**. Its responsibilities are split:
-  - sat → traffic linkage moves into Step 1's `rep` term (uses prior round's satisfaction directly).
-  - ad bonus moves into Step 1's `ads` term (with the new diminishing-returns curve).
-  - the **premium product bonus, variety bonus, and sous chef foot-traffic bonus are dropped entirely.** These were stacking nudges that double-counted with capacity (sous chefs already drive output via Step 3) or kludged a rich-get-richer effect onto satisfaction (premium product). The new pipeline gets its variety from Step 2's normalized demand share and its quality reward from the `rep` loop.
-- `getReturningCustomerBonus` is deleted — superseded by the `rep` term, which makes prior-round satisfaction continuously affect traffic rather than gating a discrete returning-customer pool.
-
----
-
-## 9. New State and Decisions
-
-### 9.1 Added to player state (per round)
-
-| Field | Type | Notes |
-|---|---|---|
-| `equipmentGrade` | `'A' \| 'B' \| 'C' \| 'D' \| 'E' \| 'F'` | starts C |
-| `cleanlinessScore` | number 0–100 | starts 75; grade derived |
-| `maintenanceStaffCount` | number | new decision in Decide phase |
-| `equipmentUpgradePurchased` | boolean | new decision in Decide phase |
-
-### 9.1a Added to specialty chef object
-
-| Field | Type | Notes |
-|---|---|---|
-| `hireOrder` | number | monotonically increasing per bakery; assigned at hire time |
-
-Required by §4.2 for head-chef tie-breaking. Existing specialty chefs at migration get hire-order assigned by `hiredAt` timestamp ascending; new hires increment from `max(hireOrder) + 1` per bakery.
-
-### 9.2 Added to round result
-
-| Field | Type | Notes |
-|---|---|---|
-| `equipmentGrade` | letter | snapshot at end of round |
-| `cleanlinessGrade` | letter | snapshot at end of round |
-| `cleanlinessScore` | number | for engine debugging; not necessarily exposed to player |
-
-### 9.3 CSV export columns
-
-The CSV export schema is the in-game variables only. Concretely:
-
-```
-bakery_id, head_chef_tradition, chef_count_total, chef_skill_level,
-sous_chef_count, maintenance_staff_count, equipment_grade,
-cleanliness_grade, price_<each product>, qty_<each product>,
-ad_spend_<each channel>, customer_satisfaction, total_units_sold, revenue
-```
-
-The columns listed in §4.1 (yelp_review_count, location_type, traffic_zone, bakery_size, parking_spots, storefront_color, owner_years_experience, primary_ad_channel) are dropped. The previously-published student dataset that contained those columns is stale and must be regenerated before testing begins.
-
----
-
-## 10. Resolved Decisions
-
-The questions raised during design have been answered:
-
-1. **Bakery starting grade variance:** All bakeries start at **C**. No randomization at game creation. Variance comes only from in-game upgrades.
-2. **Burglary curveball:** **Dropped entirely** (see §8.2). Cleanliness's only consequence is the satisfaction multiplier.
-3. **Default maintenance staff count:** **2** (the comfort-line value at typical traffic — passive players naturally hold steady).
-4. **Default equipment upgrade decision:** "no upgrade" (must be explicitly purchased each round).
-5. **Non-game dataset columns:** fully removed (see §4.1). Yelp, location_type, traffic_zone, etc. are not generated, not exported, not anywhere.
-
-### 10.1 Remaining Implementation Notes
-
-These are not blocking but should be kept in mind during implementation:
-
-- **Ad channel reconciliation.** Dataset has Instagram/TikTok; code has TV/Billboard/Radio/Newspaper. Out of scope for this rework. The CSV export uses the in-game channel names; renaming to match the dataset is a future task.
-- **Existing in-flight games.** No backwards-compat shim. If production games are running, they'll break and need to be reset. Confirm before deploying.
-- **Head chef resolution.** §4.2 defines `head_chef_tradition` and `chef_skill_level` as derived from the highest-tier specialty chef. Implementer must add this resolution step to the CSV export.
-
----
-
-## 11. Implementation Impact
-
-The Step 1–8 pipeline in §5 is **a substantial rewrite of the revenue system**, not a localized patch. Implementers should plan accordingly:
-
-- **Current architecture** (in `simulation.js`, `customer-allocation.js`, `satisfaction.js`): per-product demand pools with a competitive satisfaction-weighted split among players, foot-traffic modifier stacked from premium-product / variety / sous-chef / ad bonuses, returning-customer bonus as a discrete tier.
-- **Proposed architecture** (this spec): per-player `customers = base × ads × rep` global pool, then split into per-product demand share via `popularity_p`. Foot-traffic bonuses collapse into the `ads` and `rep` terms only. Returning customers absorbed into a continuous `rep` term.
-
-This change touches `simulation.js`, `customer-allocation.js`, `satisfaction.js`, and `revenue.js` — roughly 500–800 lines of refactor plus rewritten tests. Likely a 3-4 week implementation effort with concurrent UI/config work, plus 1 week of balance-harness validation before merge.
-
-The simplification is intentional: the existing stacking-bonus model has accumulated kludges across multiple balance passes (premium products bonus, variety bonus, sous-chef foot-traffic bonus, etc.). The new model has fewer terms with clearer roles, which makes balance tuning more tractable for the student-dataset use case.
-
----
-
-## 12. Files Likely To Change
-
-- `games/bakery-bash/app/src/types/game.ts` — type changes (add equipment/cleanliness, remove maintenance bars and chef sat).
-- `games/bakery-bash/backend/functions/modules/config.js` — new tier-cost table, multiplier tables, drift rates; remove burglary config and chef-satisfaction tunables.
-- `games/bakery-bash/backend/functions/modules/satisfaction.js` — Step 5 rewrite (multipliers); delete `getFootTrafficModifier` and `getReturningCustomerBonus`.
-- `games/bakery-bash/backend/functions/modules/chef-system.js` — strip chef-sat math; reduce to `kitchen_strength` based on sous count + skill tier + equipment.
-- `games/bakery-bash/backend/functions/modules/revenue.js` — top-level pipeline orchestration.
-- `games/bakery-bash/backend/functions/modules/simulation.js` — wire cleanliness drift and equipment upgrade application; remove burglary code path.
-- `games/bakery-bash/backend/functions/modules/customer-allocation.js` — adapt or replace to fit the new global-pool customer model (see §10.2).
-- `games/bakery-bash/app/src/components/game/tabs/StatusTab.tsx` — remove maintenance bars; add equipment grade and cleanliness grade.
-- `games/bakery-bash/app/src/pages/phases/DecidePhase.tsx` (or equivalent) — add maintenance-staff and equipment-upgrade controls.
-- CSV export module — drop the columns listed in §4.1 (yelp, location_type, traffic_zone, etc.); add equipment_grade, cleanliness_grade, maintenance_staff_count; add the head-chef resolution step from §4.2.
-- `games/bakery-bash/backend/test/*` — update affected tests; add equipment/cleanliness coverage; remove burglary tests; remove chef-sat tests.
-- `games/bakery-bash/backend/scripts/balance/*` — update strategies and harness to exercise the new mechanics.
-
----
-
-## 13. Acceptance Criteria
-
-- A new game can be played end-to-end with the new mechanics.
-- The CSV export contains exactly the columns listed in §9.3 — no `yelp_review_count`, no `location_type`, no `traffic_zone`, etc.
-- Cleanliness drift produces the predicted per-round behavior (verified by a scripted test at typical traffic levels).
-- Equipment upgrades visibly cost cash and bump the grade, one tier per round, with the multipliers applied next round.
-- `head_chef_tradition` and `chef_skill_level` in the CSV reflect the player's highest-tier specialty chef (or the implicit default if none hired).
-- Burglary curveball is fully removed from config, simulation code, and tests.
-- Chef satisfaction does not appear anywhere in the type system, simulation, or UI.
-- No file in `games/bakery-bash/` references `yelp_review_count`, `location_type`, `traffic_zone`, `bakery_size`, `parking_spots`, `storefront_color`, `owner_years_experience`, or `primary_ad_channel`.
-- Multi-round balance harness shows no single strategy with >60% win rate (existing balance bar).
+**Total**: 2.5–3 days. Friday is achievable.
