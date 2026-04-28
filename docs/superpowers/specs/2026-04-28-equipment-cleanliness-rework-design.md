@@ -270,7 +270,7 @@ Drop the old `HealthBar` component and the `useGame().maintenanceBars` access.
 
 Add two controls (location TBD by implementer — likely in the staff/operations section):
 
-1. **Maintenance Staff** — number input or +/- stepper, default 2, bounded 0-10. Writes to `decision.staffCounts.maintenanceGuys` (existing field).
+1. **Maintenance Staff** — number input or +/- stepper, default 2, minimum 0, no upper bound (player hires as many as they can afford). Writes to `decision.staffCounts.maintenanceGuys` (existing field).
 2. **Upgrade Equipment This Round** — checkbox or button labeled `Upgrade to <next-grade> ($X)`, where X is `tierUpgradeCost(currentGrade)`. Disabled if at A grade. Writes to `decision.equipmentUpgradePurchased` (new field).
 
 Both submit through the existing decision pipeline.
