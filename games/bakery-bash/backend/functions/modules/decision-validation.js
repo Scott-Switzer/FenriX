@@ -212,12 +212,37 @@ function validateDecision(data, currentRound, _config, opts) {
     );
   }
 
+  // --- equipmentUpgradePurchased (boolean, default false) ---
+  let equipmentUpgradePurchased = false;
+  if (data.equipmentUpgradePurchased !== undefined && data.equipmentUpgradePurchased !== null) {
+    if (typeof data.equipmentUpgradePurchased !== 'boolean') {
+      fail('invalid-argument', `equipmentUpgradePurchased must be a boolean`);
+    }
+    equipmentUpgradePurchased = data.equipmentUpgradePurchased;
+  }
+
+  // --- staffCounts.maintenanceGuys (non-negative int, default 2) ---
+  // staffCounts is a permissive object today; we add only the maintenanceGuys
+  // bound check and leave other keys untouched.
+  const staffCounts = (data.staffCounts && typeof data.staffCounts === 'object')
+    ? { ...data.staffCounts }
+    : {};
+  if (staffCounts.maintenanceGuys === undefined || staffCounts.maintenanceGuys === null) {
+    staffCounts.maintenanceGuys = 2; // default
+  } else {
+    staffCounts.maintenanceGuys = requireNonNegInt(
+      staffCounts.maintenanceGuys, 'staffCounts.maintenanceGuys'
+    );
+  }
+
   return {
     round: Number.isFinite(Number(currentRound)) ? Number(currentRound) : null,
     menu,
     quantities,
     sousChefCount,
     sousChefAssignments,
+    equipmentUpgradePurchased,
+    staffCounts,
     numProducts: offeredProducts.length,
   };
 }
