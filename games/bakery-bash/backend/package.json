@@ -7,7 +7,7 @@
     "test:rules": "firebase emulators:exec --only firestore \"npm test\" --project bakery-bash-54d12",
     "test:auth-flow": "firebase emulators:exec --only auth,firestore,functions \"node scripts/test-auth-flow.js\" --project bakery-bash-54d12",
     "test:phase-flow": "firebase emulators:exec --only auth,firestore,functions \"node scripts/test-phase-flow.js\" --project bakery-bash-54d12",
-    "test:revenue-flow": "firebase emulators:exec --only firestore,functions \"node scripts/test-revenue-flow.js\" --project bakery-bash-54d12",
+    "test:revenue-flow": "firebase emulators:exec --only auth,firestore,functions \"node scripts/test-revenue-flow.js\" --project bakery-bash-54d12",
     "test:submit-decision": "firebase emulators:exec --only auth,firestore,functions \"node scripts/test-submit-decision-flow.js\" --project bakery-bash-54d12",
     "test:reset-game": "firebase emulators:exec --only auth,firestore,functions \"node scripts/test-reset-game-flow.js\" --project bakery-bash-54d12",
     "test:round-reset": "firebase emulators:exec --only auth,firestore,functions \"node scripts/test-round-reset-flow.js\" --project bakery-bash-54d12",
