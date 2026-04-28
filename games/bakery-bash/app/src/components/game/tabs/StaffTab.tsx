@@ -10,6 +10,7 @@ import {
   totalRoleCost,
   totalStaffCost,
 } from "../../../lib/cost";
+import { nextEquipmentGrade, tierUpgradeCost } from "../../../lib/equipment";
 
 const OVERCROWDING_THRESHOLD = 4;
 const MAX_PER_ROLE = 20;
@@ -104,7 +105,7 @@ export interface StaffTabProps {
 }
 
 export function StaffTab({ readOnly = false }: StaffTabProps) {
-  const { config, pendingDecision } = useGame();
+  const { config, pendingDecision, equipmentGrade } = useGame();
   const dispatch = useGameDispatch();
 
   const { sousBase, maintBase } = resolveBaseCosts(config);
@@ -225,6 +226,62 @@ export function StaffTab({ readOnly = false }: StaffTabProps) {
           }
           readOnly={readOnly}
         />
+      </div>
+
+      {/* Equipment upgrade toggle */}
+      <hr className="staff-tab__maintenance-divider" />
+      <h3 className="staff-tab__section-heading">Equipment</h3>
+      <div className="staff-tab__equipment">
+        {(() => {
+          const grade = equipmentGrade ?? 'C';
+          const next = nextEquipmentGrade(grade);
+          const cost = tierUpgradeCost(grade);
+          const purchased = !!pendingDecision.equipmentUpgradePurchased;
+          if (!next || cost === null) {
+            return (
+              <p className="staff-tab__equipment-maxed">
+                Equipment at A — max grade.
+              </p>
+            );
+          }
+          return (
+            <div className="staff-tab__equipment-row">
+              <div className="staff-tab__station-header">
+                <span className="staff-tab__station-label">Upgrade Equipment</span>
+                <span className="staff-tab__station-sublabel">
+                  {grade} → {next}
+                </span>
+              </div>
+              {readOnly ? (
+                <div className="staff-tab__stepper staff-tab__stepper--readonly">
+                  <span
+                    className="staff-tab__stepper-value staff-tab__stepper-value--static"
+                    aria-label="Equipment upgrade"
+                  >
+                    {purchased ? 'Purchased' : 'Not purchased'}
+                  </span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`staff-tab__equipment-btn${purchased ? ' staff-tab__equipment-btn--active' : ''}`}
+                  onClick={() =>
+                    dispatch({
+                      type: "UPDATE_PENDING_DECISION",
+                      payload: { equipmentUpgradePurchased: !purchased },
+                    })
+                  }
+                  aria-pressed={purchased}
+                >
+                  {purchased ? '✓ Upgrade booked' : `Upgrade to ${next} ($${cost})`}
+                </button>
+              )}
+              <div className="staff-tab__station-cost">
+                Cost: <strong>${cost.toLocaleString()}</strong>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Grand total */}

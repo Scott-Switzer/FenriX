@@ -1312,6 +1312,57 @@ h3 { font-size: 0.7rem; }
   margin-bottom: 0.75rem;
 }
 
+.staff-tab__equipment {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.staff-tab__equipment-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--cream);
+  border: 2px solid var(--dough);
+}
+
+.staff-tab__equipment-btn {
+  font-family: var(--font-pixel);
+  font-size: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border: 2px solid var(--caramel);
+  background: var(--cream);
+  color: var(--espresso);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background 0.1s;
+}
+
+.staff-tab__equipment-btn:hover:not(:disabled) {
+  background: var(--dough);
+}
+
+.staff-tab__equipment-btn--active {
+  background: var(--caramel);
+  color: var(--cream);
+  border-color: var(--dark-roast);
+}
+
+.staff-tab__equipment-btn--active:hover:not(:disabled) {
+  background: var(--dark-roast);
+}
+
+.staff-tab__equipment-maxed {
+  font-family: var(--font-pixel);
+  font-size: 0.5rem;
+  color: var(--espresso);
+  padding: 0.4rem 0;
+  margin: 0;
+}
+
 .staff-tab__tasks {
   list-style: none;
   padding: 0.5rem 0.75rem;

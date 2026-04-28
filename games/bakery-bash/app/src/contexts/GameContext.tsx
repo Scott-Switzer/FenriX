@@ -154,6 +154,7 @@ type GameAction =
         sousChefAssignments?: Partial<Record<ProductKey, number>>;
         staffCounts?: Partial<StaffCounts>;
         productPrices?: Partial<Record<ProductKey, number>>;
+        equipmentUpgradePurchased?: boolean;
       };
     }
   | {
@@ -334,6 +335,10 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         productPrices: action.payload.productPrices
           ? { ...state.pendingDecision.productPrices, ...action.payload.productPrices }
           : state.pendingDecision.productPrices,
+        equipmentUpgradePurchased:
+          action.payload.equipmentUpgradePurchased !== undefined
+            ? action.payload.equipmentUpgradePurchased
+            : state.pendingDecision.equipmentUpgradePurchased,
       };
       return { ...state, pendingDecision: next };
     }
