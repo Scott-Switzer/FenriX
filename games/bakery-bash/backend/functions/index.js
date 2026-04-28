@@ -5223,17 +5223,15 @@ exports.onBotPhaseChange = onDocumentWritten(
         }
 
         if (parsed.phase === 'roster' && decisions.layoffs && decisions.layoffs.length > 0) {
-          for (const chefId of decisions.layoffs) {
-            const remaining = (botData.specialtyChefs || []).filter((c) => c.id !== chefId);
-            await botDoc.ref.update({
-              specialtyChefs: remaining,
-              pendingRosterAction: remaining.length > numberOrDefault(config.specialtyChefCap, 3),
-            });
-          }
+          // Filter out all layoff IDs in one pass so multiple layoffs compose correctly
+          const layoffIds = new Set(decisions.layoffs);
+          const remaining = (botData.specialtyChefs || []).filter((c) => !layoffIds.has(c.id));
+          await botDoc.ref.update({
+            specialtyChefs: remaining,
+            pendingRosterAction: remaining.length > numberOrDefault(config.specialtyChefCap, 3),
+          });
           // Auto-continue from roster if now at or under cap
-          const updatedSnap = await botDoc.ref.get();
-          const updatedChefs = updatedSnap.data().specialtyChefs || [];
-          if (updatedChefs.length <= numberOrDefault(config.specialtyChefCap, 3)) {
+          if (remaining.length <= numberOrDefault(config.specialtyChefCap, 3)) {
             await botDoc.ref.update({ rosterCompleted: true });
           }
         }
