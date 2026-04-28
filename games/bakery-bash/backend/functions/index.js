@@ -42,6 +42,16 @@ setGlobalOptions({ cpu: 0.5 });
 // reach the onCall handler, causing 401s instead of auth checks.
 const CALLABLE_OPTS = { invoker: 'public' };
 
+// Callables that fan out widely across the game tree (simulation, snapshot
+// capture/restore, CSV exports across 70 players × 5 rounds) get a 2x
+// safety margin over the Cloud Functions Gen 2 default of 60s. Phase
+// advancement at 70 players runs simulation + chef-pool generation +
+// auto-snapshot upload back-to-back, and a slow Firestore round-trip on
+// the snapshot chunks could push the cumulative time past 60s. The
+// remaining hot callables (`submitBids`, `submitDecision`, `submitPrices`,
+// `joinGame`, `createTeam`) finish well under the default and stay there.
+const HEAVY_CALLABLE_OPTS = { ...CALLABLE_OPTS, timeoutSeconds: 120 };
+
 const { getApps, initializeApp } = require('firebase-admin/app');
 const {
   FieldValue,
@@ -1528,7 +1538,7 @@ exports.startGame = onCall(CALLABLE_OPTS, async (request) => {
 // advanceGamePhase
 // ===========================================================================
 
-exports.advanceGamePhase = onCall(CALLABLE_OPTS, async (request) => {
+exports.advanceGamePhase = onCall(HEAVY_CALLABLE_OPTS, async (request) => {
   if (isWarmupRequest(request)) return { ok: true, warm: true };
   const auth = requireAuth(request, 'Sign in before advancing phases.');
   const gameId = cleanGameId((request.data || {}).gameId);
@@ -1792,7 +1802,7 @@ exports.advanceGamePhase = onCall(CALLABLE_OPTS, async (request) => {
  *   - failed-precondition — game is not actually stuck (phase ≠ 'simulating',
  *                  or simulation is still running within the 60s threshold).
  */
-exports.retryStuckSimulation = onCall(CALLABLE_OPTS, async (request) => {
+exports.retryStuckSimulation = onCall(HEAVY_CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request, 'Sign in before recovering stuck simulations.');
   const gameId = cleanGameId((request.data || {}).gameId);
   const gameRef = gameDoc(gameId);
@@ -3235,7 +3245,7 @@ exports.resumeGame = onCall(CALLABLE_OPTS, async (request) => setPausedFlag(requ
 // endGame — force transition to game_over
 // ===========================================================================
 
-exports.endGame = onCall(CALLABLE_OPTS, async (request) => {
+exports.endGame = onCall(HEAVY_CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request);
   const gameId = cleanGameId((request.data || {}).gameId);
   const gameRef = gameDoc(gameId);
@@ -3322,7 +3332,7 @@ exports.getConclusion = onCall(CALLABLE_OPTS, async (request) => {
 // exportPlayerCsv — player downloads their own round-by-round CSV
 // ===========================================================================
 
-exports.exportPlayerCsv = onCall(CALLABLE_OPTS, async (request) => {
+exports.exportPlayerCsv = onCall(HEAVY_CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request, 'Sign in to export your data.');
   const gameId = cleanGameId((request.data || {}).gameId);
   const gameRef = gameDoc(gameId);
@@ -3360,7 +3370,7 @@ exports.exportPlayerCsv = onCall(CALLABLE_OPTS, async (request) => {
 // exportProfessorCsv — professor downloads class-wide CSV with player names
 // ===========================================================================
 
-exports.exportProfessorCsv = onCall(CALLABLE_OPTS, async (request) => {
+exports.exportProfessorCsv = onCall(HEAVY_CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request, 'Sign in to export class data.');
   const gameId = cleanGameId((request.data || {}).gameId);
   const gameRef = gameDoc(gameId);
@@ -3883,7 +3893,7 @@ exports.purchaseChefData = onCall(async (request) => {
 // rebuilding the roster. Authorization checks both `professorUid` (canonical)
 // and `professorId` (legacy alias) to match createGame's write pattern.
 // ---------------------------------------------------------------------------
-exports.resetGame = onCall(CALLABLE_OPTS, async (request) => {
+exports.resetGame = onCall(HEAVY_CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request);
   const gameId = cleanGameId((request.data || {}).gameId);
   const gameRef = gameDoc(gameId);
@@ -4024,7 +4034,7 @@ async function assertCallerIsProfessor(gameRef, authUid) {
  *
  * Returns: { snapshotId, totalChunks, totalBytes, totalDocs, round, phase, elapsedMs }
  */
-exports.createSnapshot = onCall(CALLABLE_OPTS, async (request) => {
+exports.createSnapshot = onCall(HEAVY_CALLABLE_OPTS, async (request) => {
   if (isWarmupRequest(request)) return { ok: true, warm: true };
   const auth = requireAuth(request, 'Sign in before saving a snapshot.');
   const gameId = cleanGameId((request.data || {}).gameId);
@@ -4069,7 +4079,7 @@ exports.createSnapshot = onCall(CALLABLE_OPTS, async (request) => {
  * Args: { gameId, snapshotId }
  * Returns: { written, deleted, snapshotId, round, phase }
  */
-exports.restoreSnapshot = onCall(CALLABLE_OPTS, async (request) => {
+exports.restoreSnapshot = onCall(HEAVY_CALLABLE_OPTS, async (request) => {
   if (isWarmupRequest(request)) return { ok: true, warm: true };
   const auth = requireAuth(request, 'Sign in before restoring a snapshot.');
   const data = request.data || {};
