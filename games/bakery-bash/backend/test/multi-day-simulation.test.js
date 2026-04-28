@@ -1,0 +1,231 @@
+/**
+ * P2.4 — runMonthlySimulation wrapper.
+ *
+ * Pins the contract:
+ *   - 30 daily sub-simulations per round (configurable via MULTI_DAY.daysPerRound)
+ *   - cost / loan-shark / burglary / budget update happen ONCE per month, not per day
+ *   - per-day customer counts vary because of the demand multiplier
+ *   - same gameId/round = same monthly outcome (reproducibility)
+ */
+
+const assert = require('node:assert/strict');
+const configMod = require('../functions/modules/config');
+const { runMonthlySimulation } = require('../functions/modules/multi-day-simulation');
+
+// Same merge pattern as revenue.test.js — runSimulation reads top-level
+// fields like cfg.unitCostPerProduct that live under DEFAULT_GAME_CONFIG.
+const config = {
+  ...configMod,
+  ...configMod.DEFAULT_GAME_CONFIG,
+};
+
+const fakePlayer = (id, overrides = {}) => ({
+  playerId: id,
+  displayName: id,
+  bakeryName: id,
+  decision: {
+    menu: { croissant: true, cookie: true, bagel: true },
+    quantities: { croissant: 200, cookie: 200, bagel: 200 },
+    sousChefCount: 1,
+    sousChefAssignments: { croissant: 1 },
+    productPrices: { croissant: 4.75, cookie: 4.0, bagel: 4.5 },
+  },
+  specialtyChefs: [],
+  budgetCurrent: 10000,
+  returningCustomersPending: 0,
+  auctionResults: { adWins: [], adBidPaid: 0, chefsWon: [], chefBidPaid: 0 },
+  priorSubmittedPrices: [],
+  ...overrides,
+});
+
+describe('runMonthlySimulation', () => {
+  const prefs = { modifiers: { croissant: 1.0, cookie: 1.0, bagel: 1.0 } };
+
+  it('returns one monthly aggregate per player + an array of daily rows', () => {
+    const out = runMonthlySimulation([fakePlayer('p_a')], prefs, config, {
+      gameId: 'g1', round: 1,
+    });
+    assert.equal(out.length, 1, 'one aggregate per player');
+    const agg = out[0];
+    assert.ok(Array.isArray(agg.dailyResults), 'has dailyResults array');
+    assert.equal(agg.dailyResults.length, config.MULTI_DAY.daysPerRound, '30 daily rows');
+  });
+
+  it('monthly revenueGross equals sum of daily revenueGross', () => {
+    const out = runMonthlySimulation([fakePlayer('p_a')], prefs, config, {
+      gameId: 'g1', round: 1,
+    });
+    const agg = out[0];
+    const sum = agg.dailyResults.reduce((s, d) => s + d.revenueGross, 0);
+    assert.ok(Math.abs(agg.revenueGross - sum) < 0.01,
+      `monthly gross (${agg.revenueGross}) should equal sum of daily gross (${sum})`);
+  });
+
+  it('charges cost ONCE per month, not 30x', () => {
+    // Stock 600 units * $1 = $600. Plus 1 sous chef = $10. Total ~$610.
+    // If cost were charged 30x, totalSpent would be ~$18,300 — way out of bounds.
+    const out = runMonthlySimulation([fakePlayer('p_a')], prefs, config, {
+      gameId: 'g1', round: 1,
+    });
+    const agg = out[0];
+    assert.ok(agg.totalSpent < 2000, `expected monthly cost < $2k, got $${agg.totalSpent}`);
+    assert.ok(agg.totalSpent > 500, `expected monthly cost > $500, got $${agg.totalSpent}`);
+  });
+
+  it('does NOT charge loan-shark interest 30x for an overspending team', () => {
+    // Force overspend: tiny budget, expensive decisions.
+    const broke = fakePlayer('p_a', { budgetCurrent: 100 });
+    const out = runMonthlySimulation([broke], prefs, config, { gameId: 'g1', round: 1 });
+    const agg = out[0];
+    // Real one-time loan: borrow ~$510 at 10% = ~$51 interest. 30x would be ~$1,500.
+    assert.ok(agg.interestCharged > 0, 'loan-shark should fire on overspend');
+    assert.ok(agg.interestCharged < 200,
+      `expected one-time interest < $200, got $${agg.interestCharged}`);
+  });
+
+  it('produces different daily customer counts (variability fires)', () => {
+    const out = runMonthlySimulation([fakePlayer('p_a')], prefs, config, {
+      gameId: 'g1', round: 1,
+    });
+    const counts = out[0].dailyResults.map((d) => d.customerCount);
+    const uniq = new Set(counts);
+    assert.ok(uniq.size > 1, `expected variety in daily customer counts, got ${counts.join(',')}`);
+  });
+
+  it('is deterministic for the same gameId/round (reproducible)', () => {
+    const a = runMonthlySimulation([fakePlayer('p_a')], prefs, config, { gameId: 'g1', round: 1 });
+    const b = runMonthlySimulation([fakePlayer('p_a')], prefs, config, { gameId: 'g1', round: 1 });
+    assert.equal(a[0].revenueGross, b[0].revenueGross, 'same inputs = same outputs');
+  });
+
+  it('produces different outcomes across rounds (round folded into seed)', () => {
+    const r1 = runMonthlySimulation([fakePlayer('p_a')], prefs, config, { gameId: 'g1', round: 1 });
+    const r2 = runMonthlySimulation([fakePlayer('p_a')], prefs, config, { gameId: 'g1', round: 2 });
+    assert.notEqual(r1[0].revenueGross, r2[0].revenueGross,
+      'different rounds should produce different revenueGross via day*round noise seeds');
+  });
+
+  it('rolls burglary at most once per month, not once per day', () => {
+    const dirtyPlayer = fakePlayer('p_a', { cleanliness_pct: 10 });
+    const out = runMonthlySimulation([dirtyPlayer], prefs, config, { gameId: 'g1', round: 1 });
+    const burgledDays = out[0].dailyResults.filter((d) => d.burglary).length;
+    assert.ok(burgledDays <= 1, `expected ≤1 burgled day, got ${burgledDays}`);
+  });
+
+  // ---- Review-fix tests (PR #110 follow-ups) ----
+
+  it('apportions loan-shark deduction so sum of daily revenueNet = monthly revenueNet', () => {
+    // Force a loan: budget $100, real cost ~$610 → borrows ~$510 + interest.
+    const broke = fakePlayer('p_a', { budgetCurrent: 100 });
+    const out = runMonthlySimulation([broke], prefs, config, { gameId: 'g1', round: 1 });
+    const agg = out[0];
+    const dailyNetSum = agg.dailyResults.reduce((s, d) => s + d.revenueNet, 0);
+    assert.ok(Math.abs(agg.revenueNet - dailyNetSum) < 0.01,
+      `monthly revenueNet (${agg.revenueNet}) should equal sum of daily revenueNet (${dailyNetSum})`);
+    // And the same for amount_borrowed and interest_charged.
+    const dailyBorrowSum = agg.dailyResults.reduce((s, d) => s + d.amountBorrowed, 0);
+    const dailyInterestSum = agg.dailyResults.reduce((s, d) => s + d.interestCharged, 0);
+    assert.ok(Math.abs(agg.amountBorrowed - dailyBorrowSum) < 0.01,
+      `monthly amountBorrowed should equal sum of daily; got ${agg.amountBorrowed} vs ${dailyBorrowSum}`);
+    assert.ok(Math.abs(agg.interestCharged - dailyInterestSum) < 0.01,
+      `monthly interestCharged should equal sum of daily; got ${agg.interestCharged} vs ${dailyInterestSum}`);
+  });
+
+  it('monthly csvRow has correct cost / loan-shark / customer columns (not zeros from skipCostAccounting)', () => {
+    // Force loan-shark to fire so we can verify amount_borrowed > 0.
+    const broke = fakePlayer('p_a', { budgetCurrent: 100 });
+    const out = runMonthlySimulation([broke], prefs, config, { gameId: 'g1', round: 1 });
+    const agg = out[0];
+    const row = agg.csvRow || {};
+    // The professor CSV reads from r.csvRow — these columns must reflect
+    // the monthly aggregate, not day-29 with skipCostAccounting=true (which
+    // would have zeros for cost / borrow / interest).
+    assert.ok(row.amount_borrowed > 0,
+      `monthly csvRow.amount_borrowed should be > 0 for overspending team, got ${row.amount_borrowed}`);
+    assert.ok(row.interest_charged > 0,
+      `monthly csvRow.interest_charged should be > 0, got ${row.interest_charged}`);
+    assert.equal(row.revenue, agg.revenueNet,
+      'monthly csvRow.revenue should equal monthly revenueNet (post loan-shark)');
+    assert.equal(row.customer_count, agg.customerCount,
+      'monthly csvRow.customer_count should equal monthly aggregate (sum across days), not day-29 only');
+  });
+
+  it('returningCustomersEarned uses MONTHLY customerCount, not day-29 alone (PR #110 re-review A)', () => {
+    // computeReturningCustomersEarned is linear in customerCount. Taking
+    // last.returningCustomersEarned (day-29 only) gives ~1/daysPerRound of
+    // what it should be, breaking the round-to-round carryover loop.
+    // Excellent satisfaction (>= 86) gives a 0.15 bonus rate, so
+    // expected ≈ monthly customerCount * 0.15.
+    const out = runMonthlySimulation([fakePlayer('p_a')], prefs, config, {
+      gameId: 'g1', round: 1,
+    });
+    const agg = out[0];
+    // High satisfaction setup (lots of stock, no competition) → excellent tier.
+    assert.ok(agg.aggregateSatisfactionPct >= 86,
+      `setup expected to hit excellent tier; got ${agg.aggregateSatisfactionPct}`);
+    const expected = Math.round(agg.customerCount * 0.15);
+    // Allow small rounding tolerance.
+    assert.ok(Math.abs(agg.returningCustomersEarned - expected) <= 2,
+      `returningCustomersEarned ${agg.returningCustomersEarned} should ≈ ${expected} (monthly customerCount * 0.15); ` +
+      `if it's ~1/30 of expected, the day-29-only bug regressed`);
+  });
+
+  it('perProductCustomers is aggregated across days, not day-29 only (PR #110 re-review A)', () => {
+    // last.perProductCustomers is day-29 only, ~1/daysPerRound of the
+    // round's per-product totals. Aggregating across days gives the real
+    // monthly per-product breakdown.
+    const out = runMonthlySimulation([fakePlayer('p_a')], prefs, config, {
+      gameId: 'g1', round: 1,
+    });
+    const agg = out[0];
+    const dailySum = {};
+    for (const d of agg.dailyResults) {
+      for (const [k, v] of Object.entries(d.perProductCustomers || {})) {
+        dailySum[k] = (dailySum[k] || 0) + (Number(v) || 0);
+      }
+    }
+    for (const product of Object.keys(dailySum)) {
+      assert.equal(agg.perProductCustomers[product], dailySum[product],
+        `monthly perProductCustomers.${product} should equal sum of daily; ` +
+        `got ${agg.perProductCustomers[product]} vs ${dailySum[product]}`);
+    }
+  });
+
+  it('per-day rows carry apportioned amountBorrowed + interestCharged (PR #110 re-review B)', () => {
+    // The frontend CSV serializeRow falls back to r.amountBorrowed (monthly)
+    // if the daily row doesn't carry it — students summing the column would
+    // get 30x the actual loan. Verify the wrapper exposes apportioned values
+    // on each daily row so the lastRoundResult payload can forward them.
+    const broke = fakePlayer('p_a', { budgetCurrent: 100 });
+    const out = runMonthlySimulation([broke], prefs, config, { gameId: 'g1', round: 1 });
+    const agg = out[0];
+    assert.ok(agg.amountBorrowed > 0, 'setup must trigger a loan');
+    for (const d of agg.dailyResults) {
+      assert.ok(typeof d.amountBorrowed === 'number',
+        `each daily row must expose amountBorrowed; got ${typeof d.amountBorrowed}`);
+      assert.ok(typeof d.interestCharged === 'number',
+        `each daily row must expose interestCharged; got ${typeof d.interestCharged}`);
+      // Each day's apportioned share must be < monthly (otherwise sum > monthly).
+      assert.ok(d.amountBorrowed < agg.amountBorrowed,
+        `daily amountBorrowed (${d.amountBorrowed}) must be < monthly (${agg.amountBorrowed})`);
+    }
+  });
+
+  it('monthly customer count stays in pre-P2 round-level magnitude (not 30x)', () => {
+    // Pre-P2: a team with 200/200/200 stock, 1 sous, $10k budget would
+    // typically see a few hundred customers per round. After the day-scale
+    // fix (#3), 30 daily sub-sims with demand divided by daysPerRound
+    // should aggregate back to ≈ pre-P2 round-level magnitude.
+    // baseDemand for croissant/cookie/bagel = 240 each = 720 total.
+    // A solo player gets ~all of it (no competitor). Allow generous bounds
+    // to absorb satisfaction / sellout effects.
+    const out = runMonthlySimulation([fakePlayer('p_a')], prefs, config, {
+      gameId: 'g1', round: 1,
+    });
+    const agg = out[0];
+    assert.ok(agg.customerCount < 2000,
+      `monthly customer count should be in pre-P2 range, got ${agg.customerCount} (looks like the 30x scaling bug)`);
+    assert.ok(agg.customerCount > 100,
+      `monthly customer count should be meaningful, got ${agg.customerCount}`);
+  });
+});

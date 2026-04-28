@@ -261,7 +261,7 @@ function computeReturningCustomersEarned(aggregateSatPct, customerCount, config)
  * @param {object}        config            merged game config
  * @returns {Array<object>} per-player results
  */
-function runSimulation(players, roundPreferences, config, { gameId = 'game', round = 0 } = {}) {
+function runSimulation(players, roundPreferences, config, { gameId = 'game', round = 0, day = 0, skipCostAccounting = false } = {}) {
   const safePlayers = Array.isArray(players) ? players : [];
 
   // Numeric sanitizer: coerces value to a finite number, defaulting to 0.
@@ -445,7 +445,7 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
       adSpend: adBidPaid,
       numProducts: pp.offeredProducts.length,
       totalProductRevenue,
-      noiseSeed: `${gameId || 'game'}:${round}:${p.playerId}`,
+      noiseSeed: `${gameId || 'game'}:${round}:${day}:${p.playerId}`,
     }, config);
     revenueGross += adWinnerBonus;
 
@@ -460,30 +460,42 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
     }
 
     // --- Round costs (excluding loan shark) ---
-    const costDecision = {
-      perProductQtyStocked: decision.quantities || {},
-      sousChefCount,
-    };
-    const costAuction = {
-      adAuctionWinningBid: adBidPaid,
-      chefAuctionWinningBid: chefBidPaid,
-    };
-    const roundCosts = calculateRoundCosts(costDecision, costAuction, config);
-    const totalSpent = roundCosts.totalSpent;
-
-    // --- Loan shark ---
+    // P2 (2026-04-27): when skipCostAccounting=true (multi-day inner calls),
+    // zero out costs and loan-shark — the multi-day wrapper computes them
+    // ONCE per month using monthly aggregates. Otherwise (single-round mode,
+    // default) behave as before. Without this flag a 30-day month would charge
+    // stock cost 30× and loan-shark interest 30× for any team that overspends.
     const budgetCurrent = _num(p.budgetCurrent);
-    const loanResult = calculateLoanShark(totalSpent, budgetCurrent, config);
-    const amountBorrowed = loanResult.borrowed;
-    const interestCharged = loanResult.interest;
-    const loanSharkDeduction = loanResult.loanSharkDeduction;
+    let totalSpent = 0;
+    let amountBorrowed = 0;
+    let interestCharged = 0;
+    let loanSharkDeduction = 0;
+    if (!skipCostAccounting) {
+      const costDecision = {
+        perProductQtyStocked: decision.quantities || {},
+        sousChefCount,
+      };
+      const costAuction = {
+        adAuctionWinningBid: adBidPaid,
+        chefAuctionWinningBid: chefBidPaid,
+      };
+      const roundCosts = calculateRoundCosts(costDecision, costAuction, config);
+      totalSpent = roundCosts.totalSpent;
+
+      const loanResult = calculateLoanShark(totalSpent, budgetCurrent, config);
+      amountBorrowed = loanResult.borrowed;
+      interestCharged = loanResult.interest;
+      loanSharkDeduction = loanResult.loanSharkDeduction;
+    }
     const revenueNet = revenueGross - loanSharkDeduction;
 
     // HIGH-07 fix: use the canonical updateBudget formula from loan-shark.js.
     // Spec says budgets CAN go negative — do NOT clamp at zero.
-    const budgetAfter = Math.round(
-      updateBudget(budgetCurrent, revenueNet, totalSpent)
-    );
+    // P2: when skipCostAccounting=true, just pass budgetCurrent through
+    // unchanged (the wrapper computes the real budgetAfter once per month).
+    const budgetAfter = skipCostAccounting
+      ? budgetCurrent
+      : Math.round(updateBudget(budgetCurrent, revenueNet, totalSpent));
 
     // --- Returning customers earned (for NEXT round) ---
     const returningCustomersEarned = computeReturningCustomersEarned(
@@ -514,17 +526,21 @@ function runSimulation(players, roundPreferences, config, { gameId = 'game', rou
     });
 
     // --- Burglar curveball (BE-N06) — fires when cleanliness is critically low ---
-    const burglaryThreshold = (config && config.curveballs && config.curveballs.burglaryThreshold) || 40;
-    const burglaryChance = (config && config.curveballs && config.curveballs.burglaryChance) || 0.25;
-    const burglaryAmount = (config && config.curveballs && config.curveballs.burglaryAmount) || 10000;
-    const cleanlinessPct = typeof p.cleanliness_pct === 'number' ? p.cleanliness_pct : undefined;
+    // P2: skip in per-day inner calls; wrapper rolls it once per month so the
+    // burglary chance isn't multiplied 30× across daily sub-simulations.
     let burglary = false;
     let actualBurglaryAmount = 0;
     let budgetAfterBurglary = budgetAfter;
-    if (cleanlinessPct != null && cleanlinessPct < burglaryThreshold && Math.random() < burglaryChance) {
-      burglary = true;
-      actualBurglaryAmount = burglaryAmount;
-      budgetAfterBurglary = Math.max(0, budgetAfter - burglaryAmount);
+    if (!skipCostAccounting) {
+      const burglaryThreshold = (config && config.curveballs && config.curveballs.burglaryThreshold) || 40;
+      const burglaryChance = (config && config.curveballs && config.curveballs.burglaryChance) || 0.25;
+      const burglaryAmount = (config && config.curveballs && config.curveballs.burglaryAmount) || 10000;
+      const cleanlinessPct = typeof p.cleanliness_pct === 'number' ? p.cleanliness_pct : undefined;
+      if (cleanlinessPct != null && cleanlinessPct < burglaryThreshold && Math.random() < burglaryChance) {
+        burglary = true;
+        actualBurglaryAmount = burglaryAmount;
+        budgetAfterBurglary = Math.max(0, budgetAfter - burglaryAmount);
+      }
     }
 
     results.push({

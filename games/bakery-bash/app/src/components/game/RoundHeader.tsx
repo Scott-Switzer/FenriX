@@ -39,6 +39,7 @@ const PHASE_LABELS: Record<string, string> = {
  */
 const CSV_COLUMNS = [
   "round",
+  "day", // P2 (2026-04-27): 0–29 within each monthly round
   "revenue_net",
   "revenue_gross",
   "amount_borrowed",
@@ -59,6 +60,22 @@ const CSV_COLUMNS = [
   "chef_won",
   "chef_paid",
   "sellout",
+  // -- Decision inputs (P1, 2026-04-27): student-side X for re-training. --
+  // The CSV without these is outcome-only and a student can't fit y ~ X.
+  "num_products",
+  "price_croissant",
+  "price_cookie",
+  "price_bagel",
+  "price_sandwich",
+  "price_coffee",
+  "price_matcha",
+  "croissant_qty_stocked",
+  "cookie_qty_stocked",
+  "bagel_qty_stocked",
+  "sandwich_qty_stocked",
+  "coffee_qty_stocked",
+  "matcha_qty_stocked",
+  // -- Decision outcomes --
   "croissants_sold",
   "cookies_sold",
   "bagels_sold",
@@ -90,17 +107,43 @@ function bar(bars: MaintenanceBars | undefined, key: keyof MaintenanceBars): str
   return pct(bars?.[key]);
 }
 
-function serializeRow(r: RoundResult): string {
+/**
+ * P2 (2026-04-27): a per-day row uses `r` for the round-level / decision
+ * inputs and `daily` (when present) for the outcome columns that vary
+ * day to day. When `daily` is undefined, we emit a single row using
+ * the round-level outcome fields (legacy / pre-P2 rounds).
+ */
+type DailyRow = NonNullable<RoundResult["dailyBreakdown"]>[number];
+
+function serializeRow(r: RoundResult, daily?: DailyRow): string {
   const counts: Partial<StaffCounts> = r.staffCounts ?? {};
   const breakdown = r.productBreakdown ?? {};
+  // P1 (2026-04-27): decision-input fields surfaced from the backend.
+  const prices = r.productPrices ?? {};
+  const stocked = r.quantitiesStocked ?? {};
   // Prefer revenueNet for the headline figure but emit gross alongside so
-  // analysts can audit the loan-shark deduction.
-  const revenueNet =
-    typeof r.revenueNet === "number"
+  // analysts can audit the loan-shark deduction. P2: when emitting a
+  // per-day row, use the daily outcome values (which vary across the
+  // round's 30 days because of the demand multiplier). Loan-shark figures
+  // (amount_borrowed, interest_charged) are apportioned per day in the
+  // backend wrapper so sum-of-daily === monthly. Falling back to monthly
+  // r.amountBorrowed on every daily row would make column-sums = 30x
+  // the actual loan.
+  const revenueNet = daily
+    ? daily.revenueNet
+    : typeof r.revenueNet === "number"
       ? r.revenueNet
       : typeof r.revenue === "number"
         ? r.revenue
         : undefined;
+  const revenueGross = daily ? daily.revenueGross : r.revenueGross;
+  const amountBorrowed = daily ? daily.amountBorrowed ?? 0 : r.amountBorrowed;
+  const interestCharged = daily ? daily.interestCharged ?? 0 : r.interestCharged;
+  const customerCount = daily ? daily.customerCount : r.customerCount;
+  const customerSatisfaction = daily
+    ? daily.aggregateSatisfactionPct
+    : r.customerSatisfaction;
+  const dayValue = daily ? daily.day : 0;
   // Ad winner: backend emits a single `adWon` string (TV / Billboard / Radio
   // / Newspaper) plus an `adWins` array on multi-win rounds. Join the array
   // when present so players don't lose data; fall back to the singular.
@@ -121,12 +164,13 @@ function serializeRow(r: RoundResult): string {
 
   return [
     r.round,
+    dayValue,
     num(revenueNet),
-    num(r.revenueGross),
-    num(r.amountBorrowed),
-    num(r.interestCharged),
-    r.customerCount,
-    r.customerSatisfaction,
+    num(revenueGross),
+    num(amountBorrowed),
+    num(interestCharged),
+    customerCount,
+    customerSatisfaction,
     pct(r.chefSatisfactionScore),
     bar(r.maintenanceBars, "cleanliness"),
     bar(r.maintenanceBars, "ovenHealth"),
@@ -141,6 +185,21 @@ function serializeRow(r: RoundResult): string {
     csvCell(chefWon),
     num(r.chefBidPaid),
     r.selloutAnywhere ? "1" : "0",
+    // -- Decision inputs (P1) --
+    num(r.numProducts),
+    num(prices.croissant),
+    num(prices.cookie),
+    num(prices.bagel),
+    num(prices.sandwich),
+    num(prices.coffee),
+    num(prices.matcha),
+    num(stocked.croissant),
+    num(stocked.cookie),
+    num(stocked.bagel),
+    num(stocked.sandwich),
+    num(stocked.coffee),
+    num(stocked.matcha),
+    // -- Decision outcomes --
     num(breakdown.croissant),
     num(breakdown.cookie),
     num(breakdown.bagel),
@@ -153,7 +212,21 @@ function serializeRow(r: RoundResult): string {
 // eslint-disable-next-line react-refresh/only-export-components
 export function downloadResultsCsv(results: RoundResult[]) {
   const header = CSV_COLUMNS.join(",");
-  const rows = results.map(serializeRow);
+  // P2 (2026-04-27): emit one row per day per round when dailyBreakdown
+  // is present. Decision-input columns are constant across the 30 days
+  // of a round (the player only made one set of decisions for the month);
+  // outcome columns (revenue_net, customer_count, customer_satisfaction)
+  // vary day to day because of the demand multiplier. Pre-P2 rounds
+  // without dailyBreakdown fall back to one row per round.
+  const rows: string[] = [];
+  for (const r of results) {
+    const daily = r.dailyBreakdown ?? [];
+    if (daily.length > 0) {
+      for (const d of daily) rows.push(serializeRow(r, d));
+    } else {
+      rows.push(serializeRow(r));
+    }
+  }
   const blob = new Blob([header + "\n" + rows.join("\n")], {
     type: "text/csv",
   });

@@ -83,9 +83,7 @@ const {
   resolveChefAuction,
 } = require('./modules/chef-system');
 
-const {
-  runSimulation,
-} = require('./modules/simulation');
+const { runMonthlySimulation } = require('./modules/multi-day-simulation');
 
 const {
   buildCsvString,
@@ -2079,7 +2077,11 @@ async function runSimulationAndPersist(gameRef, round, config) {
   // -----------------------------------------------------------------------
   // Pure sim
   // -----------------------------------------------------------------------
-  const results = runSimulation(players, prefs, config, { gameId: gameRef.id, round });
+  // P2 (2026-04-27): runMonthlySimulation wraps runSimulation in a 30-day
+  // loop. Returns the same monthly aggregate shape as runSimulation plus a
+  // `dailyResults` array. Existing consumers (results[i].revenueNet, etc.)
+  // continue to work — those are still the monthly aggregates.
+  const results = runMonthlySimulation(players, prefs, config, { gameId: gameRef.id, round });
 
   // Per-team sim-input budget, keyed by playerId (== team.key). Used below to
   // write budgetBefore alongside budgetAfter on each player round doc, which
@@ -2170,6 +2172,49 @@ async function runSimulationAndPersist(gameRef, round, config) {
               (memberData.pendingDecision && memberData.pendingDecision.staffCounts) || {},
               {},
             ),
+          // P1 (2026-04-27): surface decision inputs so the student CSV can
+          // emit them. Without these the frontend CSV is outcome-only and
+          // students can't fit y ~ X for in-game re-training.
+          productPrices:
+            r.csvRow && typeof r.csvRow === 'object'
+              ? {
+                  croissant: numberOrDefault(r.csvRow.price_croissant, null),
+                  cookie: numberOrDefault(r.csvRow.price_cookie, null),
+                  bagel: numberOrDefault(r.csvRow.price_bagel, null),
+                  sandwich: numberOrDefault(r.csvRow.price_sandwich, null),
+                  coffee: numberOrDefault(r.csvRow.price_coffee, null),
+                  matcha: numberOrDefault(r.csvRow.price_matcha, null),
+                }
+              : null,
+          quantitiesStocked:
+            r.csvRow && typeof r.csvRow === 'object'
+              ? {
+                  croissant: numberOrDefault(r.csvRow.croissant_qty_stocked, 0),
+                  cookie: numberOrDefault(r.csvRow.cookie_qty_stocked, 0),
+                  bagel: numberOrDefault(r.csvRow.bagel_qty_stocked, 0),
+                  sandwich: numberOrDefault(r.csvRow.sandwich_qty_stocked, 0),
+                  coffee: numberOrDefault(r.csvRow.coffee_qty_stocked, 0),
+                  matcha: numberOrDefault(r.csvRow.matcha_qty_stocked, 0),
+                }
+              : null,
+          numProducts: numberOrDefault(r.csvRow && r.csvRow.num_products, 0),
+          // P2 (2026-04-27): lightweight per-day summary so the frontend
+          // CSV download can emit one row per day per round. Decision
+          // inputs (constant across the round) are read from the
+          // round-level fields above; daily values just fill in the
+          // outcome columns that vary day to day.
+          dailyBreakdown: Array.isArray(r.dailyResults)
+            ? r.dailyResults.map((d) => ({
+                day: d.day,
+                revenueGross: d.revenueGross,
+                revenueNet: d.revenueNet,
+                amountBorrowed: d.amountBorrowed || 0,
+                interestCharged: d.interestCharged || 0,
+                customerCount: d.customerCount,
+                aggregateSatisfactionPct: d.aggregateSatisfactionPct,
+                burglary: d.burglary || false,
+              }))
+            : [],
         },
         updatedAt: FieldValue.serverTimestamp(),
       };
@@ -2235,6 +2280,17 @@ async function runSimulationAndPersist(gameRef, round, config) {
       });
 
       opsInBatch += OPS_PER_PLAYER;
+
+      // P2 (2026-04-27): per-day breakdown lives on lastRoundResult
+      // (`dailyBreakdown` field) — the frontend reads it from there and
+      // emits one CSV row per day from in-memory state. We do NOT persist
+      // separate per-day csvRow Firestore docs because no consumer reads
+      // them (CsvInboxModal pulls from GameContext.roundResults; the
+      // professor CSV reads only the monthly csvRow doc above). Persisting
+      // 30 extra docs per player per round (16x write amplification)
+      // would burn quota for unread data. If a future feature (e.g.,
+      // cross-team CSV pool, P3) needs the daily docs, add the writes
+      // back then.
     }
   }
 

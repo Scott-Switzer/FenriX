@@ -400,6 +400,35 @@ export interface RoundResult {
   selloutAnywhere?: boolean;
   /** Per-product unit-sold breakdown, used for the Results breakdown table. */
   productBreakdown?: Partial<Record<ProductKey, number>>;
+  /**
+   * P1 (2026-04-27): decision inputs surfaced from the backend so the CSV
+   * export can include them. Required for in-game model re-training —
+   * without these the CSV is outcome-only.
+   */
+  /** Resolved per-product prices the team submitted this round (POST-01). */
+  productPrices?: Partial<Record<ProductKey, number | null>>;
+  /** Per-product quantities the team stocked this round (decision input). */
+  quantitiesStocked?: Partial<Record<ProductKey, number>>;
+  /** Number of products the team offered (3–6, base menu always on). */
+  numProducts?: number;
+  /**
+   * P2 (2026-04-27): per-day outcome breakdown. A round = 1 month = 30
+   * simulated days; each entry here is a single day's outcome with the
+   * decision inputs constant across the round (read from the round-level
+   * fields above). Empty array on legacy round docs that pre-date P2.
+   */
+  dailyBreakdown?: Array<{
+    day: number;
+    revenueGross: number;
+    revenueNet: number;
+    /** Apportioned share of the monthly loan-shark borrow (sum across days = monthly). */
+    amountBorrowed?: number;
+    /** Apportioned share of the monthly loan-shark interest (sum across days = monthly). */
+    interestCharged?: number;
+    customerCount: number;
+    aggregateSatisfactionPct: number;
+    burglary: boolean;
+  }>;
   /** Ad surface the player won this round, with paid amount. */
   adWon?: AdType | null;
   adWins?: AdType[];

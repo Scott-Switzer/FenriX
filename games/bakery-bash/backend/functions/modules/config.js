@@ -155,6 +155,22 @@ const MULTIPLIER_FLOOR = 0.05;
 const AD_TYPES = ['TV', 'Billboard', 'Radio', 'Newspaper'];
 
 // ---------------------------------------------------------------------------
+// Multi-day simulation (P2, 2026-04-27)
+// ---------------------------------------------------------------------------
+// Each round represents one month. The simulation runs daysPerRound daily
+// sub-simulations, each with a per-day demand multiplier sampled
+// deterministically from [demandVariabilityMin, demandVariabilityMax].
+// Daily revenue uses independent Gaussian noise (seed includes day index).
+// Cost / loan-shark / burglary / budget update happen ONCE per month at
+// the wrapper level, NOT per day — see multi-day-simulation.js. Monthly
+// KPIs (revenue, customer count, etc.) are sums across the days.
+const MULTI_DAY = {
+  daysPerRound: 30,
+  demandVariabilityMin: 0.7,
+  demandVariabilityMax: 1.3,
+};
+
+// ---------------------------------------------------------------------------
 // Chef nationalities, specialties, and name pools
 // ---------------------------------------------------------------------------
 
@@ -625,6 +641,7 @@ module.exports = {
   FLOOR_BONUS,
   MULTIPLIER_FLOOR,
   AD_TYPES,
+  MULTI_DAY,
   CHEF_NATIONALITIES,
   CHEF_MULTIPLIERS,
   CHEF_SPAWN_RATES,
