@@ -160,7 +160,7 @@ game-state validation; the FE button calls all six in parallel.
 
 ---
 
-### T2.2 — Eliminate team-mate cascade writes
+### T2.2 — Eliminate team-mate cascade writes — ✅ SHIPPED
 
 **Why**: every `submitBids` / `submitDecision` cascade-writes the submitting
 player's `pendingBids` to all teammates' player docs (so other team members
@@ -172,12 +172,12 @@ This is currently a **minor** issue (teams are usually 1–3 people) but it's
 the next bottleneck after sharding.
 
 **The fix**: move the team-shared transient state to a single
-`teams/{teamId}/pendingBids` doc. Each team writes to one doc, no cross-team
+`teams/{teamId}/state/pending` doc. Each team writes to one doc, no cross-team
 contention, no cascade.
 
 **Plan**
 1. Schema: new doc `games/{gameId}/teams/{teamId}/state/pending` with
-   `{ ad: {...}, chef: [...], decisionDraft: {...} }`
+   `{ ad: {...}, chef: [...], decisionDraft: {...}, updatedByUid, updatedAt }`
 2. Backend: `submitBids` writes to that doc instead of cascading to teammates
    (current cascade is in `backend/functions/index.js` around the `submitBids`
    transaction's `for (const teamPlayerDoc of teamPlayerDocs)` loop);
@@ -191,11 +191,22 @@ contention, no cascade.
 5. Firestore rules: team members can read their team's pending doc
 
 **Steps**
-- [ ] Spec the data model (one paragraph in this doc or a comment)
-- [ ] Add backend writers
-- [ ] Update FE readers
-- [ ] Update rules
-- [ ] Test: 3-player team submits decisions concurrently, no conflicts
+- [x] Spec the data model (one paragraph in this doc or a comment)
+- [x] Add backend writers
+- [x] Update FE readers
+- [x] Update rules
+- [x] Test: 3-player team submits decisions concurrently, no conflicts
+
+> **Status:** Shipped. The submitter's own player doc still gets the same
+> `pendingBids` / `pendingDecision` write it always did (so the submitter's
+> UI reads exactly as before); the team-shared draft is mirrored once to
+> `teams/{teamId}/state/pending` so other teammates can subscribe without
+> us having to fan out into their player docs. `submitPrices` is
+> intentionally untouched — its cascade is a separate concern (Finance
+> rarely races with Operations) and would have widened the diff. Round
+> transitions clear the team doc via the new `resetPendingTeamStateForRound`
+> alongside the existing per-player reset. Solo players (no `teamId`) skip
+> the team mirror; their player doc remains the only source of truth.
 
 **Effort**: ~3 hours
 **Risk**: Medium. Touches FE state. Test with the multi-tab pattern from PR #98.

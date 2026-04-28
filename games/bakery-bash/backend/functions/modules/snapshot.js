@@ -50,8 +50,11 @@ const DEFAULT_MAX_AGE_DAYS = 30;
 // Subcollections that hold operational/live state and must NOT round-trip
 // through snapshot capture or restore. `snapshots` would grow quadratically;
 // `presence` is liveness pings whose stale `lastSeenAt` would lie to the
-// professor's disconnect banner if restored.
-const NON_SNAPSHOTTED_SUBCOLLECTIONS = ['snapshots', 'presence'];
+// professor's disconnect banner if restored. `state` (under each
+// `teams/{teamId}`) holds the T2.2 per-team pending draft mirrored from
+// player docs — restoring it would re-surface stale `decisionDraft.submitted`
+// to teammates' UIs even after a round has advanced.
+const NON_SNAPSHOTTED_SUBCOLLECTIONS = ['snapshots', 'presence', 'state'];
 
 // ---------------------------------------------------------------------------
 // Serialization (lossless round-trip for Firestore-supported types)

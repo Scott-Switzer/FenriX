@@ -169,6 +169,24 @@ service cloud.firestore {
       match /teams/{teamId} {
         allow read: if signedIn();
         allow write: if false;
+
+        // ───────────────────────────────────────────────────
+        // /games/{gameId}/teams/{teamId}/state/{stateDocId}
+        // T2.2: per-team transient round state — `pending` doc
+        // mirrors team-shared `pendingBids` / `pendingDecision`
+        // fields so teammates see what each other has staged
+        // without us cascading the write to every teammate's
+        // player doc. Readable only by team members (player doc's
+        // `teamId` matches this teamId), since the doc reveals
+        // the team's pre-submit bid amounts. Server-only writes —
+        // submitBids / submitDecision are the only writers.
+        // ───────────────────────────────────────────────────
+        match /state/{stateDocId} {
+          allow read: if signedIn()
+            && exists(/databases/$(database)/documents/games/$(gameId)/players/$(request.auth.uid))
+            && get(/databases/$(database)/documents/games/$(gameId)/players/$(request.auth.uid)).data.teamId == teamId;
+          allow write: if false;
+        }
       }
 
       // ─────────────────────────────────────────────────────

@@ -415,6 +415,28 @@ function getPlayerTeamKey(playerDoc) {
 }
 
 /**
+ * T2.2: Single per-team transient-state doc for round-scoped pending bids
+ * and decision drafts. Replaces the previous cascade pattern where
+ * `submitBids` / `submitDecision` wrote `pendingBids` / `pendingDecision`
+ * to every teammate's `players/{uid}` doc — which contended at 3+ members.
+ * Now each team has one doc that any teammate can subscribe to.
+ *
+ * Shape: { ad?, chef?, decisionDraft?, updatedByUid, updatedAt }
+ *   - `ad` mirrors `pendingBids.ad` (the validated bid map)
+ *   - `chef` mirrors `pendingBids.chef` (validated bid array)
+ *   - `decisionDraft` mirrors the team-shared `pendingDecision.*` fields
+ *     written by Operations' `submitDecision` (menu, quantities, staffCounts,
+ *     maintenanceTasks, sousChef*, submitted, submittedAt, round)
+ *
+ * `pendingDecision.productPrices` / `pricesSubmitted` are intentionally NOT
+ * mirrored here — `submitPrices` is out of scope for T2.2 and continues to
+ * cascade those fields onto teammates' player docs.
+ */
+function teamPendingDocRef(gameRef, teamId) {
+  return gameRef.collection('teams').doc(teamId).collection('state').doc('pending');
+}
+
+/**
  * BE-I02: Scan every player doc and return the set of (teamKey, memberUid,
  * count) entries whose `specialtyChefs` array exceeds the cap. Used by
  * advanceGamePhase to block leaving the roster phase while anyone is over.
@@ -708,6 +730,49 @@ async function resetPendingPlayerStateForRound(gameRef) {
       rosterCompleted: false,
       updatedAt: FieldValue.serverTimestamp(),
     });
+    opsInBatch++;
+    if (opsInBatch >= BATCH_SIZE) {
+      await batch.commit();
+      batch = db.batch();
+      opsInBatch = 0;
+    }
+  }
+  if (opsInBatch > 0) await batch.commit();
+}
+
+/**
+ * T2.2: Clear every team's round-scoped pending doc so round N doesn't
+ * surface round N-1 staged bids / decision drafts to teammates. Mirrors
+ * `resetPendingPlayerStateForRound` for the new per-team transient-state
+ * doc. Called from the same email-phase transition. Idempotent: writes
+ * with merge so missing docs are created fresh, existing docs are reset.
+ */
+async function resetPendingTeamStateForRound(gameRef) {
+  const teamsSnap = await gameRef.collection('teams').get();
+  if (teamsSnap.empty) return;
+
+  const BATCH_SIZE = 400;
+  let batch = db.batch();
+  let opsInBatch = 0;
+
+  for (const teamDoc of teamsSnap.docs) {
+    batch.set(teamPendingDocRef(gameRef, teamDoc.id), {
+      ad: null,
+      chef: null,
+      decisionDraft: {
+        submitted: false,
+        submittedAt: null,
+        round: null,
+        menu: {},
+        quantities: {},
+        sousChefCount: 0,
+        sousChefAssignments: {},
+        staffCounts: {},
+        maintenanceTasks: [],
+      },
+      updatedByUid: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
     opsInBatch++;
     if (opsInBatch >= BATCH_SIZE) {
       await batch.commit();
@@ -1567,6 +1632,10 @@ exports.advanceGamePhase = onCall(CALLABLE_OPTS, async (request) => {
       // no-op since all fields are already at their join-time defaults, but
       // it's idempotent and cheap so we run it unconditionally.
       await resetPendingPlayerStateForRound(gameRef);
+      // T2.2: same reset for the per-team pending doc (the new home for
+      // team-shared transient state). Independent batch — these docs live
+      // under `teams/{id}/state/pending`, not under `players/{uid}`.
+      await resetPendingTeamStateForRound(gameRef);
 
       // Write the market-insight email for the entering round.
       const prefs = await loadRoundPreferences(gameRef, round);
@@ -2370,9 +2439,12 @@ exports.submitDecision = onCall(CALLABLE_OPTS, async (request) => {
         }
       }
 
-      const teamPlayerDocs = teamId
-        ? (await transaction.get(gameRef.collection('players').where('teamId', '==', teamId))).docs
-        : [pSnap];
+      // T2.2: dropped the `players where teamId == X` read that previously
+      // backed a cascade write across teammates' player docs. The submitter's
+      // own player doc still gets the full `pendingDecision.*` write below
+      // (no behaviour change for the submitter); the team-shared draft is
+      // mirrored once to `teams/{teamId}/state/pending` so other teammates
+      // can subscribe without contending on each other's player docs.
 
       // Validate using the decision-validation module (pure).
       // ValidationError is a plain JS error — convert to HttpsError so the
@@ -2420,23 +2492,45 @@ exports.submitDecision = onCall(CALLABLE_OPTS, async (request) => {
       // POST-01: use dot-paths rather than replacing the whole `pendingDecision`
       // so Finance's `pendingDecision.productPrices` (written by submitPrices)
       // isn't clobbered when Operations submits after Finance.
-      for (const teamPlayerDoc of teamPlayerDocs) {
-        transaction.update(teamPlayerDoc.ref, {
-          'pendingDecision.submitted': true,
-          'pendingDecision.submittedAt': Timestamp.now(),
-          'pendingDecision.round': currentRound,
-          'pendingDecision.menu': validated.menu || {},
-          'pendingDecision.quantities': validated.quantities || {},
-          'pendingDecision.sousChefCount': validated.sousChefCount || 0,
-          'pendingDecision.sousChefAssignments': validated.sousChefAssignments || {},
-          'pendingDecision.staffCounts': objectOrDefault(data.staffCounts, {}),
-          'pendingDecision.maintenanceTasks': Array.isArray(data.maintenanceTasks)
-            ? data.maintenanceTasks
-            : [],
-          consecutiveMissedRounds: 0,
-          disconnected: false,
+      const submittedAtTs = Timestamp.now();
+      const draftFields = {
+        submitted: true,
+        submittedAt: submittedAtTs,
+        round: currentRound,
+        menu: validated.menu || {},
+        quantities: validated.quantities || {},
+        sousChefCount: validated.sousChefCount || 0,
+        sousChefAssignments: validated.sousChefAssignments || {},
+        staffCounts: objectOrDefault(data.staffCounts, {}),
+        maintenanceTasks: Array.isArray(data.maintenanceTasks)
+          ? data.maintenanceTasks
+          : [],
+      };
+      transaction.update(playerRef, {
+        'pendingDecision.submitted': draftFields.submitted,
+        'pendingDecision.submittedAt': draftFields.submittedAt,
+        'pendingDecision.round': draftFields.round,
+        'pendingDecision.menu': draftFields.menu,
+        'pendingDecision.quantities': draftFields.quantities,
+        'pendingDecision.sousChefCount': draftFields.sousChefCount,
+        'pendingDecision.sousChefAssignments': draftFields.sousChefAssignments,
+        'pendingDecision.staffCounts': draftFields.staffCounts,
+        'pendingDecision.maintenanceTasks': draftFields.maintenanceTasks,
+        consecutiveMissedRounds: 0,
+        disconnected: false,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      // T2.2: mirror the team-shared draft to one per-team doc so other
+      // teammates' UIs can react without us having to fan out to each
+      // teammate's player doc. Solo players (no teamId) skip this — their
+      // own player doc IS the source of truth.
+      if (teamId) {
+        transaction.set(teamPendingDocRef(gameRef, teamId), {
+          decisionDraft: draftFields,
+          updatedByUid: uid,
           updatedAt: FieldValue.serverTimestamp(),
-        });
+        }, { merge: true });
       }
 
       // T3.3: submittedCount is no longer incremented here. The single-doc
@@ -2664,9 +2758,10 @@ exports.submitBids = onCall(CALLABLE_OPTS, async (request) => {
     _submitBids_round = round;
     const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
     const teamId = getPlayerTeamId(pSnap.data());
-    const teamPlayerDocs = teamId
-      ? (await transaction.get(gameRef.collection('players').where('teamId', '==', teamId))).docs
-      : [pSnap];
+    // T2.2: dropped the `players where teamId == X` cascade read — the
+    // submitter still gets their own `pendingBids.${bidType}` write below
+    // (no behaviour change for the submitter); other teammates subscribe
+    // to the team pending doc instead of having it cascaded onto theirs.
 
     let validated;
     try {
@@ -2749,11 +2844,20 @@ exports.submitBids = onCall(CALLABLE_OPTS, async (request) => {
     merged[`${bidType}SubmittedAt`] = FieldValue.serverTimestamp();
 
     transaction.set(bidsRef, merged, { merge: true });
-    for (const teamPlayerDoc of teamPlayerDocs) {
-      transaction.update(teamPlayerDoc.ref, {
-        [`pendingBids.${bidType}`]: validated,
+    // T2.2: write submitter's own player doc (preserves the existing
+    // contract — submitter's UI continues to read pendingBids from their
+    // own player doc) and mirror to the per-team pending doc once. Solo
+    // players (no teamId) skip the team mirror.
+    transaction.update(playerRef, {
+      [`pendingBids.${bidType}`]: validated,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    if (teamId) {
+      transaction.set(teamPendingDocRef(gameRef, teamId), {
+        [bidType]: validated,
+        updatedByUid: uid,
         updatedAt: FieldValue.serverTimestamp(),
-      });
+      }, { merge: true });
     }
   });
 
@@ -3658,10 +3762,11 @@ exports.resetGame = onCall(CALLABLE_OPTS, async (request) => {
   const gameId = cleanGameId((request.data || {}).gameId);
   const gameRef = gameDoc(gameId);
 
-  const [gameSnap, cfgSnap, playersSnap] = await Promise.all([
+  const [gameSnap, cfgSnap, playersSnap, teamsSnap] = await Promise.all([
     gameRef.get(),
     gameRef.collection('config').doc('params').get(),
     gameRef.collection('players').get(),
+    gameRef.collection('teams').get(),
   ]);
 
   if (!gameSnap.exists) throw new HttpsError('not-found', 'Game not found.');
@@ -3679,12 +3784,16 @@ exports.resetGame = onCall(CALLABLE_OPTS, async (request) => {
   );
 
   const playerDocs = playersSnap.docs;
+  const teamDocs = teamsSnap.docs;
 
   // Wipe game-level + per-player subcollections in parallel. deleteCollectionDocs
   // chunks at BATCH_OP_LIMIT internally. `rounds`, `submissions`, and
   // `submittedCountShards` use recursiveDelete because they own shard
   // subcollections (`topBidsShards`, `shards`) that would otherwise survive
-  // the reset and pollute the next game's aggregate writes.
+  // the reset and pollute the next game's aggregate writes. Each team's
+  // `state` subcollection holds the T2.2 per-team pending draft and must
+  // also be cleared, otherwise stale `decisionDraft.submitted: true` would
+  // surface to teammates' UIs in the next game.
   await Promise.all([
     db.recursiveDelete(gameRef.collection('rounds')),
     db.recursiveDelete(gameRef.collection('submissions')),
@@ -3701,6 +3810,7 @@ exports.resetGame = onCall(CALLABLE_OPTS, async (request) => {
         gameRef.collection('csvRows').doc(pd.id).collection('rounds'),
       ),
     ),
+    ...teamDocs.map((td) => db.recursiveDelete(td.ref.collection('state'))),
   ]);
 
   // Reset the game doc + each player to lobby defaults in chunked batches.
