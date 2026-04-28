@@ -204,12 +204,10 @@ export function GamePage() {
     return unsubscribe;
   }, [gameId, dispatch]);
 
-  // --- Listener: /games/{gameId}/players/{playerId} — maintenance/chef stats + budget. ---
-  // Cloud Functions write `maintenanceBars`, `chefSatisfactionScores`, and
-  // `budgetCurrent` onto the player doc as they evolve. We mirror them into
-  // GameContext so the sidebar status bars, results-phase warnings, and
-  // budget summary stay live. The maintenance/satisfaction fields are absent
-  // until BE-1..BE-10 ship; `budgetCurrent` is initialized at join time.
+  // --- Listener: /games/{gameId}/players/{playerId} — maintenance stats + budget. ---
+  // Cloud Functions write `maintenanceBars` and `budgetCurrent` onto the player
+  // doc as they evolve. We mirror them into GameContext so the sidebar status
+  // bars and budget summary stay live.
   useEffect(() => {
     if (!gameId || !playerId) return;
     const playerRef = doc(db, "games", gameId, "players", playerId);
@@ -229,13 +227,6 @@ export function GamePage() {
           dispatch({
             type: "SET_MAINTENANCE_BARS",
             payload: bars as MaintenanceBars,
-          });
-        }
-        const scores = data.chefSatisfactionScores;
-        if (scores && typeof scores === "object") {
-          dispatch({
-            type: "SET_CHEF_SATISFACTION",
-            payload: scores as Record<string, number>,
           });
         }
         if (typeof data.budgetCurrent === "number") {
@@ -357,18 +348,6 @@ export function GamePage() {
                   : typeof lrr.customerSatisfaction === "number"
                     ? lrr.customerSatisfaction
                     : 0,
-              chefSatisfactionScore:
-                typeof lrr.chefSatisfactionScore === "number"
-                  ? lrr.chefSatisfactionScore
-                  : undefined,
-              chefSatisfactionScores:
-                lrr.chefSatisfactionScores &&
-                typeof lrr.chefSatisfactionScores === "object"
-                  ? (lrr.chefSatisfactionScores as Record<string, number>)
-                  : undefined,
-              chefDepartures: Array.isArray(lrr.chefDepartures)
-                ? (lrr.chefDepartures as string[])
-                : undefined,
               chefDepartureNames: Array.isArray(lrr.chefDepartureNames)
                 ? (lrr.chefDepartureNames as string[])
                 : undefined,

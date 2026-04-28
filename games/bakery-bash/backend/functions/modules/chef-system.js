@@ -1,5 +1,5 @@
 /**
- * chef-system.js — Chef generation, output math, satisfaction, and auction resolution.
+ * chef-system.js — Chef generation, output math, and auction resolution.
  *
  * Pure module (no Firebase dependencies). CommonJS exports only.
  *
@@ -10,8 +10,6 @@
  *   - Sous chef output:      0.5 × headChefOutput(product), where headChef = highest-skill
  *                            specialty chef whose specialty includes that product
  *                            (fallback: base chef = 30).
- *   - Kitchen cohesion:      chefSatisfaction = max(floor, 100 - max(0, n - threshold) × decay).
- *   - Effective output:      totalOutput × (chefSatisfaction / 100).
  *   - Sous chef hire cost:   multiplier × sousChefBaseCost, with escalating schedule.
  */
 
@@ -216,56 +214,7 @@ function calculateTotalProductOutput(product, specialtyChefs, sousChefAssignment
 }
 
 // ---------------------------------------------------------------------------
-// 4. calculateChefSatisfactionScore (kitchen cohesion)
-// ---------------------------------------------------------------------------
-
-/**
- * Chef satisfaction (kitchen cohesion) decays once you exceed the threshold of
- * sous chefs. Applied later as a multiplier on throughput.
- *
- *   chefSatisfaction = max(floor, 100 - max(0, n - threshold) × decay)
- *
- * With defaults (threshold=4, decay=16, floor=35):
- *   n <= 4  → 100
- *   n = 5   → 84
- *   n = 6   → 68
- *   n = 7   → 52
- *   n = 8   → 36
- *   n >= 9  → 35 (floor)
- *
- * @param {number} sousChefCount
- * @param {object} config  merged game config
- * @returns {number} satisfaction score in [floor, 100]
- */
-function calculateChefSatisfactionScore(sousChefCount, config) {
-  const cfg = config || {};
-  const n = Number.isFinite(sousChefCount) ? Math.max(0, sousChefCount) : 0;
-  const threshold = Number.isFinite(cfg.chefSatisfactionThreshold) ? cfg.chefSatisfactionThreshold : 4;
-  const decay = Number.isFinite(cfg.chefSatisfactionDecay) ? cfg.chefSatisfactionDecay : 16;
-  const floor = Number.isFinite(cfg.chefSatisfactionFloor) ? cfg.chefSatisfactionFloor : 35;
-  const over = Math.max(0, n - threshold);
-  const raw = 100 - over * decay;
-  return Math.max(floor, raw);
-}
-
-// ---------------------------------------------------------------------------
-// 5. calculateEffectiveOutput
-// ---------------------------------------------------------------------------
-
-/**
- * Apply the kitchen-cohesion multiplier to total output.
- *   effectiveOutput = totalOutput × (chefSatisfactionScore / 100)
- *
- * @param {number} totalOutput
- * @param {number} chefSatisfactionScore  in [0, 100]
- * @returns {number}
- */
-function calculateEffectiveOutput(totalOutput, chefSatisfactionScore) {
-  return totalOutput * (chefSatisfactionScore / 100);
-}
-
-// ---------------------------------------------------------------------------
-// 6. getSousChefCost (cost of the NEXT sous chef)
+// 4. getSousChefCost (cost of the NEXT sous chef)
 // ---------------------------------------------------------------------------
 
 /**
@@ -300,7 +249,7 @@ function getSousChefCost(currentCount, config) {
 }
 
 // ---------------------------------------------------------------------------
-// 7. getTotalSousChefHireCost
+// 5. getTotalSousChefHireCost
 // ---------------------------------------------------------------------------
 
 /**
@@ -320,7 +269,7 @@ function getTotalSousChefHireCost(count, config) {
 }
 
 // ---------------------------------------------------------------------------
-// 8. resolveChefAuction
+// 6. resolveChefAuction
 // ---------------------------------------------------------------------------
 
 /**
@@ -394,8 +343,6 @@ module.exports = {
   generateOneChef,
   getChefOutputForProduct,
   calculateTotalProductOutput,
-  calculateChefSatisfactionScore,
-  calculateEffectiveOutput,
   getSousChefCost,
   getTotalSousChefHireCost,
   resolveChefAuction,

@@ -55,16 +55,6 @@ const total2 = chefSys.calculateTotalProductOutput('matcha', [frenchAdv], { matc
 // base(30) + frenchAdv on matcha (non-specialty, 30×1.8=54) + sous 0.5×30=15 (no matcha specialty on team) = 99
 assert(near(total2, 99), `matcha total = ${total2}`);
 
-// Kitchen cohesion (decay 10/chef-over-threshold-of-4, floor 35)
-assert(chefSys.calculateChefSatisfactionScore(4, cfg) === 100, 'cohesion 4');
-assert(chefSys.calculateChefSatisfactionScore(5, cfg) === 90, 'cohesion 5');
-assert(chefSys.calculateChefSatisfactionScore(8, cfg) === 60, 'cohesion 8');
-assert(chefSys.calculateChefSatisfactionScore(9, cfg) === 50, 'cohesion 9 (above floor)');
-assert(chefSys.calculateChefSatisfactionScore(100, cfg) === 35, 'cohesion huge floor');
-
-// Effective output
-assert(chefSys.calculateEffectiveOutput(200, 50) === 100, 'effective output');
-
 // Sous chef hire cost — assertions derived from cfg.sousChefBaseCost so the
 // math holds across future economy rescales.
 const SC_BASE = cfg.sousChefBaseCost;

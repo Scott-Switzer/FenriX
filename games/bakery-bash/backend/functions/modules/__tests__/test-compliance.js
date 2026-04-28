@@ -36,8 +36,6 @@ const {
   generateChefPool,
   getChefOutputForProduct,
   calculateTotalProductOutput,
-  calculateChefSatisfactionScore,
-  calculateEffectiveOutput,
   getSousChefCost,
   getTotalSousChefHireCost,
   BASE_CHEF_RATE,
@@ -309,20 +307,6 @@ section('A3. Chef System');
   // Total output example: base + advanced French on croissant, with 0 sous chefs
   const total = calculateTotalProductOutput('croissant', [frenchAdv], {});
   assertClose(total, 30 + 90, 'Total output: base(30) + advanced French(90) = 120 for croissant');
-
-  // Chef Satisfaction Score: max(35, 100 - max(0, n-4) × decay) — balance pass: decay 16 → 10
-  const cfg = mergeConfig({});
-  assert(calculateChefSatisfactionScore(0,  cfg) === 100, 'Chef sat 0 sous chefs = 100');
-  assert(calculateChefSatisfactionScore(4,  cfg) === 100, 'Chef sat 4 sous chefs = 100');
-  assert(calculateChefSatisfactionScore(5,  cfg) === 90,  'Chef sat 5 sous chefs = 90');
-  assert(calculateChefSatisfactionScore(6,  cfg) === 80,  'Chef sat 6 sous chefs = 80');
-  assert(calculateChefSatisfactionScore(7,  cfg) === 70,  'Chef sat 7 sous chefs = 70');
-  assert(calculateChefSatisfactionScore(11, cfg) === 35,  'Chef sat 11 sous chefs = 35 (floor)');
-  assert(calculateChefSatisfactionScore(15, cfg) === 35,  'Chef sat 15 sous chefs = 35 (floor)');
-
-  // Effective output: totalOutput × (chefSatisfaction / 100)
-  const eff = calculateEffectiveOutput(100, 52);
-  assertClose(eff, 52, 'Effective output 100 × (52/100) = 52');
 
   // Sous chef cost escalation: 1.0×, 1.5×, 2.25×, 3.0×, 5th= 3.75×
   const baseCost = 50;
@@ -819,9 +803,6 @@ for (let round = 1; round <= 4; round++) {
     assert(r.aggregateSatisfactionPct >= 0 && r.aggregateSatisfactionPct <= 100,
       `Round ${round} ${r.playerId}: aggregateSatisfactionPct in [0,100]`,
       `got ${r.aggregateSatisfactionPct}`);
-    assert(r.chefSatisfactionScore >= 35 && r.chefSatisfactionScore <= 100,
-      `Round ${round} ${r.playerId}: chefSatisfactionScore in [35,100]`,
-      `got ${r.chefSatisfactionScore}`);
 
     // Customer count
     assert(typeof r.customerCount === 'number' && r.customerCount >= 0,
@@ -960,7 +941,6 @@ section('C2. CSV Export Integrity');
     amountBorrowed: round1Result.amountBorrowed,
     interestCharged: round1Result.interestCharged,
     aggregateSatisfactionPct: round1Result.aggregateSatisfactionPct,
-    chefSatisfactionScore: round1Result.chefSatisfactionScore,
   });
 
   // All expected CSV column keys should be present
@@ -972,7 +952,7 @@ section('C2. CSV Export Integrity');
     'croissant_qty_stocked', 'cookie_qty_stocked', 'bagel_qty_stocked',
     'sandwich_qty_stocked', 'coffee_qty_stocked', 'matcha_qty_stocked',
     'revenue', 'amount_borrowed', 'interest_charged', 'customer_count',
-    'aggregate_satisfaction_pct', 'chef_satisfaction_score',
+    'aggregate_satisfaction_pct',
     'croissant_satisfaction_pct', 'cookie_satisfaction_pct', 'bagel_satisfaction_pct',
     'sandwich_satisfaction_pct', 'coffee_satisfaction_pct', 'matcha_satisfaction_pct',
     'croissant_qty_sold', 'cookie_qty_sold', 'bagel_qty_sold',
@@ -1002,7 +982,6 @@ section('C2. CSV Export Integrity');
       amountBorrowed: r.amountBorrowed,
       interestCharged: r.interestCharged,
       aggregateSatisfactionPct: r.aggregateSatisfactionPct,
-      chefSatisfactionScore: r.chefSatisfactionScore,
     }))
   );
 

@@ -215,8 +215,6 @@ export function ProfessorLeaderboardPage() {
               revenueNet: readNumber(data.revenueNet),
               amountBorrowed: readNumber(data.amountBorrowed),
               interestCharged: readNumber(data.interestCharged),
-              chefSatisfactionScore:
-                readNumber(data.chefSatisfactionScore) ?? 0,
               maintenanceBars: data.maintenanceBars ?? {
                 cleanliness: 100,
                 ovenHealth: 100,
@@ -225,9 +223,6 @@ export function ProfessorLeaderboardPage() {
               },
               productBreakdown:
                 data.perProductSold ?? data.productBreakdown ?? undefined,
-              chefDepartures: Array.isArray(data.chefDepartures)
-                ? (data.chefDepartures as string[])
-                : [],
             } satisfies RoundResult;
           });
           rows.sort((a, b) => a.round - b.round);
@@ -303,12 +298,10 @@ export function ProfessorLeaderboardPage() {
       "customer_satisfaction_pct",
       "amount_borrowed",
       "interest_charged",
-      "chef_satisfaction_pct",
       "cleanliness_pct",
       "oven_pct",
       "slicer_pct",
       "espresso_pct",
-      "chef_departures",
     ];
     const rows: string[] = [];
     Object.entries(historyByUid).forEach(([uid, playerRows]) => {
@@ -327,12 +320,10 @@ export function ProfessorLeaderboardPage() {
             Math.round(r.customerSatisfaction ?? 0),
             fmt(r.amountBorrowed),
             fmt(r.interestCharged),
-            Math.round(r.chefSatisfactionScore ?? 0),
             Math.round(r.maintenanceBars?.cleanliness ?? 0),
             Math.round(r.maintenanceBars?.ovenHealth ?? 0),
             Math.round(r.maintenanceBars?.slicerHealth ?? 0),
             Math.round(r.maintenanceBars?.espressoHealth ?? 0),
-            quote((r.chefDepartures ?? []).join("; ")),
           ].join(","),
         );
       });

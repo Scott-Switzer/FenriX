@@ -19,7 +19,6 @@
  *   interestCharged           number
  *   customerCount             number
  *   aggregateSatisfactionPct  number
- *   chefSatisfactionScore     number
  *   perProductSatisfaction:   { [product]: number }
  *   perProductSold:           { [product]: number }
  *   selloutFlags:             { [product]: boolean }
@@ -80,8 +79,6 @@ const CSV_COLUMNS = [
   { key: 'interest_charged',         header: 'interest_charged',         type: 'float' },
   { key: 'customer_count',           header: 'customer_count',           type: 'int'   },
   { key: 'aggregate_satisfaction_pct', header: 'aggregate_satisfaction_pct', type: 'pct' },
-  { key: 'chef_satisfaction_score',  header: 'chef_satisfaction_score',  type: 'float' },
-
   { key: 'croissant_satisfaction_pct', header: 'croissant_satisfaction_pct', type: 'pct' },
   { key: 'cookie_satisfaction_pct',    header: 'cookie_satisfaction_pct',    type: 'pct' },
   { key: 'bagel_satisfaction_pct',     header: 'bagel_satisfaction_pct',     type: 'pct' },
@@ -262,7 +259,6 @@ function buildCsvRow(roundResult) {
   row.interest_charged            = firstDefined(r.interestCharged, 0);
   row.customer_count              = firstDefined(r.customerCount, 0);
   row.aggregate_satisfaction_pct  = firstDefined(r.aggregateSatisfactionPct);
-  row.chef_satisfaction_score     = firstDefined(r.chefSatisfactionScore);
 
   for (const p of CSV_PRODUCT_ORDER) {
     const onMenu = !!menu[p];

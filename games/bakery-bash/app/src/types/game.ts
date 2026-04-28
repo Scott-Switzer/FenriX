@@ -423,15 +423,9 @@ export interface RoundResult {
     adWon: AdType | null;
     chefWon: string | null;
   };
-  /** Aggregate chef-satisfaction 0–100 (average across specialty chefs). */
-  chefSatisfactionScore?: number;
-  /** Per-chef satisfaction map `{ chefId: 0-100 }`. */
-  chefSatisfactionScores?: Record<string, number>;
   /** Maintenance bar snapshot at the end of this round. */
   maintenanceBars?: MaintenanceBars;
-  /** Chef ids that voluntarily left this round (satisfaction ≤ 30%). */
-  chefDepartures?: string[];
-  /** Optional display names matched to `chefDepartures` ids, in order. */
+  /** Optional display names matched to departed chef ids, in order. */
   chefDepartureNames?: string[];
   /** Station-based staff counts the player submitted for this round. */
   staffCounts?: StaffCounts;
@@ -666,11 +660,6 @@ export interface GameState {
   cleanlinessScore: number;
   /** Cleanliness grade derived from cleanlinessScore — cached for UI. */
   cleanlinessGrade: EquipmentGrade;
-  /**
-   * Per-specialty-chef satisfaction 0–100. Written by Cloud Functions during
-   * simulation; renders the low-satisfaction warnings on the results screen.
-   */
-  chefSatisfactionScores: Record<string, number>;
   /**
    * Live remaining budget for the player, mirrored from
    * `/games/{gameId}/players/{uid}.budgetCurrent`. `null` until the listener

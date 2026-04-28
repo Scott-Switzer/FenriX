@@ -460,16 +460,6 @@ const DEFAULT_GAME_CONFIG = {
   specialtyChefCap: 3,
   chefPoolSize: 12,
 
-  // Kitchen cohesion: chefSatisfaction = max(floor, 100 - max(0, n - threshold) × decay)
-  // Balance pass 1: decay from 16 to 10 — at decay 16, 8 sous chefs put a
-  // team at the floor (35) which crashed throughput. The 4-sous-chef
-  // sweet spot was a cliff. With decay 10, 5 chefs = 90, 6 = 80, 7 = 70,
-  // 8 = 60, 9 = 50, 10+ = 35 (floor). Smoother penalty rewards moderate
-  // overstaffing in late rounds when demand is high.
-  chefSatisfactionThreshold: 4,
-  chefSatisfactionDecay: 10,
-  chefSatisfactionFloor: 35,
-
   loanSharkInterestRate: 0.10,
 
   returningCustomerBonuses: {
@@ -640,10 +630,6 @@ function mergeConfig(rawConfig) {
     // existing Firestore game docs don't silently fall back to the
     // default when reloaded under the new flat-number schema.
     chefPoolSize: coerceChefPoolSize(raw.chefPoolSize, d.chefPoolSize),
-
-    chefSatisfactionThreshold: numberOrDefault(raw.chefSatisfactionThreshold, d.chefSatisfactionThreshold),
-    chefSatisfactionDecay:     numberOrDefault(raw.chefSatisfactionDecay,     d.chefSatisfactionDecay),
-    chefSatisfactionFloor:     numberOrDefault(raw.chefSatisfactionFloor,     d.chefSatisfactionFloor),
 
     loanSharkInterestRate: numberOrDefault(raw.loanSharkInterestRate, d.loanSharkInterestRate),
 

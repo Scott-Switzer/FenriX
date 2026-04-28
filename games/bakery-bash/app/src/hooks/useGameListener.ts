@@ -138,13 +138,6 @@ export function useGameListener(gameId: string | null, playerId?: string | null)
             payload: bars as MaintenanceBars,
           });
         }
-        const scores = data.chefSatisfactionScores;
-        if (scores && typeof scores === "object") {
-          dispatch({
-            type: "SET_CHEF_SATISFACTION",
-            payload: scores as Record<string, number>,
-          });
-        }
         if (typeof data.budgetCurrent === "number") {
           dispatch({ type: "SET_BUDGET", payload: data.budgetCurrent });
         } else {
@@ -203,18 +196,6 @@ export function useGameListener(gameId: string | null, playerId?: string | null)
                   : typeof lrr.customerSatisfaction === "number"
                     ? lrr.customerSatisfaction
                     : 0,
-              chefSatisfactionScore:
-                typeof lrr.chefSatisfactionScore === "number"
-                  ? lrr.chefSatisfactionScore
-                  : undefined,
-              chefSatisfactionScores:
-                lrr.chefSatisfactionScores &&
-                typeof lrr.chefSatisfactionScores === "object"
-                  ? (lrr.chefSatisfactionScores as Record<string, number>)
-                  : undefined,
-              chefDepartures: Array.isArray(lrr.chefDepartures)
-                ? (lrr.chefDepartures as string[])
-                : undefined,
               chefDepartureNames: Array.isArray(lrr.chefDepartureNames)
                 ? (lrr.chefDepartureNames as string[])
                 : undefined,

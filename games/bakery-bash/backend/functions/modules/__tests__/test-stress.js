@@ -715,7 +715,6 @@ function runCsvExportStress() {
       interestCharged: 0,
       customerCount: 10,
       aggregateSatisfactionPct: 75,
-      chefSatisfactionScore: 100,
       perProductSatisfaction: {},
     });
     let csvStr;

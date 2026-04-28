@@ -20,8 +20,6 @@ import { db } from "../../lib/firebase";
  *
  * Budget is intentionally NOT shown (Hard UI Rule #1).
  */
-const LOW_SATISFACTION_THRESHOLD = 40;
-
 const PRODUCT_LABELS: Record<ProductKey, string> = {
   croissant: "Croissants",
   cookie: "Cookies",
@@ -134,7 +132,6 @@ export function ResultsPhase() {
   const {
     roundResults,
     currentRound,
-    chefSatisfactionScores,
     leaderboard,
     gameId,
     playerId,
@@ -193,18 +190,6 @@ export function ResultsPhase() {
     });
     return unsubscribe;
   }, [gameId, auctionResultKey, currentRound]);
-
-  const scores: Record<string, number> =
-    latest?.chefSatisfactionScores ?? chefSatisfactionScores;
-  const lowChefs = Object.entries(scores).filter(
-    ([, score]) =>
-      typeof score === "number" && score <= LOW_SATISFACTION_THRESHOLD,
-  );
-
-  const departures = latest?.chefDepartures ?? [];
-  const departureNames = latest?.chefDepartureNames ?? [];
-  const chefLabel = (_id: string, index: number) =>
-    presentChefName(departureNames[index], index);
 
   const productEntries = latest?.productBreakdown
     ? (Object.entries(latest.productBreakdown) as Array<[ProductKey, number]>).filter(
@@ -314,26 +299,15 @@ export function ResultsPhase() {
           )}
 
           {/* FE-I20: Net revenue / Customers / Customer satisfaction
-              already render in the metric cards above; only the values that
-              don't appear there (Chef satisfaction, Gross revenue when a
-              loan was taken out) live here. */}
-          {(typeof latest.chefSatisfactionScore === "number" ||
-            (typeof latest.amountBorrowed === "number" &&
-              latest.amountBorrowed > 0)) && (
+              already render in the metric cards above; Gross revenue only
+              shows when a loan was taken out. */}
+          {typeof latest.amountBorrowed === "number" &&
+            latest.amountBorrowed > 0 && (
             <div className="results-phase__kpis">
-              {typeof latest.chefSatisfactionScore === "number" && (
-                <Kpi
-                  label="Chef satisfaction"
-                  value={`${Math.round(latest.chefSatisfactionScore)}/100`}
-                />
-              )}
-              {typeof latest.amountBorrowed === "number" &&
-                latest.amountBorrowed > 0 && (
-                  <Kpi
-                    label="Gross revenue"
-                    value={formatMoney(latest.revenueGross)}
-                  />
-                )}
+              <Kpi
+                label="Gross revenue"
+                value={formatMoney(latest.revenueGross)}
+              />
             </div>
           )}
 
@@ -478,42 +452,6 @@ export function ResultsPhase() {
         <p className="results-phase__placeholder">
           Results will appear here once the round is simulated.
         </p>
-      )}
-
-      {lowChefs.length > 0 && (
-        <div
-          className="results-phase__satisfaction-warnings"
-          role="alert"
-          aria-label="Chef satisfaction warnings"
-        >
-          {lowChefs.map(([chefId, score]) => (
-            <div key={chefId} className="results-phase__warning-card">
-              <span className="results-phase__warning-icon" aria-hidden>
-                ⚠
-              </span>
-              <p className="results-phase__warning-text">
-                <strong>{presentChefName(undefined, lowChefs.findIndex(([id]) => id === chefId))}</strong>'s satisfaction is low (
-                {Math.round(score)}%). Keep your kitchen clean and machines
-                maintained to retain them.
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {departures.length > 0 && (
-        <div
-          className="results-phase__departures"
-          role="status"
-          aria-label="Chef departures"
-        >
-          {departures.map((chefId, i) => (
-            <p key={chefId} className="results-phase__departure">
-              <strong>{chefLabel(chefId, i)}</strong> has left the kitchen and
-              re-entered the auction pool.
-            </p>
-          ))}
-        </div>
       )}
 
       <p className="results-phase__waiting">

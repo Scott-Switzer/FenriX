@@ -164,11 +164,6 @@ function runMonthlySimulation(players, roundPreferences, cfg = config, { gameId 
     const revenueGross = sum('revenueGross');
     const customerCount = sum('customerCount');
     const aggregateSatisfactionPct = avg('aggregateSatisfactionPct');
-    // chefSatisfactionScore is purely decision-derived (sousChefCount via
-    // calculateChefSatisfactionScore in chef-system.js) — it does NOT depend
-    // on demand or customer count, so day-0 ≡ day-29. Picking daily[0] is
-    // equivalent to averaging here.
-    const chefSatisfactionScore = daily.length ? daily[0].chefSatisfactionScore : 0;
     const last = daily[daily.length - 1] || {};
 
     // Aggregate per-product customer counts across days. last.perProductCustomers
@@ -303,7 +298,6 @@ function runMonthlySimulation(players, roundPreferences, cfg = config, { gameId 
       amountBorrowed,
       interestCharged,
       aggregateSatisfactionPct,
-      chefSatisfactionScore,
       productPrices: last.productPrices || {},
       playerId: p.playerId,
       displayName: p.displayName,
@@ -324,7 +318,6 @@ function runMonthlySimulation(players, roundPreferences, cfg = config, { gameId 
       customerCount,
       perProductCustomers: monthlyPerProductCustomers,
       aggregateSatisfactionPct,
-      chefSatisfactionScore,
       perProductSatisfaction: monthlyPerProductSatisfaction,
       returningCustomersEarned,
       selloutAnywhere: daily.some((d) => d.selloutAnywhere),

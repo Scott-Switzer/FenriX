@@ -101,7 +101,6 @@ const initialState: GameState = {
   adBidsSubmitted: false,
   chefBidsSubmitted: false,
   maintenanceBars: { ...DEFAULT_MAINTENANCE_BARS },
-  chefSatisfactionScores: {},
   budgetCurrent: null,
   // DEC-21 default: solo / all-roles. The real role + team assignment is
   // written by the backend onto the player doc and the team doc; the
@@ -173,7 +172,6 @@ type GameAction =
   | { type: "SET_AD_BIDS_SUBMITTED"; payload: boolean }
   | { type: "SET_CHEF_BIDS_SUBMITTED"; payload: boolean }
   | { type: "SET_MAINTENANCE_BARS"; payload: MaintenanceBars }
-  | { type: "SET_CHEF_SATISFACTION"; payload: Record<string, number> }
   | { type: "SET_BUDGET"; payload: number | null }
   | { type: "SET_LEADERBOARD"; payload: LeaderboardRanking[] }
   | { type: "SET_LEADERBOARD_ERROR"; payload: string | null }
@@ -285,15 +283,11 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       return {
         ...state,
         roundResults: nextResults,
-        // Mirror maintenance bars / chef satisfaction from the result payload
-        // when the backend includes them. Leave existing state in place if the
-        // fields are absent (pre-BE-1..BE-10 rollout).
+        // Mirror maintenance bars from the result payload when the backend
+        // includes them. Leave existing state in place if absent.
         maintenanceBars: result.maintenanceBars
           ? { ...result.maintenanceBars }
           : state.maintenanceBars,
-        chefSatisfactionScores: result.chefSatisfactionScores
-          ? { ...result.chefSatisfactionScores }
-          : state.chefSatisfactionScores,
       };
     }
 
@@ -392,9 +386,6 @@ function gameReducer(state: GameState, action: GameAction): GameState {
 
     case "SET_MAINTENANCE_BARS":
       return { ...state, maintenanceBars: { ...action.payload } };
-
-    case "SET_CHEF_SATISFACTION":
-      return { ...state, chefSatisfactionScores: { ...action.payload } };
 
     case "SET_BUDGET": {
       if (state.budgetCurrent === action.payload) return state;

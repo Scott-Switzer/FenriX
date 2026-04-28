@@ -930,35 +930,6 @@ test('calculateTotalProductOutput: 100 specialty chefs → no crash', () => {
   }, '100 specialty chefs should not crash');
 }, 'MEDIUM');
 
-test('calculateChefSatisfactionScore: 0 sous chefs → 100', () => {
-  const s = chefSystem.calculateChefSatisfactionScore(0, defaultCfg);
-  assert(s === 100, `0 sous chefs → 100, got ${s}`);
-}, 'LOW');
-
-test('calculateChefSatisfactionScore: many sous chefs → floor (35)', () => {
-  // decay 10/chef-over-threshold-of-4: 11 chefs → raw 30, floor clamps to 35.
-  const s = chefSystem.calculateChefSatisfactionScore(11, defaultCfg);
-  assert(s === 35, `11 sous chefs → floor 35, got ${s}`);
-}, 'MEDIUM');
-
-test('calculateChefSatisfactionScore: 500 sous chefs → floor (no crash)', () => {
-  const s = chefSystem.calculateChefSatisfactionScore(500, defaultCfg);
-  assert(s === defaultCfg.chefSatisfactionFloor,
-    `500 sous chefs → floor, got ${s}`);
-}, 'MEDIUM');
-
-test('calculateChefSatisfactionScore: negative sous chefs → 100 (over is 0)', () => {
-  const s = chefSystem.calculateChefSatisfactionScore(-5, defaultCfg);
-  assert(s === 100, `negative sous chefs → 100 (no over), got ${s}`);
-}, 'MEDIUM');
-
-test('calculateChefSatisfactionScore: NaN sous chefs → check', () => {
-  const s = chefSystem.calculateChefSatisfactionScore(NaN, defaultCfg);
-  if (Number.isNaN(s)) {
-    throw new Error('NaN sousChefCount propagates to NaN chefSatisfactionScore');
-  }
-}, 'HIGH');
-
 test('resolveChefAuction: empty pool + empty bids → empty results', () => {
   const { winners, payments } = chefSystem.resolveChefAuction([], []);
   assert(winners.size === 0, 'empty pool → empty winners');
@@ -1620,13 +1591,6 @@ test('[Balance] Budget CAN go negative (spec allows it) — no Math.max(0) clamp
   // With massive overspending, budget should go negative
   assert(r.budgetAfter < 0, `Expected negative budget for massively overspending player, got ${r.budgetAfter}`);
 }, 'CRITICAL');
-
-test('[Balance] Chef satisfaction floor applied at 35', () => {
-  const score = chefSystem.calculateChefSatisfactionScore(100, defaultCfg);
-  assert(score === defaultCfg.chefSatisfactionFloor,
-    `100 sous chefs → floor ${defaultCfg.chefSatisfactionFloor}, got ${score}`);
-  assert(score >= 0 && score <= 100, `chefSatisfaction in [0,100]: ${score}`);
-}, 'HIGH');
 
 test('[Balance] Anti-arbitrage: adSpendCoeff zeroed out so adSpend cannot inflate revenue', () => {
   const baseRevenue = revenue.computeGrossRevenue({

@@ -368,29 +368,6 @@ describe('chef-system.js', () => {
     near(total, 120, 0.01, 'total output no sous');
   });
 
-  it('calculateChefSatisfactionScore — 4 or fewer chefs = 100', () => {
-    eq(chefSys.calculateChefSatisfactionScore(0, cfg), 100);
-    eq(chefSys.calculateChefSatisfactionScore(4, cfg), 100);
-  });
-
-  it('calculateChefSatisfactionScore — diminishes above 4', () => {
-    // decay 10/chef-over-threshold: 5→90, 8→60
-    eq(chefSys.calculateChefSatisfactionScore(5, cfg), 90);
-    eq(chefSys.calculateChefSatisfactionScore(8, cfg), 60);
-  });
-
-  it('calculateChefSatisfactionScore — floor at 35', () => {
-    // 11+ chefs (over+7 = 70 decay) → would go below 35, clamped to floor
-    eq(chefSys.calculateChefSatisfactionScore(11, cfg), 35);
-    eq(chefSys.calculateChefSatisfactionScore(100, cfg), 35);
-  });
-
-  it('calculateEffectiveOutput applies chef satisfaction', () => {
-    eq(chefSys.calculateEffectiveOutput(200, 50), 100);
-    eq(chefSys.calculateEffectiveOutput(100, 100), 100);
-    eq(chefSys.calculateEffectiveOutput(100, 0), 0);
-  });
-
   it('getSousChefCost escalation', () => {
     // Multipliers are derived from cfg.sousChefBaseCost so the assertions
     // hold across future economy rescales.
@@ -1049,7 +1026,6 @@ describe('csv-export.js', () => {
     interestCharged: 10,
     customerCount: 87,
     aggregateSatisfactionPct: 78.4,
-    chefSatisfactionScore: 100,
     perProductSatisfaction: { croissant: 85, cookie: 60, bagel: 70, sandwich: 55 },
     perProductSold: { croissant: 40, cookie: 28, bagel: 18, sandwich: 10 },
     selloutFlags: { croissant: true, cookie: false, bagel: false, sandwich: false },
@@ -1148,7 +1124,6 @@ describe('csv-export.js — price columns (POST-01)', () => {
       amountBorrowed: 0,
       interestCharged: 0,
       aggregateSatisfactionPct: 0,
-      chefSatisfactionScore: 0,
     };
     const row = csvExport.buildCsvRow(roundResult);
     eq(row.price_coffee, 5.25);
@@ -1176,7 +1151,6 @@ describe('csv-export.js — price columns (POST-01)', () => {
       amountBorrowed: 0,
       interestCharged: 0,
       aggregateSatisfactionPct: 0,
-      chefSatisfactionScore: 0,
     };
     const row = csvExport.buildCsvRow(roundResult);
     eq(row.price_coffee, null);
@@ -1563,7 +1537,6 @@ describe('simulation.js — Integration', () => {
     ok(result.offeredProducts.includes('croissant'));
     ok(result.offeredProducts.includes('cookie'));
     ok(!result.offeredProducts.includes('bagel'));
-    ok(result.chefSatisfactionScore > 0);
     ok(result.perProduct.croissant.effectiveOutput > 0);
   });
 
@@ -1863,7 +1836,6 @@ describe('Regression Tests', () => {
       revenueGross: 500,
       customerCount: 20,
       aggregateSatisfactionPct: 50,
-      chefSatisfactionScore: 100,
       perProductSatisfaction: {},
       selloutFlags: {},
     });

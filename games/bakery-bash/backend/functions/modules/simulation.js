@@ -30,8 +30,6 @@ const {
 
 const {
   calculateTotalProductOutput,
-  calculateChefSatisfactionScore,
-  calculateEffectiveOutput,
 } = require('./chef-system');
 
 const {
@@ -169,7 +167,6 @@ function getChefsWon(player) {
  * Returns:
  *   {
  *     offeredProducts: string[],
- *     chefSatisfactionScore: number,
  *     perProduct: {
  *       [product]: {
  *         totalOutput, effectiveOutput,

@@ -2339,7 +2339,6 @@ async function runSimulationAndPersist(gameRef, round, config) {
           customerCount: r.customerCount,
           aggregateSatisfactionPct: r.aggregateSatisfactionPct,
           fillRate: aggregateFillRate(r.perProductSatisfaction),
-          chefSatisfactionScore: r.chefSatisfactionScore,
           amountBorrowed: r.amountBorrowed,
           interestCharged: r.interestCharged,
           selloutAnywhere: r.selloutAnywhere || false,
@@ -2445,7 +2444,6 @@ async function runSimulationAndPersist(gameRef, round, config) {
         customerCount: r.customerCount,
         perProductCustomers: r.perProductCustomers,
         aggregateSatisfactionPct: r.aggregateSatisfactionPct,
-        chefSatisfactionScore: r.chefSatisfactionScore,
         perProductSatisfaction: r.perProductSatisfaction,
         perProductSold,
         selloutFlags,
@@ -4351,7 +4349,6 @@ exports.resetGame = onCall(HEAVY_CALLABLE_OPTS, async (request) => {
       pendingRosterAction: false,
       rosterCompleted: false,
       returningCustomersPending: 0,
-      chefSatisfactionScores: {},
       maintenanceBars: {
         cleanliness: 100,
         ovenHealth: 100,

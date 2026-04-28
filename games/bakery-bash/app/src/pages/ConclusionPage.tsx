@@ -130,7 +130,6 @@ export function ConclusionPage() {
               typeof data.aggregateSatisfactionPct === "number"
                 ? Math.round(data.aggregateSatisfactionPct)
                 : 0,
-            chefSatisfactionScore: data.chefSatisfactionScore,
             productBreakdown: data.productBreakdown,
             auctionResults: {
               adWon: data.adWon ?? null,
@@ -505,12 +504,6 @@ export function ConclusionPage() {
                           label="Satisfaction"
                           value={`${r.customerSatisfaction}/100`}
                         />
-                        {typeof r.chefSatisfactionScore === "number" && (
-                          <MiniKpi
-                            label="Chef sat."
-                            value={`${Math.round(r.chefSatisfactionScore)}/100`}
-                          />
-                        )}
                         {typeof r.amountBorrowed === "number" &&
                           r.amountBorrowed > 0 && (
                             <MiniKpi
