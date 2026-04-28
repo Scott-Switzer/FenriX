@@ -125,6 +125,7 @@ const {
 
 const {
   generateBotDecisions,
+  PRESETS,
 } = require('./modules/bot-engine');
 
 const {
@@ -4397,9 +4398,6 @@ exports.createBotPlayer = onCall(CALLABLE_OPTS, async (request) => {
   const auth = requireAuth(request, 'Sign in before adding a bot.');
   const data = request.data || {};
   const gameId = cleanGameId(data.gameId);
-  const difficulty = ['easy', 'medium', 'hard'].includes(data.difficulty)
-    ? data.difficulty
-    : 'medium';
   if (!gameId) {
     throw new HttpsError('invalid-argument', 'gameId is required.');
   }
@@ -4419,6 +4417,24 @@ exports.createBotPlayer = onCall(CALLABLE_OPTS, async (request) => {
     throw new HttpsError('failed-precondition', 'Bots can only be added during the lobby phase.');
   }
 
+  // Resolve preset or manual difficulty + personality
+  const presetKey = data.preset;
+  const preset = PRESETS[presetKey];
+
+  let difficulty;
+  let personality;
+  let botName;
+
+  if (preset) {
+    ({ difficulty, personality, name: botName } = preset);
+  } else {
+    const validDifficulties = ['novice', 'easy', 'medium', 'hard', 'perfect'];
+    difficulty = validDifficulties.includes(data.difficulty) ? data.difficulty : 'medium';
+    const validPersonalities = ['balanced', 'aggressive', 'conservative', 'random', 'chef_focused', 'ad_focused', 'volume', 'margin'];
+    personality = validPersonalities.includes(data.personality) ? data.personality : 'balanced';
+    botName = data.name || `Bot ${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}`;
+  }
+
   const cfgSnap = await gameRef.collection('config').doc('params').get();
   const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
   const startingBudget = numberOrDefault(
@@ -4428,7 +4444,6 @@ exports.createBotPlayer = onCall(CALLABLE_OPTS, async (request) => {
 
   // Generate a synthetic UID for the bot
   const botUid = `bot_${difficulty}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
-  const botName = `Bot ${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}`;
 
   await gameRef.collection('players').doc(botUid).set({
     uid: botUid,
@@ -4443,6 +4458,8 @@ exports.createBotPlayer = onCall(CALLABLE_OPTS, async (request) => {
     disconnected: false,
     isBot: true,
     botDifficulty: difficulty,
+    botPersonality: personality,
+    botPreset: presetKey || null,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
@@ -4462,9 +4479,49 @@ exports.createBotPlayer = onCall(CALLABLE_OPTS, async (request) => {
     updatedAt: FieldValue.serverTimestamp(),
   });
 
-  logger.info('createBotPlayer ok', { gameId, botUid, difficulty });
-  return { gameId, botUid, difficulty, displayName: botName };
+  logger.info('createBotPlayer ok', { gameId, botUid, difficulty, personality, preset: presetKey });
+  return { gameId, botUid, difficulty, personality, preset: presetKey || null, displayName: botName };
 });
+
+// ===========================================================================
+// loadHistoricalBids — reads all previous rounds' bid docs for opponent
+// modeling by perfect-tier bots. Returns { [playerId]: [{ round, ad, chef }] }
+// ===========================================================================
+
+async function loadHistoricalBids(gameRef, bots, opponents, currentRound) {
+  const historicalBids = {};
+  const allPlayers = [...bots, ...opponents.map((o) => ({ id: o.uid || o.playerId }))];
+
+  for (const player of allPlayers) {
+    const pid = player.id || (player.data && player.id);
+    if (!pid) continue;
+    const bids = [];
+    for (let r = 1; r < currentRound; r++) {
+      try {
+        const bidSnap = await gameRef.collection('players').doc(pid).collection('bids').doc(`round_${r}`).get();
+        if (bidSnap.exists) {
+          const d = bidSnap.data();
+          bids.push({
+            round: r,
+            ad: d.ad || {},
+            chef: Array.isArray(d.chef) ? d.chef.map((c) => ({
+              chefId: c.chefId,
+              amount: c.amount,
+              chefTier: c.chefTier,
+            })) : [],
+          });
+        }
+      } catch (e) {
+        // Non-fatal: missing bid doc is fine
+      }
+    }
+    if (bids.length > 0) {
+      historicalBids[pid] = bids;
+    }
+  }
+
+  return historicalBids;
+}
 
 // ===========================================================================
 // onBotPhaseChange — Firestore trigger that invokes bot decisions when
@@ -4477,6 +4534,7 @@ exports.onBotPhaseChange = onDocumentWritten(
   {
     document: 'games/{gameId}',
     concurrency: 1,
+    timeoutSeconds: 120,
   },
   async (event) => {
     const { gameId } = event.params;
@@ -4512,23 +4570,57 @@ exports.onBotPhaseChange = onDocumentWritten(
       .filter((d) => !d.get('isBot'))
       .map((d) => d.data());
 
+    // Eagerly load historical bids if any perfect bots exist
+    const hasPerfectBot = bots.some((b) => (b.data().botDifficulty || 'medium') === 'perfect');
+    let historicalBids = null;
+    if (hasPerfectBot && round > 1) {
+      historicalBids = await loadHistoricalBids(gameRef, bots, opponents, round);
+    }
+
+    // Load auction results if available (for perfect bot shadow sim)
+    const auctionResults = roundData.auctionResults || {};
+    const adAuctionResults = roundData.adAuctionResults || {};
+    const chefAuctionResults = roundData.chefAuctionResults || {};
+    const roundPreferences = roundData.preferences || { modifiers: {} };
+
     for (const botDoc of bots) {
       const botData = botDoc.data();
       const difficulty = botData.botDifficulty || 'medium';
+      const personality = botData.botPersonality || 'balanced';
+
+      // Resolve this bot's auction wins for shadow sim
+      const botAuctionKey = botDoc.id; // solo bots use their own id
+      const botAdAuction = adAuctionResults[botAuctionKey] || {};
+      const botChefAuction = chefAuctionResults[botAuctionKey] || {};
+      const adWins = Array.isArray(botAdAuction.adTypes) ? botAdAuction.adTypes : [];
+      const chefsWon = Array.isArray(botChefAuction.chefs) ? botChefAuction.chefs : [];
 
       const botState = {
         budgetCurrent: botData.budgetCurrent,
         specialtyChefs: botData.specialtyChefs || [],
         chefPool: roundData.chefPool || [],
+        playerId: botDoc.id,
+        round,
+        gameId,
+        adWins,
+        chefsWon,
+        auctionResults,
+        roundPreferences,
+        priorSubmittedPrices: botData.priorSubmittedPrices || [],
       };
 
       try {
+        // Deterministic seed for idempotent retries (BUG-3 class fix)
+        const seed = `${gameId}:${round}:${parsed.phase}:${botDoc.id}`;
         const decisions = generateBotDecisions(
           botState,
           parsed.phase,
           config,
           opponents,
           difficulty,
+          personality,
+          historicalBids,
+          seed,
         );
 
         if (parsed.phase === 'bid_ad') {
@@ -4603,6 +4695,7 @@ exports.onBotPhaseChange = onDocumentWritten(
           botId: botDoc.id,
           phase: parsed.phase,
           difficulty,
+          personality,
         });
       } catch (err) {
         logger.error('onBotPhaseChange: bot decision failed.', {

@@ -55,22 +55,38 @@ async function main() {
   await gameRef.collection('config').doc('params').set({});
 
   const createBotPlayer = httpsCallable(functions, 'createBotPlayer');
-  const botResult = await createBotPlayer({ gameId, difficulty: 'hard' });
+
+  // Test preset creation
+  const presetBot = await createBotPlayer({ gameId, preset: 'risky_ricky' });
+  assert(presetBot.data.difficulty === 'hard', 'preset bot difficulty should be hard');
+  assert(presetBot.data.personality === 'aggressive', 'preset bot personality should be aggressive');
+  assert(presetBot.data.displayName === 'Risky Ricky', 'preset bot name should be Risky Ricky');
+
+  const presetSnap = await gameRef.collection('players').doc(presetBot.data.botUid).get();
+  assert(presetSnap.exists, 'preset bot player doc should exist');
+  assert(presetSnap.data().botPreset === 'risky_ricky', 'bot should store preset key');
+  assert(presetSnap.data().botPersonality === 'aggressive', 'bot should store personality');
+  console.log('  ✓ createBotPlayer created Risky Ricky via preset');
+
+  // Test manual difficulty + personality
+  const botResult = await createBotPlayer({ gameId, difficulty: 'hard', personality: 'aggressive' });
   assert(botResult.data.difficulty === 'hard', 'bot difficulty should be hard');
-  assert(botResult.data.displayName === 'Bot Hard', 'bot name should be Bot Hard');
+  assert(botResult.data.personality === 'aggressive', 'bot personality should be aggressive');
 
   const botSnap = await gameRef.collection('players').doc(botResult.data.botUid).get();
   assert(botSnap.exists, 'bot player doc should exist');
   assert(botSnap.data().isBot === true, 'bot should have isBot=true');
   assert(botSnap.data().botDifficulty === 'hard', 'bot should have difficulty');
-  console.log('  ✓ createBotPlayer created hard bot');
+  assert(botSnap.data().botPersonality === 'aggressive', 'bot should have personality');
+  console.log('  ✓ createBotPlayer created hard aggressive bot');
 
-  // Medium bot too
+  // Medium bot (legacy style, defaults to balanced)
   const bot2 = await createBotPlayer({ gameId, difficulty: 'medium' });
   assert(bot2.data.difficulty === 'medium', 'second bot should be medium');
-  console.log('  ✓ createBotPlayer created medium bot');
+  assert(bot2.data.personality === 'balanced', 'legacy bot should default to balanced personality');
+  console.log('  ✓ createBotPlayer created medium bot (legacy, balanced default)');
 
-  // Easy bot too
+  // Easy bot
   const bot3 = await createBotPlayer({ gameId, difficulty: 'easy' });
   assert(bot3.data.difficulty === 'easy', 'third bot should be easy');
   console.log('  ✓ createBotPlayer created easy bot');
@@ -111,8 +127,8 @@ async function main() {
   const roundRef = gameRef.collection('rounds').doc('round_1');
   const roundSnap = await roundRef.get();
 
-  // Check bot bids
-  for (const bot of [botResult.data.botUid, bot2.data.botUid, bot3.data.botUid]) {
+  // Check bot bids (including preset bot)
+  for (const bot of [presetBot.data.botUid, botResult.data.botUid, bot2.data.botUid, bot3.data.botUid]) {
     const bidSnap = await gameRef.collection('players').doc(bot).collection('bids').doc('round_1').get();
     if (!bidSnap.exists || !bidSnap.data().ad) {
       console.log(`  ⚠ Bot ${bot} did not submit ad bids (trigger may need more time)`);
