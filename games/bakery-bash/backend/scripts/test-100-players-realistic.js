@@ -304,17 +304,17 @@ async function main() {
     // email → bid_ad
     await timed("Advance email → bid_ad", () => advancePhase(`round_${round}_bid_ad`));
 
-    // Bid Ad: all 76 humans submit concurrently + bots auto-fire via trigger
-    console.log(`  📢 Ad bids: 76 humans concurrent + 24 bots via trigger...`);
+    // Bid Ad: batched to avoid emulator overload
+    console.log(`  📢 Ad bids: 76 humans batched + 24 bots via trigger...`);
     const adBidStart = Date.now();
-    // Small delay to let bot trigger start, then fire humans in parallel
-    await sleep(200);
-    const adBidResults = await Promise.allSettled(
-      humans.map(async (p) => {
+    await sleep(300);
+    const adBidResults = await batchAll(
+      humans, 12,
+      async (p) => {
         const fn = httpsCallable(p.functions, "submitBids");
         const bids = generateAdBids(p.index, 10000);
         return await fn({ gameId, bidType: "ad", ...bids });
-      })
+      }, 400
     );
     console.log(`  ⏱️  Ad bids: ${Date.now() - adBidStart}ms`);
     assert(report("Ad bids", adBidResults), "Ad bid failures");
@@ -327,16 +327,17 @@ async function main() {
     const chefPool = (roundDoc.exists && roundDoc.data().chefPool) || [];
     console.log(`  👨‍🍳 Chef pool: ${chefPool.length} chefs`);
 
-    // Bid Chef: all 76 humans concurrent + bots
-    console.log(`  👨‍🍳 Chef bids: 76 humans concurrent + 24 bots via trigger...`);
+    // Bid Chef: batched
+    console.log(`  👨‍🍳 Chef bids: 76 humans batched + 24 bots via trigger...`);
     const chefBidStart = Date.now();
-    await sleep(200);
-    const chefBidResults = await Promise.allSettled(
-      humans.map(async (p) => {
+    await sleep(300);
+    const chefBidResults = await batchAll(
+      humans, 12,
+      async (p) => {
         const fn = httpsCallable(p.functions, "submitBids");
         const bids = generateChefBids(p.index, chefPool);
         return await fn({ gameId, bidType: "chef", chefBids: bids });
-      })
+      }, 400
     );
     console.log(`  ⏱️  Chef bids: ${Date.now() - chefBidStart}ms`);
     assert(report("Chef bids", chefBidResults), "Chef bid failures");
@@ -344,18 +345,19 @@ async function main() {
     // bid_chef → roster
     await timed("Advance bid_chef → roster", () => advancePhase(`round_${round}_roster`));
 
-    // Roster: humans continue + bots auto-fire
+    // Roster: batched
     console.log(`  📋 Roster: 76 humans + 24 bots...`);
     const rosterStart = Date.now();
-    await sleep(200);
+    await sleep(300);
 
     // Fetch current chef counts for humans
     const playerSnaps = await gameRef.collection("players").get();
     const playerData = {};
     for (const doc of playerSnaps.docs) playerData[doc.id] = doc.data();
 
-    const rosterResults = await Promise.allSettled(
-      humans.map(async (p) => {
+    const rosterResults = await batchAll(
+      humans, 12,
+      async (p) => {
         const data = playerData[p.uid];
         const chefs = Array.isArray(data?.specialtyChefs) ? data.specialtyChefs : [];
         const cap = 3;
@@ -367,7 +369,7 @@ async function main() {
         }
         const continueFn = httpsCallable(p.functions, "continueFromRoster");
         await continueFn({ gameId });
-      })
+      }, 400
     );
     console.log(`  ⏱️  Roster: ${Date.now() - rosterStart}ms`);
     assert(report("Roster", rosterResults), "Roster failures");
@@ -379,12 +381,13 @@ async function main() {
     console.log(`  🔓 Station unlocks...`);
     const optionalProducts = ["cookie", "sandwich", "matcha"];
     const unlockPlayers = humans.filter((p) => p.index % 3 === 0);
-    const unlockResults = await Promise.allSettled(
-      unlockPlayers.map(async (p) => {
+    const unlockResults = await batchAll(
+      unlockPlayers, 10,
+      async (p) => {
         const product = optionalProducts[p.index % optionalProducts.length];
         const fn = httpsCallable(p.functions, "purchaseProduct");
         return await fn({ gameId, product });
-      })
+      }, 300
     );
     report("Unlocks", unlockResults); // non-fatal
 
@@ -399,19 +402,20 @@ async function main() {
     const playerTeamMap = {};
     for (const doc of playerSnaps2.docs) playerTeamMap[doc.id] = doc.get("teamId");
 
-    // Decide: all 76 humans submit concurrently + bots via trigger
-    console.log(`  📝 Decisions: 76 humans concurrent + 24 bots via trigger...`);
+    // Decide: batched + bots via trigger
+    console.log(`  📝 Decisions: 76 humans batched + 24 bots via trigger...`);
     const decideStart = Date.now();
-    await sleep(200);
+    await sleep(300);
 
-    const decideResults = await Promise.allSettled(
-      humans.map(async (p) => {
+    const decideResults = await batchAll(
+      humans, 12,
+      async (p) => {
         const teamId = playerTeamMap[p.uid];
         const unlocked = teamUnlocked[teamId] || ["croissant", "bagel", "coffee"];
         const budget = playerData[p.uid]?.budgetCurrent || 10000;
         const fn = httpsCallable(p.functions, "submitDecision");
         return await fn({ gameId, ...generateDecision(p.index, budget, unlocked) });
-      })
+      }, 400
     );
     console.log(`  ⏱️  Decisions: ${Date.now() - decideStart}ms`);
     assert(report("Decisions", decideResults), "Decision failures");
