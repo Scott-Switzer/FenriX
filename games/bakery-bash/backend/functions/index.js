@@ -4595,10 +4595,38 @@ exports.onBotPhaseChange = onDocumentWritten(
       const adWins = Array.isArray(botAdAuction.adTypes) ? botAdAuction.adTypes : [];
       const chefsWon = Array.isArray(botChefAuction.chefs) ? botChefAuction.chefs : [];
 
+      // Apr 28 2026 — read the bot's team unlocks so the bot doesn't menu
+      // locked optional products (validateDecision rejects locked items
+      // with `failed-precondition`). Bots created via createBotPlayer have
+      // no teamId and can't call purchaseProduct, so they fall back to the
+      // starter set. If a future change wires bots to teams, this branch
+      // already mirrors the submitDecision path.
+      const botTeamId = getPlayerTeamId(botData);
+      let unlockedProducts = [...DEFAULT_UNLOCKED_PRODUCTS];
+      if (botTeamId) {
+        try {
+          const teamSnap = await gameRef.collection('teams').doc(botTeamId).get();
+          if (teamSnap.exists) {
+            const raw = teamSnap.get('unlockedProducts');
+            if (Array.isArray(raw) && raw.length > 0) {
+              unlockedProducts = raw.filter((p) => typeof p === 'string');
+            }
+          }
+        } catch (err) {
+          logger.warn('onBotPhaseChange: failed to read team unlocks; using default', {
+            gameId,
+            botId: botDoc.id,
+            teamId: botTeamId,
+            error: err && err.message,
+          });
+        }
+      }
+
       const botState = {
         budgetCurrent: botData.budgetCurrent,
         specialtyChefs: botData.specialtyChefs || [],
         chefPool: roundData.chefPool || [],
+        unlockedProducts,
         playerId: botDoc.id,
         round,
         gameId,

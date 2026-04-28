@@ -183,6 +183,26 @@ function snapPrice(price) {
   return Math.round(price / 0.25) * 0.25;
 }
 
+/**
+ * Build the set of products this bot is allowed to put on the menu.
+ *
+ * Apr 28 2026 — station unlocks. Optional products (cookie, sandwich, matcha)
+ * must be unlocked via `purchaseProduct` before they can be on the menu.
+ * `validateDecision` rejects locked products with `failed-precondition`, so
+ * the bot must respect the same constraint or the whole decision is dropped.
+ *
+ * Base menu products (`isBaseMenu === true`) are always available — they're
+ * checked separately in each menu-building branch and don't need to be in
+ * `botState.unlockedProducts`. When `unlockedProducts` is missing the bot
+ * falls back to BASE_MENU only, matching `validateDecision`'s default.
+ */
+function getUnlockedSet(botState) {
+  const list = botState && Array.isArray(botState.unlockedProducts)
+    ? botState.unlockedProducts
+    : [];
+  return new Set(list.filter((p) => typeof p === 'string'));
+}
+
 function getZonePrice(product, target) {
   const z = PRICE_ZONES[product];
   if (!z) return PRODUCT_CATALOG[product].fixedPrice || 4.0;
@@ -584,14 +604,19 @@ function decideOperations(botState, config, personality, difficulty, rng, oppone
       chefProducts.add(sp);
     }
   }
+  // Apr 28 2026 — station unlocks. A specialty chef makes us *want* an
+  // optional product, but the team still has to have purchased the unlock
+  // before the validator will accept it on the menu.
+  const unlockedSet = getUnlockedSet(botState);
 
   const menu = {};
   for (const product of PRODUCT_KEYS) {
     const catalog = PRODUCT_CATALOG[product];
     const hasChef = chefProducts.has(product);
-    // Base menu + chef specialties + personality extras
-    let onMenu = catalog.isBaseMenu || hasChef;
-    if (personality === 'volume') onMenu = true; // volume offers everything
+    const eligible = catalog.isBaseMenu || unlockedSet.has(product);
+    // Base menu + chef specialties + personality extras, all gated on unlock.
+    let onMenu = catalog.isBaseMenu || (hasChef && unlockedSet.has(product));
+    if (personality === 'volume') onMenu = eligible; // volume offers everything it can
     if (personality === 'margin' && !catalog.isBaseMenu && !hasChef) {
       onMenu = false; // margin only offers high-margin items
     }
@@ -880,11 +905,16 @@ function randomBotDecisions(botState, phase, config, rng) {
   }
 
   if (phase === 'decide') {
+    const unlockedSet = getUnlockedSet(botState);
     const menu = {};
     const quantities = {};
     const productPrices = {};
     for (const product of PRODUCT_KEYS) {
-      const onMenu = rng() < 0.7;
+      const catalog = PRODUCT_CATALOG[product];
+      // A locked optional product fails validation regardless of how
+      // chaotic the personality wants to be — gate inclusion on the unlock.
+      const eligible = catalog.isBaseMenu || unlockedSet.has(product);
+      const onMenu = eligible && rng() < 0.7;
       menu[product] = onMenu;
       const z = PRICE_ZONES[product];
       quantities[product] = onMenu ? Math.floor(5 + rng() * 20) : 0;
@@ -912,7 +942,7 @@ function randomBotDecisions(botState, phase, config, rng) {
 /**
  * Generate bot decisions for the current phase.
  *
- * @param {object} botState       { budgetCurrent, specialtyChefs, chefPool, playerId, round, gameId, ... }
+ * @param {object} botState       { budgetCurrent, specialtyChefs, chefPool, unlockedProducts, playerId, round, gameId, ... }
  * @param {string} phase          'bid_ad' | 'bid_chef' | 'roster' | 'decide'
  * @param {object} config         merged game config
  * @param {Array}  opponents      array of opponent player states

@@ -471,6 +471,70 @@ console.log('--- Forget phase ---');
   console.log('  ✓ Perfect never forgets phase');
 }
 
+// ---------------------------------------------------------------------------
+// Station unlocks (Apr 28 2026) — bots must respect unlockedProducts. Having
+// a specialty chef for an OPTIONAL_MENU product is not enough to put that
+// product on the menu; the team must have unlocked it via purchaseProduct.
+// Without this guard, validateDecision rejects the bot's decision with
+// 'failed-precondition' when the bot lists a locked product.
+// ---------------------------------------------------------------------------
+console.log('--- Station unlocks ---');
+{
+  const cookieChef = {
+    id: 'c1',
+    nationality: 'american',
+    skillTier: 'advanced',
+    specialties: ['cookie'],
+  };
+
+  // Medium balanced bot — chef for cookie but no unlock → cookie must NOT
+  // be on menu. This is the canonical bug: a specialty chef makes the bot
+  // want cookie on the menu, but the team hasn't unlocked the station.
+  const lockedMediumState = makeBotState({ specialtyChefs: [cookieChef] });
+  const lockedMedium = generateBotDecisions(
+    lockedMediumState, 'decide', TEST_CONFIG, [], 'medium', 'balanced', null, 'unlock-locked-medium',
+  );
+  assert(lockedMedium.menu.cookie === false, 'medium bot must not menu cookie when locked, even with cookie chef');
+  assert(lockedMedium.quantities.cookie === 0, 'medium bot must zero quantities.cookie when locked');
+  // Base menu is always available even when no unlocks are present.
+  assert(lockedMedium.menu.croissant === true, 'medium bot still menus base products when locked');
+  console.log('  ✓ Medium balanced bot skips locked optional product despite specialty chef');
+
+  // Medium balanced bot — chef for cookie AND cookie unlocked → cookie MUST
+  // be on menu. Positive test: with the unlock present, the chef-driven
+  // inclusion fires as before.
+  const unlockedMediumState = makeBotState({
+    specialtyChefs: [cookieChef],
+    unlockedProducts: ['croissant', 'bagel', 'coffee', 'cookie'],
+  });
+  const unlockedMedium = generateBotDecisions(
+    unlockedMediumState, 'decide', TEST_CONFIG, [], 'medium', 'balanced', null, 'unlock-unlocked-medium',
+  );
+  assert(unlockedMedium.menu.cookie === true, 'medium bot menus cookie when unlocked + chef');
+  assert(unlockedMedium.quantities.cookie > 0, 'medium bot stocks cookie when unlocked + chef');
+  console.log('  ✓ Medium balanced bot menus optional product when unlocked + chef');
+
+  // Hard balanced bot — same constraint at the hard difficulty tier.
+  const lockedHardState = makeBotState({ specialtyChefs: [cookieChef] });
+  const lockedHard = generateBotDecisions(
+    lockedHardState, 'decide', TEST_CONFIG, [], 'hard', 'balanced', null, 'unlock-locked-hard',
+  );
+  assert(lockedHard.menu.cookie === false, 'hard bot must not menu cookie when locked, even with cookie chef');
+  assert(lockedHard.quantities.cookie === 0, 'hard bot must zero quantities.cookie when locked');
+  console.log('  ✓ Hard balanced bot skips locked optional product despite specialty chef');
+
+  // Volume personality — normally offers every product. Must still skip
+  // locked optional products or validateDecision rejects the run.
+  const lockedVolumeState = makeBotState();
+  const lockedVolume = generateBotDecisions(
+    lockedVolumeState, 'decide', TEST_CONFIG, [], 'medium', 'volume', null, 'unlock-locked-volume',
+  );
+  assert(lockedVolume.menu.cookie === false, 'volume bot must not menu cookie when locked');
+  assert(lockedVolume.menu.sandwich === false, 'volume bot must not menu sandwich when locked');
+  assert(lockedVolume.menu.matcha === false, 'volume bot must not menu matcha when locked');
+  console.log('  ✓ Volume personality skips locked optional products');
+}
+
 console.log('\n========================================');
 console.log('BOT ENGINE TESTS: ALL PASSED');
 console.log(`Total combinations tested: ${Object.keys(DIFFICULTIES).length * Object.keys(PERSONALITIES).length}`);
