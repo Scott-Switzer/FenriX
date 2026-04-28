@@ -4,6 +4,7 @@ import { doc, onSnapshot, type DocumentData } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { useGame, useGameDispatch } from "../contexts/GameContext";
 import { useGameListener } from "../hooks/useGameListener";
+import { usePresenceHeartbeat } from "../hooks/usePresenceHeartbeat";
 import { auth, db, functions } from "../lib/firebase";
 import { parseGamePhase } from "../types/game";
 
@@ -39,7 +40,7 @@ const SUBMISSION_PHASE_BASES = new Set(["bid_ad", "bid_chef", "roster", "decide"
  *   3 s   → overlay clears; professor's auto-advance fires via ProfessorPage.
  */
 export function GamePhaseListener() {
-  const { gameId, playerId, phase, phaseEndsAtMs } = useGame();
+  const { gameId, playerId, phase, phaseEndsAtMs, player } = useGame();
   const dispatch = useGameDispatch();
   const navigate = useNavigate();
   const location = useLocation();
@@ -62,6 +63,10 @@ export function GamePhaseListener() {
   // listeners (roster → ad-winner banner, etc.) because those are only
   // relevant during the decide phase.
   useGameListener(gameId, playerId);
+
+  // T3.2 — heartbeat the player's presence doc so the prof page can flag
+  // disconnected players. Hook handles tab visibility internally.
+  usePresenceHeartbeat(gameId, playerId, player?.name);
 
   const navigateRef = useRef(navigate);
   const pathnameRef = useRef(location.pathname);

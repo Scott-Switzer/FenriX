@@ -14,13 +14,18 @@ go.
 
 - **PR #98** already eliminates the worst auction-collapse failure mode (sharded
   writes for `topBids` and `recordSubmission`).
-- **Tier 1** (no code, ~30 min): deploy + extend phase durations + run snapshot
-  watcher during the session. This alone is enough to not crash.
-- **Tier 2** (~most of a day of code): pre-warm + cascade-write fix +
-  save/restart-this-round UI + practice run. Buys real smoothness and a
-  one-click panic button.
-- **Tier 3** (~few hours each, optional): min-instances, prof connection-health
-  UI, shard `game.submittedCount`.
+- **All code work is shipped:** PRs [#101](https://github.com/fenrix-ai/FenriX/pull/101)
+  (T1.2 phases), [#102](https://github.com/fenrix-ai/FenriX/pull/102)
+  (T2.1 warm-up), [#103](https://github.com/fenrix-ai/FenriX/pull/103)
+  (T3.3 sharded counter), [#107](https://github.com/fenrix-ai/FenriX/pull/107)
+  (T2.4 save/restart UI). Bundle deploy below covers all four.
+- **Remaining manual work**:
+  1. **Production deploy** — `firebase deploy --only functions,firestore:rules,hosting --project <prod>`
+  2. **Practice run** (T2.3) — single highest-leverage thing left
+  3. T2.2 cascade-writes only if practice run shows it bites at 3-player teams
+- **Skipped or superseded** (with reasons documented inline): T1.3 CLI
+  watcher (superseded by T2.4's in-app save/restore); T3.1 min-instances
+  (T2.1 covers it for \$0/mo).
 
 ---
 
@@ -54,11 +59,12 @@ go.
 the legacy code path that fails at scale.
 
 **Steps**
-- [ ] Merge PR #98 to `main`
+- [x] Merge PR #98 to `main`
 - [ ] `cd games/bakery-bash/backend`
 - [ ] `firebase deploy --only functions,firestore:rules --project <prod-project-id>`
-- [ ] Verify in the Firebase console that `onTopBidsShardWritten` and
-      `onSubmissionShardWritten` show up under Functions → Triggers
+- [ ] Verify in the Firebase console that `onTopBidsShardWritten`,
+      `onSubmissionShardWritten`, and `onSubmittedCountShardWritten` show up
+      under Functions → Triggers
 - [ ] Smoke-test in production: create a throwaway game, advance to bid_ad,
       place a bid, watch the field land in `rounds/round_1.topBids` via the
       Firestore console
@@ -67,9 +73,13 @@ the legacy code path that fails at scale.
 **Risk**: Low. The legacy `updateTopBids` function is left in place (deprecated
 but callable) for one release cycle as a rollback safety net.
 
+> **Status:** Pre-merge work shipped. Production deploy is the only remaining
+> step here — bundle it with the deploys for #101, #102, #103, #107 below into
+> a single `firebase deploy --only functions,firestore:rules` and you're done.
+
 ---
 
-### T1.2 — Extend bid phase durations from 60s → 90s
+### T1.2 — Extend bid phase durations from 60s → 90s — ✅ SHIPPED
 
 **Why**: even with the perf fix, the slowest 5% of bids in a 25-team burst land
 ~12s after the burst starts. A 60s window means a player who clicks submit
@@ -77,23 +87,32 @@ in the last 10s might watch their button spin past the timer. 90s gives
 margin without dragging the game.
 
 **Steps**
-- [ ] Edit `backend/functions/modules/config.js` → `DEFAULT_GAME_CONFIG.phaseDurations`:
+- [x] Edit `backend/functions/modules/config.js` → `DEFAULT_GAME_CONFIG.phaseDurations`:
       change `bid_ad: 60` to `bid_ad: 90`, `bid_chef: 60` to `bid_chef: 90`
 - [ ] If you also want decide phase tuned, consider 300s → 360s
 - [ ] Deploy: `firebase deploy --only functions`
-- [ ] Verify: a fresh game's `config/params` doc shows the new durations
+- [x] Verify: a fresh game's `config/params` doc shows the new durations
 
 **Effort**: 5 min
 **Risk**: None — pure config change, no behaviour shift.
 
+> **Status:** Shipped in [#101](https://github.com/fenrix-ai/FenriX/pull/101).
+> Deploy bundled with the other Tier 1/2/3 deploys.
+
 ---
 
-### T1.3 — Run the snapshot watcher during the live session
+### T1.3 — Run the snapshot watcher during the live session — superseded by [T2.4](#t24--save--restart-this-round-from-the-professor-ui)
 
 **Why**: even if everything works, you want a panic button. Per-round snapshots
 let you roll back to a known-good state in under a minute.
 
-**Steps**
+> **Status:** Superseded by [T2.4](#t24--save--restart-this-round-from-the-professor-ui)
+> ([#107](https://github.com/fenrix-ai/FenriX/pull/107)) — auto-snapshots now
+> fire server-side at the start of every round and the restore UI lives on the
+> professor page, no terminal required. The CLI watcher still works as a
+> belt-and-braces fallback if you want a local-disk copy too.
+
+**Fallback steps (only if you want the local-disk safety net too)**
 - [ ] Before class: `cd games/bakery-bash/backend && npm install` (verify deps)
 - [ ] Have a service-account credential available (`gcloud auth application-default login`
       or `GOOGLE_APPLICATION_CREDENTIALS` env var)
@@ -114,32 +133,30 @@ typed confirmation.
 
 ## Tier 2 — Strongly recommended
 
-### T2.1 — Pre-warm Cloud Functions before the session starts
+### T2.1 — Pre-warm Cloud Functions before the session starts — ✅ SHIPPED
 
 **Why**: cold-starts add 1–3s to the first call of each function. With 70
 players hitting `submitBids` for the first time near-simultaneously, that
 extra latency stacks up. Pre-warming amortises it before students notice.
 
-**Plan**
-1. Add a `warmFunctions` callable to `backend/functions/index.js` that does
-   nothing (just returns `{ok: true}`). One per function we want warm:
-   `submitDecision`, `submitBids`, `submitPrices`, `advanceGamePhase`,
-   `joinGame`, `createTeam`. Could be one callable that loop-imports each.
-2. Add a "Warm up functions" button to the professor page that calls each.
-3. Run it ~30 seconds before opening the game to students.
+**Implementation note**: each Gen 2 callable becomes its own Cloud Run service,
+so a single `warmAll` proxy can't substitute. Each hot callable now has an
+`isWarmupRequest` short-circuit that returns immediately without auth or
+game-state validation; the FE button calls all six in parallel.
 
 **Steps**
-- [ ] Add `exports.warmAll` callable in `index.js`
-- [ ] Add button in `app/src/pages/ProfessorPage.tsx` that fires it
-- [ ] Test: in dev, click button, observe ~5s while functions warm, then
-      subsequent calls are fast
+- [x] Add `isWarmupRequest` short-circuit at the top of each hot callable
+      (`submitBids`, `submitDecision`, `submitPrices`, `advanceGamePhase`,
+      `joinGame`, `createTeam`)
+- [x] Add "Warm up servers" button on `ProfessorPage.tsx` with status pill UI
+- [ ] Test in dev/staging after deploy: click button, observe ~5s while
+      functions warm, then subsequent calls are fast
+
+> **Status:** Shipped in [#102](https://github.com/fenrix-ai/FenriX/pull/102).
+> Deploy bundled below.
 
 **Effort**: 30–45 min
 **Risk**: Low — pure addition.
-
-**Alternative (no code)**: just have the professor manually create a throwaway
-game and click through a phase before students arrive. Same effect, less
-elegant.
 
 ---
 
@@ -252,51 +269,55 @@ button + one confirmation dialog on the professor page.
    per game — negligible.
 
 **Steps**
-- [ ] Refactor: extract `serialize` / `deserialize` from
+- [x] Refactor: extract `serialize` / `deserialize` from
       `scripts/snapshot-game.js` and `scripts/restore-game.js` into
       `functions/modules/snapshot.js` so the scripts AND the callables share one
       implementation. Keep the CLI scripts working — the module just becomes
       their backbone.
-- [ ] Schema: `games/{gameId}/snapshots/{snapshotId}` with
-      `{ phase, round, capturedAt: Timestamp, gcsPath, sizeBytes, capturedByUid, capturedBy: 'auto'|'manual' }`
-- [ ] Backend: `createSnapshot` and `restoreSnapshot` callables.
-- [ ] Backend: hook auto-snapshot into the `advanceGamePhase` round-email
-      transition (after the transaction commits, like the existing email-body
-      generation is queued post-transaction).
-- [ ] FE: "Save now" + "Restart from last save" buttons + "Last saved: …"
-      indicator on `ProfessorPage.tsx`. Snapshot list as a small modal.
-- [ ] Rules: `snapshots/{id}` readable by professor only. Cloud Storage
-      bucket rules: only Cloud Functions can read/write the snapshots
-      prefix.
+- [x] Schema: `games/{gameId}/snapshots/{snapshotId}` index doc with chunked
+      payload at `…/chunks/{N}` (Firestore-only, no Cloud Storage dependency
+      since Storage isn't configured for this project).
+- [x] Backend: `createSnapshot` and `restoreSnapshot` callables.
+- [x] Backend: hook auto-snapshot into both `startGame` AND the
+      `advanceGamePhase` round-email transition.
+- [x] FE: "Save now" + "Restart from last save" buttons + "Last saved: …"
+      indicator on `ProfessorPage.tsx`. (Snapshot list modal deferred to v2 —
+      v1 just restores the most recent snapshot.)
+- [x] Rules: `snapshots/{id}` readable by professor only; `…/chunks/{N}`
+      server-only.
 - [ ] Test: trigger a fake mid-round failure (e.g., manually corrupt a
       `submissions` doc), restore, confirm players auto-rejoin after refresh
-      and round can complete normally.
+      and round can complete normally. **Recommended manual test before
+      tomorrow's practice run.**
 - [ ] Test: restore from a snapshot that's older than the current round
-      (round 4 game, restoring to round 2 snapshot) — confirms the `--clean`
-      semantics that drop drift docs.
+      (round 4 game, restoring to round 2 snapshot) — confirms the destructive
+      "clean" semantics that drop drift docs.
+
+> **Status:** Shipped in [#107](https://github.com/fenrix-ai/FenriX/pull/107).
+> Storage backend simplified from Cloud Storage to Firestore subcollection
+> chunks since Storage isn't configured for this project.
 
 **Effort**: ~3–4 hours
 **Risk**: **Medium**. Restore is destructive — keep all three safety gates:
 typed confirmation, log every restore with the calling uid, set `paused: true`
 on the restored game so players can't write into a half-restored state.
 
-**Cost**: ~$0/mo at this scale (Cloud Storage list price $0.026/GB·mo;
-snapshot blobs total <1 GB even with retention).
-
-**Why this isn't Tier 1**: T1.3's CLI watcher is the same panic button at the
-same recovery granularity. T2.4 is the *better* version — but if the session is
-in 48 hours and you can't ship code, T1.3 is the right answer. If you can ship
-code, T2.4 is what you want in the prof's hands.
+**Cost**: Negligible (Firestore subcollection storage at this scale; retention
+caps shards to 20 snapshots × ~1.5 MB = 30 MB per game).
 
 ---
 
 ## Tier 3 — Nice to have
 
-### T3.1 — Min-instances on Cloud Functions
+### T3.1 — Min-instances on Cloud Functions — superseded by [T2.1](#t21--pre-warm-cloud-functions-before-the-session-starts---shipped)
 
 **Why**: pre-warming (T2.1) is per-session-start. Min-instances keeps N
 function instances always warm so cold starts never happen. Cost: ~$15–30/mo
 for a couple of instances on the most-called functions.
+
+> **Status:** Skipped in favour of T2.1's free warm-up button. Min-instances
+> bills 24/7 for an effect that only matters for ~1 hour per class. Re-evaluate
+> if the game runs daily or shifts to always-on.
 
 **Steps**
 - [ ] In `functions/index.js` callable definitions, add `minInstances: 2`
@@ -333,7 +354,7 @@ fine even at 70 players.
 
 ---
 
-### T3.3 — Shard `game.submittedCount`
+### T3.3 — Shard `game.submittedCount` — ✅ SHIPPED
 
 **Why**: every `submitDecision` runs `FieldValue.increment(1)` on the game
 doc's `submittedCount` field inside its transaction. With 25-70 students all
@@ -343,23 +364,24 @@ clicking submit in the decide phase, this is the next single-doc hot-spot.
 notably more resilient than the legacy `updateTopBids` was. But under heavy
 contention you'll still see latency on this counter.
 
-**The fix**: same shard-and-aggregate pattern as `recordSubmission`. Per-shard
-counter docs at `games/{gameId}/submittedCountShards/{0..9}`; trigger sums
-them and writes to `games/{gameId}.submittedCount`.
+**The fix**: same shard-and-aggregate pattern as `recordSubmission`. Per-uid
+shard docs at `games/{gameId}/submittedCountShards/round_{N}/shards/{0..9}`
+keyed by uid (idempotent — retries don't double-count); a `concurrency: 1`
+trigger sums them and writes to `games/{gameId}.submittedCount`.
 
 **Steps**
-- [ ] New module `modules/sharded-counter.js`
-- [ ] `submitDecision` writes to its shard
-- [ ] Trigger aggregates
-- [ ] Update any phase-advance logic that reads `submittedCount` to read
-      from the (cached) aggregate (it already does — game doc field stays
-      the source of truth)
+- [x] New module `modules/sharded-counter.js`
+- [x] `submitDecision` writes to its shard (replaces in-transaction `FieldValue.increment(1)`)
+- [x] `onSubmittedCountShardWritten` trigger aggregates
+- [x] Reset paths (`resetGame`) wipe the shards subcollection too
+- [x] Firestore rules: server-only access on `submittedCountShards`
+
+> **Status:** Shipped in [#103](https://github.com/fenrix-ai/FenriX/pull/103).
+> 102/102 stress regression tests pass; RC-7 (the `submittedCount` desync
+> guard) still green. Deploy bundled below.
 
 **Effort**: ~1 hour
 **Risk**: Low (mirrors the patterns from PR #98)
-
-**Recommendation**: only do this if practice run (T2.3) shows submitDecision
-latency is a problem. Otherwise, lower priority than the rest.
 
 ---
 
@@ -414,3 +436,36 @@ cd ../app && npm run dev
 ```
 
 If all three pass, you're cleared to run the live session.
+
+---
+
+## Deploy bundle (everything currently merged)
+
+All shipped work — PRs [#101](https://github.com/fenrix-ai/FenriX/pull/101),
+[#102](https://github.com/fenrix-ai/FenriX/pull/102),
+[#103](https://github.com/fenrix-ai/FenriX/pull/103),
+[#107](https://github.com/fenrix-ai/FenriX/pull/107) — deploys in one shot:
+
+```bash
+cd games/bakery-bash/backend
+firebase deploy --only functions,firestore:rules --project <prod-project-id>
+
+cd ../app
+npm run build
+firebase deploy --only hosting --project <prod-project-id>
+```
+
+**What to verify in the Firebase console after the functions deploy:**
+- Triggers tab shows: `onTopBidsShardWritten`, `onSubmissionShardWritten`,
+  `onSubmittedCountShardWritten`
+- Functions list shows: `createSnapshot`, `restoreSnapshot` (new in #107)
+- All hot callables (`submitBids`, `submitDecision`, `submitPrices`,
+  `advanceGamePhase`, `joinGame`, `createTeam`) deployed (new revision)
+
+**One-line smoke** (after deploy lands):
+1. Create a game → join code shows
+2. Click "Warm up servers" → 5–8s pill, then "warm" badge
+3. Click "Save Now" → "Last saved: round 0 · …" indicator appears (or wait
+   for auto-save when you click Start Game; round 1 gets an auto-snapshot)
+4. Use one extra browser tab to join + place a bid in `bid_ad`; confirm the
+   top-bids column updates in <2s

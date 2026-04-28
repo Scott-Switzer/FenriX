@@ -235,6 +235,27 @@ service cloud.firestore {
       }
 
       // ─────────────────────────────────────────────────────
+      // /games/{gameId}/presence/{playerId}
+      // T3.2: Liveness ping written by each player every ~30s while their
+      // tab is active. Lets the professor see "X / Y players online" and
+      // flag stragglers who silently disconnected (closed laptop, wifi
+      // drop, etc.) so they can be told to refresh. Schema:
+      //   { uid: string, lastSeenAt: Timestamp, displayName?: string }
+      // Read is professor-only (matches /submissions and /snapshots), so
+      // students can't enumerate other players' tab activity. The player
+      // can still read/write their OWN doc, which is all the heartbeat
+      // hook needs. Writes are restricted to the player themselves, only
+      // to fields in the allowed set, with `uid` matching their auth uid.
+      // ─────────────────────────────────────────────────────
+      match /presence/{playerId} {
+        allow read: if isProfessor() || isGameProfessor(gameId) || isOwner(playerId);
+        allow create, update: if isOwner(playerId)
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['uid', 'lastSeenAt', 'displayName']);
+        allow delete: if false;
+      }
+
+      // ─────────────────────────────────────────────────────
       // /games/{gameId}/snapshots/{snapshotId}
       // T2.4: Per-round game-state snapshots for crash recovery. Index
       // docs are readable by the professor only so they can list available

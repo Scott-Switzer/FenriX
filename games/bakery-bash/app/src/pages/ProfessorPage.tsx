@@ -136,6 +136,20 @@ export function ProfessorPage() {
   const [showRestoreDialog, setShowRestoreDialog] = useState(false);
   const [restoreConfirm, setRestoreConfirm] = useState("");
 
+  // T3.2 — presence map keyed by uid → lastSeenMs. Players write to
+  // games/{gameId}/presence/{uid} every 30s while their tab is visible
+  // (see usePresenceHeartbeat). The prof page reads them all and flags any
+  // player whose ping is older than 60s as "appears disconnected".
+  const [presenceByUid, setPresenceByUid] = useState<Record<string, number>>({});
+  // Tick once a second so the staleness check re-evaluates against the
+  // wall clock — without this, the banner would only update on each
+  // presence-doc snapshot.
+  const [presenceNow, setPresenceNow] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setPresenceNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
   // Warmup pill state. Persists past `pendingAction` reset so the professor
   // gets a clear "done" confirmation next to the button, then auto-fades.
   type WarmupStatus =
@@ -402,6 +416,37 @@ export function ProfessorPage() {
         // signed-in user — just hide the indicator.
         console.debug("snapshots listener error:", err);
         setLatestSnapshot(null);
+      },
+    );
+    return unsubscribe;
+  }, [gameId]);
+
+  // T3.2 — subscribe to per-player presence pings. Each player writes
+  // games/{gameId}/presence/{uid} every 30s while their tab is visible
+  // (see usePresenceHeartbeat). We collect lastSeenMs into a map and
+  // join against the roster below to flag stragglers.
+  useEffect(() => {
+    if (!gameId) {
+      setPresenceByUid({});
+      return;
+    }
+    const presenceRef = collection(db, "games", gameId, "presence");
+    const unsubscribe = onSnapshot(
+      presenceRef,
+      (snap) => {
+        const next: Record<string, number> = {};
+        snap.docs.forEach((d) => {
+          const data = d.data() as DocumentData;
+          const ts = data.lastSeenAt as Timestamp | null | undefined;
+          if (ts && typeof ts.toMillis === "function") {
+            next[d.id] = ts.toMillis();
+          }
+        });
+        setPresenceByUid(next);
+      },
+      (err) => {
+        console.debug("presence listener error:", err);
+        setPresenceByUid({});
       },
     );
     return unsubscribe;
@@ -964,6 +1009,36 @@ export function ProfessorPage() {
             {allReady
               ? "🟢 All teams ready — safe to advance"
               : `🔴 Waiting for ${waitingCount} team${waitingCount !== 1 ? "s" : ""}`}
+          </div>
+        );
+      })()}
+
+      {/* T3.2 — disconnect banner. Surfaces players whose presence ping is
+          stale by >60s OR who have no presence doc at all (their tab is
+          backgrounded or they closed it). Only renders when there's
+          something actionable so it stays out of the way otherwise.
+          Gated on `isRunning` so the lobby (where heartbeats haven't started
+          for late joiners and presence docs haven't landed yet) and the
+          game-over screen don't flash a false "everyone disconnected" alert. */}
+      {gameId && monitorRows.length > 0 && isRunning && (() => {
+        const STALE_MS = 60_000;
+        const disconnected: { uid: string; name: string }[] = [];
+        for (const row of monitorRows) {
+          for (const uid of row.memberUids) {
+            const lastSeenMs = presenceByUid[uid];
+            const isStale = !lastSeenMs || presenceNow - lastSeenMs > STALE_MS;
+            if (isStale) {
+              const name = rosterByUid[uid]?.displayName ?? row.teamName;
+              disconnected.push({ uid, name });
+            }
+          }
+        }
+        if (disconnected.length === 0) return null;
+        const names = disconnected.slice(0, 5).map((d) => d.name).join(", ");
+        const extra = disconnected.length > 5 ? ` (+${disconnected.length - 5} more)` : "";
+        return (
+          <div className="professor-page__disconnect-banner" role="status">
+            🟠 {disconnected.length} player{disconnected.length === 1 ? "" : "s"} appear{disconnected.length === 1 ? "s" : ""} disconnected — tell them to refresh: {names}{extra}
           </div>
         );
       })()}

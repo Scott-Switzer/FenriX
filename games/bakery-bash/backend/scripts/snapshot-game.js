@@ -26,12 +26,15 @@ const { getFirestore } = require('firebase-admin/firestore');
 
 // T2.4: serialize / dumpDoc / dumpCollection / countDocs all live in the
 // shared module now so the CLI and the server-side `createSnapshot`
-// callable share one implementation.
+// callable share one implementation. NON_SNAPSHOTTED_SUBCOLLECTIONS keeps
+// CLI and server in sync on which live-state subcollections to skip
+// (snapshots: avoid quadratic embedding; presence: avoid stale liveness).
 const {
   serialize,
   dumpDoc,
   dumpCollection,
   countDocs,
+  NON_SNAPSHOTTED_SUBCOLLECTIONS,
 } = require('../functions/modules/snapshot');
 
 const PROJECT_ID = 'bakery-bash-54d12';
@@ -63,9 +66,12 @@ function configureFirebase(prod) {
 async function snapshotGame(db, gameId) {
   const start = Date.now();
   const gameRef = db.collection('games').doc(gameId);
-  // Match the server callable: skip the `snapshots` subcollection so the
-  // JSON file doesn't embed prior chunked snapshots.
-  const dump = await dumpDoc(gameRef, { excludeSubcollections: ['snapshots'] });
+  // Match the server callable: skip live-state subcollections so the JSON
+  // file doesn't embed prior chunked snapshots and doesn't carry stale
+  // presence pings that `restore-game.js --clean` would write back.
+  const dump = await dumpDoc(gameRef, {
+    excludeSubcollections: NON_SNAPSHOTTED_SUBCOLLECTIONS,
+  });
   if (!dump.exists) {
     throw new Error(`Game ${gameId} does not exist.`);
   }

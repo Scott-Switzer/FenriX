@@ -47,6 +47,12 @@ const FIRESTORE_BATCH_OPS = 450; // hard limit is 500
 const DEFAULT_MAX_SNAPSHOTS_PER_GAME = 20;
 const DEFAULT_MAX_AGE_DAYS = 30;
 
+// Subcollections that hold operational/live state and must NOT round-trip
+// through snapshot capture or restore. `snapshots` would grow quadratically;
+// `presence` is liveness pings whose stale `lastSeenAt` would lie to the
+// professor's disconnect banner if restored.
+const NON_SNAPSHOTTED_SUBCOLLECTIONS = ['snapshots', 'presence'];
+
 // ---------------------------------------------------------------------------
 // Serialization (lossless round-trip for Firestore-supported types)
 // ---------------------------------------------------------------------------
@@ -201,10 +207,9 @@ async function captureGameSnapshot(db, gameRef, opts) {
   }
 
   const start = Date.now();
-  // Skip the `snapshots` subcollection so we never embed prior snapshots'
-  // chunks inside this snapshot — that would grow quadratically and on
-  // restore would re-write stale snapshot docs back into Firestore.
-  const dump = await dumpDoc(gameRef, { excludeSubcollections: ['snapshots'] });
+  const dump = await dumpDoc(gameRef, {
+    excludeSubcollections: NON_SNAPSHOTTED_SUBCOLLECTIONS,
+  });
   if (!dump.exists) {
     throw new Error(`captureGameSnapshot: game ${gameRef.id} does not exist`);
   }
@@ -300,21 +305,23 @@ async function loadSnapshot(gameRef, snapshotId) {
  * List every existing doc path under a game root, used by the restore
  * "clean" pass to find drift docs that need to be deleted.
  *
- * Skips the `snapshots` subcollection so that the in-progress restore
- * doesn't delete the very snapshot it's restoring from (and so future
- * snapshots survive each restore).
+ * Skips `NON_SNAPSHOTTED_SUBCOLLECTIONS` so the cleanup pass mirrors the
+ * capture: the in-progress restore doesn't delete the very snapshot it's
+ * restoring from, and live presence pings (which were never captured)
+ * aren't wiped out from under the players who are still pinging.
  */
-async function listAllDocPathsExcludingSnapshots(rootDocRef) {
+async function listLiveDocPathsForCleanup(rootDocRef) {
   const paths = [];
-  const visit = async (docRef, isUnderSnapshots) => {
-    if (isUnderSnapshots) return;
+  const skip = new Set(NON_SNAPSHOTTED_SUBCOLLECTIONS);
+  const visit = async (docRef, isUnderSkipped) => {
+    if (isUnderSkipped) return;
     const snap = await docRef.get();
     if (snap.exists) paths.push(docRef.path);
     const colls = await docRef.listCollections();
     for (const coll of colls) {
-      const childIsSnapshots = isUnderSnapshots || coll.id === 'snapshots';
+      const childIsSkipped = isUnderSkipped || skip.has(coll.id);
       const docs = await coll.listDocuments();
-      for (const d of docs) await visit(d, childIsSnapshots);
+      for (const d of docs) await visit(d, childIsSkipped);
     }
   };
   await visit(rootDocRef, false);
@@ -359,9 +366,10 @@ async function restoreGameSnapshot(db, gameRef, snapshotId) {
   }
 
   // "Clean" pass — find live docs not in the snapshot and delete them.
-  // Snapshots subcollection is excluded so this restore (and other
-  // snapshots) survive.
-  const livePaths = await listAllDocPathsExcludingSnapshots(gameRef);
+  // Subcollections in NON_SNAPSHOTTED_SUBCOLLECTIONS (snapshots, presence)
+  // are excluded both here and from the capture, so the restore doesn't
+  // wipe its own snapshots or live liveness pings.
+  const livePaths = await listLiveDocPathsForCleanup(gameRef);
   const snapshotPathSet = new Set(docs.map((d) => d.path));
   const orphans = livePaths.filter((p) => !snapshotPathSet.has(p));
 
@@ -454,6 +462,7 @@ module.exports = {
   FIRESTORE_BATCH_OPS,
   DEFAULT_MAX_SNAPSHOTS_PER_GAME,
   DEFAULT_MAX_AGE_DAYS,
+  NON_SNAPSHOTTED_SUBCOLLECTIONS,
   serialize,
   deserialize,
   dumpDoc,
@@ -462,6 +471,7 @@ module.exports = {
   walkDocs,
   captureGameSnapshot,
   loadSnapshot,
+  listLiveDocPathsForCleanup,
   restoreGameSnapshot,
   pruneOldSnapshots,
 };

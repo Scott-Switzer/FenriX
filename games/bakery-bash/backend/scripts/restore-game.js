@@ -40,11 +40,14 @@ const readline = require('readline');
 const { initializeApp, applicationDefault } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 
-// T2.4: deserialize / walkDocs come from the shared module so the CLI
-// and the server-side `restoreSnapshot` callable agree on the wire shape.
+// T2.4: deserialize / walkDocs / listLiveDocPathsForCleanup come from the
+// shared module so the CLI and the server-side `restoreSnapshot` callable
+// agree on the wire shape AND on which live-state subcollections to skip
+// during the --clean pass (snapshots, presence).
 const {
   deserialize,
   walkDocs,
+  listLiveDocPathsForCleanup,
 } = require('../functions/modules/snapshot');
 
 const PROJECT_ID = 'bakery-bash-54d12';
@@ -64,21 +67,6 @@ function parseArgs(argv) {
     else if (!a.startsWith('--')) args.file = a;
   }
   return args;
-}
-
-async function listAllDocPaths(db, rootDocRef) {
-  const paths = [];
-  const visit = async (docRef) => {
-    const snap = await docRef.get();
-    if (snap.exists) paths.push(docRef.path);
-    const colls = await docRef.listCollections();
-    for (const coll of colls) {
-      const docs = await coll.listDocuments();
-      for (const d of docs) await visit(d);
-    }
-  };
-  await visit(rootDocRef);
-  return paths;
 }
 
 function configureFirebase(prod) {
@@ -134,7 +122,7 @@ async function restore(db, snapshot, opts) {
 
   if (opts.clean) {
     console.log(`[restore] --clean: scanning live game for orphans…`);
-    const livePaths = await listAllDocPaths(db, db.collection('games').doc(targetId));
+    const livePaths = await listLiveDocPathsForCleanup(db.collection('games').doc(targetId));
     const snapshotPathSet = new Set(docs.map((d) => d.path));
     const orphans = livePaths.filter((p) => !snapshotPathSet.has(p));
     console.log(`[restore] --clean: ${orphans.length} orphan doc(s) to delete`);
