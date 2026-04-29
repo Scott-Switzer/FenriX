@@ -102,9 +102,15 @@ export function SubmissionLock({
     };
   }, [gameId, currentRound, phase]);
 
+  // The backend counts one submission per team (the Operations submitter's
+  // UID), so the denominator must be the number of teams, not individual
+  // players. Team members share a bakeryName, so counting unique names
+  // gives the correct team-level count for both team and solo games.
   const expected = useMemo(() => {
     if (typeof expectedPlayerCount === "number") return expectedPlayerCount;
-    if (players && players.length > 0) return players.length;
+    if (players && players.length > 0) {
+      return new Set(players.map((p) => p.bakeryName)).size;
+    }
     return null;
   }, [expectedPlayerCount, players]);
 
