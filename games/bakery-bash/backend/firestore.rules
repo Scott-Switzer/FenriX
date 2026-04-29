@@ -100,11 +100,9 @@ service cloud.firestore {
           allow write: if false;
         }
 
-        // Email phase data drops are written exclusively by Cloud Functions.
-        match /emails/{emailId} {
-          allow read: if isOwner(playerId);
-          allow write: if false;
-        }
+        // The legacy `players/{uid}/emails` CSV-attachment queue was retired
+        // when in-app market insights replaced the mail-merge flow. The
+        // collection is no longer written. The default-deny rule covers it.
       }
 
       // ─────────────────────────────────────────────────────

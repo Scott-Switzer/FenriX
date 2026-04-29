@@ -139,39 +139,11 @@ async function seedBaseGame() {
       revenue: 610,
     });
 
-    await setDoc(doc(db, "games", GAME_ID, "players", PLAYER_A, "emails", "round_2_data"), {
-      type: "round_data_csv",
-      round: 2,
-      availableAfterRound: 1,
-      recipientPlayerId: PLAYER_A,
-      subject: "Round 1 data is ready",
-      sender: "Bakery Bash Analytics",
-      body: "Use this CSV before Round 2 to update your model.",
-      read: false,
-      createdAt: null,
-      attachments: [
-        {
-          filename: "bakery-bash-through-round-1.csv",
-          contentType: "text/csv",
-          csvText: "day,revenue\n1,650",
-          rowCount: 1,
-          includedThroughRound: 1,
-        },
-      ],
-    });
-
-    await setDoc(doc(db, "games", GAME_ID, "players", PLAYER_B, "emails", "round_2_data"), {
-      type: "round_data_csv",
-      round: 2,
-      availableAfterRound: 1,
-      recipientPlayerId: PLAYER_B,
-      subject: "Round 1 data is ready",
-      sender: "Bakery Bash Analytics",
-      body: "Use this CSV before Round 2 to update your model.",
-      read: false,
-      createdAt: null,
-      attachments: [],
-    });
+    // S-04 (2026-04-29): the per-player emails subcollection seed data
+    // used to live here (PLAYER_A + PLAYER_B "round_2_data" docs) but
+    // the underlying mail-merge feature was retired in favor of in-app
+    // market insights. Both the rule and the assertions that exercised
+    // it were dropped together.
 
     await setDoc(doc(db, "games", GAME_ID, "csvRows", PLAYER_A, "rounds", "round_1"), {
       playerId: PLAYER_A,
@@ -283,12 +255,6 @@ describe("Bakery Bash Firestore security rules", function () {
     await assertFails(
       getDoc(doc(db, "games", GAME_ID, "csvRows", PLAYER_B, "rounds", "round_1"))
     );
-    await assertSucceeds(
-      getDoc(doc(db, "games", GAME_ID, "players", PLAYER_A, "emails", "round_2_data"))
-    );
-    await assertFails(
-      getDoc(doc(db, "games", GAME_ID, "players", PLAYER_B, "emails", "round_2_data"))
-    );
   });
 
   it("does not let clients create initial player documents", async () => {
@@ -330,12 +296,6 @@ describe("Bakery Bash Firestore security rules", function () {
       updateDoc(doc(db, "games", GAME_ID, "rounds", "round_1"), {
         "classStats.avgRevenue": 999999,
       })
-    );
-    await assertFails(
-      updateDoc(
-        doc(db, "games", GAME_ID, "players", PLAYER_A, "emails", "round_2_data"),
-        { read: true }
-      )
     );
   });
 

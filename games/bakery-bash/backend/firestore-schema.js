@@ -429,32 +429,13 @@ const CsvRowsDocument = {
 };
 
 // ─────────────────────────────────────────────────────────────
-// /games/{gameId}/players/{playerId}/emails/{emailId}
-// Backend-owned email phase messages. Used to drop the current CSV dataset
-// before the next decision round so players can update their models.
-// emailId = "round_2_data", "round_3_data", …
-// ─────────────────────────────────────────────────────────────
-const PlayerEmailDocument = {
-  type: "round_data_csv",        // string
-  round: 2,                      // number — next decision round this data supports
-  availableAfterRound: 1,        // number — last completed round included in CSV
-  recipientPlayerId: "uid_abc",  // string
-  subject: "Round 1 data is ready",
-  sender: "Bakery Bash Analytics",
-  body: "Use this CSV before Round 2 to update your model and plan decisions.",
-  read: false,                   // boolean — frontend may track read state locally
-  createdAt: null,               // Timestamp
-  attachments: [
-    {
-      filename: "bakery-bash-through-round-1.csv",
-      contentType: "text/csv",
-      csvText: "day,revenue,num_products,...", // string — full CSV payload
-      rowCount: 1,               // number
-      includedThroughRound: 1,   // number
-    },
-  ],
-};
-
+// (REMOVED) /games/{gameId}/players/{playerId}/emails/{emailId}
+// The legacy `PlayerEmailDocument` schema described a CSV-attachment
+// queue ("Round 1 data is ready") that gated the next decide phase.
+// It was superseded by in-app market insights at
+// /games/{gameId}/marketInsights and rounds/{roundId}.marketEmail.
+// No code still writes this subcollection; the matching firestore rule
+// and resetGame cleanup were removed in S-04 (2026-04-29).
 // ─────────────────────────────────────────────────────────────
 // COLLECTION HIERARCHY SUMMARY
 // ─────────────────────────────────────────────────────────────
