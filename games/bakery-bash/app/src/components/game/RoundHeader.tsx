@@ -78,11 +78,6 @@ const CSV_COLUMNS = [
   "matchas_sold",
 ] as const;
 
-function pct(n: number | undefined | null): string {
-  if (typeof n !== "number" || !Number.isFinite(n)) return "";
-  return String(Math.round(n));
-}
-
 function num(n: number | undefined | null): string {
   return typeof n === "number" && Number.isFinite(n) ? String(n) : "";
 }
