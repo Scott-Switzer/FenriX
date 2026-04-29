@@ -4987,6 +4987,15 @@ exports.createBotPlayer = onCall(CALLABLE_OPTS, async (request) => {
 
   const cfgSnap = await gameRef.collection('config').doc('params').get();
   const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
+
+  // Bots count toward totalPlayers, so apply the same cap as joinGame to keep
+  // them from squeezing real students out of the roster.
+  const playerCap = numberOrDefault(config.playerCap, 20);
+  const currentTotal = numberOrDefault(gameSnap.get('totalPlayers'), 0);
+  if (currentTotal >= playerCap) {
+    throw new HttpsError('resource-exhausted', 'This game is full.');
+  }
+
   const startingBudget = numberOrDefault(
     config.startingBudget,
     DEFAULT_GAME_CONFIG.startingBudget,
@@ -5226,17 +5235,20 @@ exports.onBotPhaseChange = onDocumentWritten(
         }
 
         if (parsed.phase === 'roster' && decisions.layoffs && decisions.layoffs.length > 0) {
-          // Filter out all layoff IDs in one pass so multiple layoffs compose correctly
+          // Filter out all layoff IDs in one pass so multiple layoffs compose correctly,
+          // and combine the cap check with the layoff write so a transient failure
+          // can't leave the bot with rosterCompleted=false but no pendingRosterAction.
           const layoffIds = new Set(decisions.layoffs);
           const remaining = (botData.specialtyChefs || []).filter((c) => !layoffIds.has(c.id));
-          await botDoc.ref.update({
+          const chefCap = numberOrDefault(config.specialtyChefCap, 3);
+          const rosterUpdate = {
             specialtyChefs: remaining,
-            pendingRosterAction: remaining.length > numberOrDefault(config.specialtyChefCap, 3),
-          });
-          // Auto-continue from roster if now at or under cap
-          if (remaining.length <= numberOrDefault(config.specialtyChefCap, 3)) {
-            await botDoc.ref.update({ rosterCompleted: true });
+            pendingRosterAction: remaining.length > chefCap,
+          };
+          if (remaining.length <= chefCap) {
+            rosterUpdate.rosterCompleted = true;
           }
+          await botDoc.ref.update(rosterUpdate);
         }
 
         if (parsed.phase === 'decide') {

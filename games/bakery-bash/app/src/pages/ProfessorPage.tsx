@@ -1126,6 +1126,7 @@ export function ProfessorPage() {
                 if (!gameId) return;
                 setPendingAction("add-bot");
                 setError(null);
+                setInfo(null);
                 try {
                   const payload = selectedPreset
                     ? { gameId, preset: selectedPreset }
