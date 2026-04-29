@@ -3692,6 +3692,70 @@ h3 { font-size: 0.7rem; }
   color: var(--berry);
 }
 
+/* S-05 (2026-04-29) — "Lay-offs this round" panel. Shows chefs the
+   team has dropped this round; each gets a green Re-hire button. The
+   panel is desaturated (vs. the active roster grid above) so the
+   eye reads it as "in limbo, not on the kitchen floor". */
+.roster-phase-page__layoffs {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  background: var(--cream, #fff7e6);
+  border: 1px dashed var(--honey, #f59e0b);
+  border-radius: 8px;
+}
+
+.roster-phase-page__layoffs-title {
+  font-family: var(--font-pixel);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.4rem 0;
+  color: var(--dark-roast, #6b4226);
+}
+
+.roster-phase-page__layoffs-hint {
+  font-size: 0.85rem;
+  color: var(--dark-roast, #6b4226);
+  margin: 0 0 0.75rem 0;
+}
+
+.roster-phase-page__layoff-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.roster-phase-page__layoff-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.roster-phase-page__layoff-card {
+  flex: 1;
+  min-width: 220px;
+  opacity: 0.85;
+}
+
+.roster-phase-page__rehire-btn {
+  background: var(--sage, #5e8055);
+  color: #fff;
+  border-color: var(--sage, #5e8055);
+}
+
+.roster-phase-page__rehire-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.roster-phase-page__rehire-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .roster-phase-page__base-card {
   display: flex;
   align-items: center;

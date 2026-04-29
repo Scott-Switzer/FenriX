@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  collection,
   doc,
   onSnapshot,
   type DocumentData,
@@ -45,9 +46,13 @@ import { humanizeFunctionError } from "../lib/errors";
 /** Chef doc as stored on `players/{uid}.specialtyChefs`. Same shape as pool. */
 type RosterChef = ChefPoolEntry;
 
-interface LayoffTarget {
-  id: string;
-  name: string;
+/**
+ * S-05 — laid-off chef as it appears in the round's `chefReturnPool`
+ * subcollection. Same shape as a roster chef plus return-tracking
+ * metadata. We render these in the "Lay offs" panel and offer Re-hire.
+ */
+interface LaidOffChef extends RosterChef {
+  returnedByPlayerId?: string | null;
 }
 
 function coerceChef(raw: DocumentData): RosterChef | null {
@@ -86,6 +91,13 @@ export function RosterPhasePage() {
   const [specialtyChefs, setSpecialtyChefs] = useState<RosterChef[]>([]);
   const [pendingRosterAction, setPendingRosterAction] = useState(false);
   const [rosterCompleted, setRosterCompleted] = useState(false);
+  // S-05 (2026-04-29) — laid-off chefs for the current round. Subscribed
+  // below from `games/{gameId}/rounds/round_{N}/chefReturnPool`. Renders
+  // in the "Lay offs" panel with a Re-hire button per chef.
+  const [laidOffChefs, setLaidOffChefs] = useState<LaidOffChef[]>([]);
+  // Track which chef-id is currently flying through layoff/rehire so we
+  // can disable the relevant button without locking the whole panel.
+  const [pendingChefId, setPendingChefId] = useState<string | null>(null);
   // A24-I05 — chef wins just resolved for this round. Subscribed from
   // `games/{gameId}/rounds/round_{N}.chefAuctionResults[{teamKey}]`.
   const [chefWins, setChefWins] = useState<ChefWinnerEntry[]>([]);
@@ -196,10 +208,7 @@ export function RosterPhasePage() {
     return unsubscribe;
   }, [gameId, currentRound, auctionResultKey]);
 
-  const [layoffTarget, setLayoffTarget] = useState<LayoffTarget | null>(null);
-  const [submitting, setSubmitting] = useState<"layoff" | "continue" | null>(
-    null,
-  );
+  const [submitting, setSubmitting] = useState<"continue" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Subscribe to this player's doc for their specialty roster.
@@ -223,6 +232,52 @@ export function RosterPhasePage() {
     return unsubscribe;
   }, [gameId, playerId]);
 
+  // S-05 — subscribe to the chefReturnPool for the CURRENT round so we
+  // can render the Lay-offs panel + Re-hire buttons. Backend writes
+  // `returnedByPlayerId` on every layoff (see `layoffChef` /
+  // `layoffChefs` in index.js), but we don't filter by it: any teammate
+  // can rehire (Operations / Solo authorize the call), and showing the
+  // full panel keeps the team aware of every drop, not just yours.
+  useEffect(() => {
+    if (!gameId || !currentRound) {
+      setLaidOffChefs([]);
+      return;
+    }
+    const poolRef = collection(
+      db,
+      "games",
+      gameId,
+      "rounds",
+      `round_${currentRound}`,
+      "chefReturnPool",
+    );
+    const unsubscribe = onSnapshot(
+      poolRef,
+      (snap) => {
+        const next: LaidOffChef[] = [];
+        snap.docs.forEach((d) => {
+          const c = coerceChef(d.data());
+          if (!c) return;
+          // Carry returnedByPlayerId through for tooltip display.
+          const data = d.data() as DocumentData;
+          next.push({
+            ...c,
+            returnedByPlayerId:
+              typeof data.returnedByPlayerId === "string"
+                ? data.returnedByPlayerId
+                : null,
+          });
+        });
+        setLaidOffChefs(next);
+      },
+      (err) => {
+        console.debug("chefReturnPool listener error:", err);
+        setLaidOffChefs([]);
+      },
+    );
+    return unsubscribe;
+  }, [gameId, currentRound]);
+
   // V4 fix (Apr 25): the local nav effect that lived here used to race
   // against `useGamePhaseNav` and `GamePhaseListener` — and pointed
   // `decide` at `/game/decide` while the others used `/game`, which
@@ -235,30 +290,46 @@ export function RosterPhasePage() {
   const canAct = roleOwnsRoster(role, teamRoleAssignments);
   const ownerLabel = ownerOfRoster();
   const overCap = specialtyChefs.length > specialtyChefCap;
+  const rosterFull = specialtyChefs.length >= specialtyChefCap;
   const continueDisabled =
     overCap || submitting !== null || !canAct || rosterCompleted;
 
-  const handleLayoffClick = (chefId: string) => {
-    const target = specialtyChefs.find((c) => c.id === chefId);
-    if (!target) return;
-    setLayoffTarget({ id: target.id, name: target.name });
-  };
-
-  const handleLayoffConfirm = async () => {
-    if (!layoffTarget || !gameId) return;
+  // S-05 — instant lay-off (no confirm modal). Click chef → fires
+  // `layoffChef` immediately. Failure surfaces via the `error` chip.
+  const handleLayoffClick = async (chefId: string) => {
+    if (!gameId || !canAct || pendingChefId) return;
     setError(null);
-    setSubmitting("layoff");
+    setPendingChefId(chefId);
     try {
       const layoff = httpsCallable<
         { gameId: string; chefId: string },
         { success?: boolean }
       >(functions, "layoffChef");
-      await layoff({ gameId, chefId: layoffTarget.id });
-      setLayoffTarget(null);
+      await layoff({ gameId, chefId });
     } catch (err) {
       setError(humanizeLayoffError(err));
     } finally {
-      setSubmitting(null);
+      setPendingChefId(null);
+    }
+  };
+
+  // S-05 — re-hire calls the new `rehireChef` callable. Backend rejects
+  // when the roster is at cap, so we ALSO gate the button up-front to
+  // avoid an unnecessary round-trip.
+  const handleRehireClick = async (chefId: string) => {
+    if (!gameId || !canAct || pendingChefId || rosterFull) return;
+    setError(null);
+    setPendingChefId(chefId);
+    try {
+      const rehire = httpsCallable<
+        { gameId: string; chefId: string },
+        { ok?: boolean; rehired?: boolean }
+      >(functions, "rehireChef");
+      await rehire({ gameId, chefId });
+    } catch (err) {
+      setError(humanizeRehireError(err));
+    } finally {
+      setPendingChefId(null);
     }
   };
 
@@ -386,6 +457,64 @@ export function RosterPhasePage() {
           ))}
       </div>
 
+      {/* S-05 — "Lay offs" panel. Shows chefs the team has dropped THIS
+          round; each has a Re-hire button (gated to canAct + roster has
+          space). Once Continue fires, the chefs commit to the return
+          pool and can't be rehired in future rounds. */}
+      {laidOffChefs.length > 0 && (
+        <section
+          className="roster-phase-page__layoffs"
+          aria-label="Laid-off chefs this round"
+        >
+          <h3 className="roster-phase-page__layoffs-title">
+            Lay-offs this round
+          </h3>
+          <p className="roster-phase-page__layoffs-hint">
+            {canAct
+              ? rosterFull
+                ? "Roster is full — lay off another chef first to re-hire."
+                : "Click Re-hire to bring a chef back. Stays in the lay-off pool until you click Continue."
+              : "Your Operations teammate can re-hire any of these chefs before clicking Continue."}
+          </p>
+          <ul className="roster-phase-page__layoff-list">
+            {laidOffChefs.map((chef) => {
+              const pendingThis = pendingChefId === chef.id;
+              const rehireDisabled =
+                !canAct || pendingChefId !== null || rosterFull;
+              return (
+                <li
+                  key={chef.id}
+                  className="roster-phase-page__layoff-row"
+                >
+                  <div className="roster-phase-page__layoff-card">
+                    <ChefCard
+                      chef={toChefCardInput(chef)}
+                      mode="roster"
+                      canLayoff={false}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn--success btn--small roster-phase-page__rehire-btn"
+                    onClick={() => handleRehireClick(chef.id)}
+                    disabled={rehireDisabled}
+                    title={
+                      !canAct
+                        ? "Only the Operations teammate can re-hire."
+                        : rosterFull
+                          ? "Lay off another chef first."
+                          : `Bring ${chef.name} back to your kitchen.`
+                    }
+                  >
+                    {pendingThis ? "Re-hiring…" : "Re-hire"}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       {error && (
         <p className="roster-phase-page__error" role="alert">
           {error}
@@ -424,43 +553,6 @@ export function RosterPhasePage() {
         }
       />
 
-      {layoffTarget && (
-        <div
-          className="roster-phase-page__modal"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div
-            className="roster-phase-page__modal-backdrop"
-            aria-hidden="true"
-          />
-          <div className="roster-phase-page__modal-card">
-            <h3 className="roster-phase-page__modal-title">Lay off a chef?</h3>
-            <p className="roster-phase-page__modal-body">
-              <strong>{layoffTarget.name}</strong> will leave your kitchen and
-              rejoin the auction pool for the next round. This can't be undone.
-            </p>
-            <div className="roster-phase-page__modal-actions">
-              <button
-                type="button"
-                className="btn btn--ghost"
-                onClick={() => setLayoffTarget(null)}
-                disabled={submitting === "layoff"}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn--danger"
-                onClick={handleLayoffConfirm}
-                disabled={submitting === "layoff"}
-              >
-                {submitting === "layoff" ? "Laying off…" : "Lay off"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </PageShell>
   );
 }
@@ -475,4 +567,17 @@ function humanizeLayoffError(err: unknown): string {
     return "That chef isn't on your roster anymore. Refresh.";
   }
   return humanizeFunctionError(err, "Could not lay off chef. Try again.");
+}
+
+function humanizeRehireError(err: unknown): string {
+  const fnErr = err as FunctionsError | undefined;
+  const code = (fnErr?.code || "").split("/").pop();
+  const message = fnErr?.message || "";
+  if (code === "failed-precondition" && message.toLowerCase().includes("full")) {
+    return "Your roster is full — lay off another chef before re-hiring.";
+  }
+  if (code === "failed-precondition") {
+    return "Re-hire is only available during the roster phase, and only for chefs you laid off this round.";
+  }
+  return humanizeFunctionError(err, "Could not re-hire chef. Try again.");
 }

@@ -819,7 +819,7 @@ Color red when <30s (RoundHeader already has the CSS; reuse).
 
 ---
 
-## [ ] S-05 [P1, M] — Lay-off UX redesign: instant lay-off + "Lay offs" panel + Re-hire button (Q15 confirmed)
+## [x] S-05 [P1, M] — Lay-off UX redesign: instant lay-off + "Lay offs" panel + Re-hire button (Q15 confirmed) (✅ DONE 2026-04-29 by Claude/Scott)
 
 **Problem (confirmed Q15).** Today: click chef → confirm modal → laid off → chef returns to pool permanently. User wants a richer UX:
 - **(a)** Click chef → instant lay-off (no confirm modal).
