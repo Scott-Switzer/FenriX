@@ -552,18 +552,6 @@ Pass `disabled={!roleOwnsX(role, teamRoleAssignments)}` on each input. Add a too
 
 ---
 
-## [ ] K-08 [P2, S] — Condensed menu on the left of decide (price/qty without scrolling)
-
-**Problem.** User wants a left-side condensed menu strip with price + quantity instead of scrolling through stations. Big restructure.
-
-**Fix.** Restructure `GamePage.tsx` decide layout: keep `<BakeryView>` as the visual scene, but add a left-rail summary panel showing each product with inline `price · qty` editors. Read-only mode mirrors the rail.
-
-**This is the biggest non-Massaro task. If you're tight on time, defer to next sprint.** Visual: verify in emulator before Friday.
-
-**Files:** `app/src/pages/GamePage.tsx`, possibly a new `app/src/components/game/MenuRail.tsx`.
-
----
-
 ## [x] K-09 [P2, XS] — Bump simulation min display to match Massaro's backend bump (✅ DONE 2026-04-29 by Claude/Kavin-Sofia)
 
 **Problem.** Pairs with M-15. Frontend min display needs to match the new backend duration.
@@ -973,7 +961,7 @@ All eight questions resolved. Summary captured here so the team has the rational
 
 # What I deliberately deferred (and why)
 
-- **"Display condensed menu on left of simulation"** (K-08) — meaningful UX restructure. P2 because the existing layout works; this is polish.
+- **"Display condensed menu on left of simulation"** (K-08) — explicitly cut by Dylan on 2026-04-29. The existing stations layout works; the condensed-rail polish wasn't worth the BakeryView/GamePage restructure cost. Revisit only if playtesters surface scrolling pain.
 - **"Anyone can refresh and lose decisions"** — fixed by M-08, but the deeper "reactive multi-tab merge conflict" stays for next sprint.
 - **"Per-monthly data inside one round"** — covered by M-09 from the prof side; the FE student view shows daily already.
 - **"Loan shark incremental interest rates"** — current is flat 10%. Increasing it for repeat offenders is a balance change worth its own design pass post-Friday.
