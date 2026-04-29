@@ -564,7 +564,7 @@ Pass `disabled={!roleOwnsX(role, teamRoleAssignments)}` on each input. Add a too
 
 ---
 
-## [ ] K-09 [P2, XS] — Bump simulation min display to match Massaro's backend bump
+## [x] K-09 [P2, XS] — Bump simulation min display to match Massaro's backend bump (✅ DONE 2026-04-29 by Claude/Kavin-Sofia)
 
 **Problem.** Pairs with M-15. Frontend min display needs to match the new backend duration.
 

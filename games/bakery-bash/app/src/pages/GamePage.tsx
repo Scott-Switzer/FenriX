@@ -724,8 +724,13 @@ export function GamePage() {
   // V9 (Apr 26): bumped to 10_000ms — playtesters reported the simulate
   // screen flashing by too quickly to read the bakery animation; 10s
   // gives the chefs/customers a few clear cycles before we cut to the
-  // results screen, while still being well under the old 20s latch.
-  const SIMULATE_MIN_DISPLAY_MS = 10_000;
+  // results screen.
+  // K-09 (2026-04-29): bumped 10_000 → 20_000ms to align with Massaro's
+  // M-15 backend bump on `phaseDurations.simulating` (default 25s in
+  // `backend/functions/modules/config.js`). The latch stays comfortably
+  // under the backend duration so the screen still cedes to results
+  // rather than being yanked mid-animation.
+  const SIMULATE_MIN_DISPLAY_MS = 20_000;
   const [simHoldUntilMs, setSimHoldUntilMs] = useState<number | null>(null);
   const [simHoldExpired, setSimHoldExpired] = useState(false);
 
