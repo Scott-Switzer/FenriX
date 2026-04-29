@@ -393,7 +393,7 @@ So if budget isn't growing, the most likely real culprit is **M-02** — when te
 
 ---
 
-## [ ] M-21 [P1, S] — Expose what-hurt-satisfaction signals on lastRoundResult (Q16)
+## [x] M-21 [P1, S] — Expose what-hurt-satisfaction signals on lastRoundResult (Q16)
 
 **Investigation result (2026-04-28).** Read `satisfaction.js`. The actual data model is **NOT** "price + fill rate + cleanliness all add up to satisfaction." Reality:
 - **Satisfaction = function of fill rate per product only** (`satisfaction.js:65-86` `fillRateToSatisfactionPct`). Per-product satisfaction is then weighted-averaged across products via `aggregateProductSatisfaction` (line 145-170).

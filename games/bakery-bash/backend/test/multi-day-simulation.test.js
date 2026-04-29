@@ -279,4 +279,56 @@ describe('runMonthlySimulation', () => {
       `If it's < 50, M-03 regressed and the monthly aggregate is back at the apply site.`);
   });
 
+  it('exposes priceCompetitivenessPct for the lastRoundResult.roundSignals panel (M-21)', () => {
+    // M-21: surfaces a 0–100 metric so the FE (B-07) can render
+    // "What hurt this round?" indicators on Results. Pure passthrough
+    // for the four already-computed signals; this metric is the new
+    // computation. At catalog-base prices (croissant 4.75, cookie 4.0,
+    // bagel 4.5 — all near competitive mid), the multiplier should
+    // hover around 1.0 so the metric should land near 100.
+    const out = runMonthlySimulation([fakePlayer('p_a')], prefs, config, {
+      gameId: 'g1', round: 1,
+    });
+    const agg = out[0];
+    assert.ok(typeof agg.priceCompetitivenessPct === 'number',
+      'priceCompetitivenessPct should be a number');
+    assert.ok(agg.priceCompetitivenessPct >= 0 && agg.priceCompetitivenessPct <= 100,
+      `priceCompetitivenessPct should be in [0, 100], got ${agg.priceCompetitivenessPct}`);
+    assert.ok(agg.priceCompetitivenessPct >= 90,
+      `at near-mid prices, expected priceCompetitivenessPct >= 90, got ${agg.priceCompetitivenessPct}`);
+  });
+
+  it('priceCompetitivenessPct drops when prices move into the premium zone (M-21)', () => {
+    // Premium prices reduce the demand multiplier below 1, which the
+    // metric exposes as a sub-100 value — that's the signal we want
+    // surfacing on the Results panel.
+    const cheap = fakePlayer('cheap', {
+      decision: {
+        menu: { croissant: true, cookie: true, bagel: true },
+        quantities: { croissant: 200, cookie: 200, bagel: 200 },
+        sousChefCount: 1,
+        sousChefAssignments: { croissant: 1 },
+        productPrices: { croissant: 4.75, cookie: 4.0, bagel: 4.5 },
+      },
+    });
+    const premium = fakePlayer('premium', {
+      decision: {
+        menu: { croissant: true, cookie: true, bagel: true },
+        quantities: { croissant: 200, cookie: 200, bagel: 200 },
+        sousChefCount: 1,
+        sousChefAssignments: { croissant: 1 },
+        // Push every price into the premium zone of its config range.
+        productPrices: { croissant: 7.0, cookie: 6.0, bagel: 6.0 },
+      },
+    });
+    const out = runMonthlySimulation([cheap, premium], prefs, config, {
+      gameId: 'g1', round: 1,
+    });
+    const cheapAgg = out.find((r) => r.playerId === 'cheap');
+    const premiumAgg = out.find((r) => r.playerId === 'premium');
+    assert.ok(premiumAgg.priceCompetitivenessPct < cheapAgg.priceCompetitivenessPct,
+      `premium-priced team should have a LOWER priceCompetitivenessPct than cheap. ` +
+      `premium=${premiumAgg.priceCompetitivenessPct}, cheap=${cheapAgg.priceCompetitivenessPct}`);
+  });
+
 });

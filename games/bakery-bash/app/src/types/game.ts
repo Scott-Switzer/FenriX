@@ -448,6 +448,31 @@ export interface RoundResult {
    * cards in the Events section of the Results screen.
    */
   events?: RoundEvent[];
+  /**
+   * M-21 (2026-04-28): "What hurt this round?" signals grouped onto one
+   * object so the FE (B-07) can render the Results-screen panel without
+   * cherry-picking five separate fields. Satisfaction is fill-rate-driven
+   * here; price affects demand not satisfaction; cleanliness affects foot
+   * traffic not satisfaction — see M-21 investigation in tasks-april-28.md
+   * for the full rationale on why these are sibling signals rather than
+   * "components of satisfaction".
+   */
+  roundSignals?: {
+    /** Aggregate fill-rate satisfaction, 0–100. */
+    satisfactionPct: number;
+    /** Per-product fill-rate satisfaction (subset of products on the menu). */
+    perProductSatisfaction: Partial<Record<ProductKey, number>>;
+    /** Equipment cleanliness letter grade (A–F). */
+    cleanlinessGrade: string;
+    /** Numeric cleanliness score, 0–100. */
+    cleanlinessScore: number;
+    /**
+     * Average of `min(priceDemandMultiplier, 1.0) × 100` across products on
+     * the menu. 100 = demand-optimal pricing. < 100 means premium prices
+     * cost the team some demand share.
+     */
+    priceCompetitivenessPct: number;
+  };
 }
 
 /** One row of the curveball-events feed shown on the Results screen. */

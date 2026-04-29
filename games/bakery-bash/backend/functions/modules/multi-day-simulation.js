@@ -38,6 +38,44 @@ const { calculateRoundCosts } = require('./revenue');
 const { calculateLoanShark, updateBudget } = require('./loan-shark');
 const { buildCsvRow } = require('./csv-export');
 const { nextEquipmentGrade, tierUpgradeCost, gradeFromScore, cleanlinessDriftDelta } = require('./equipment-cleanliness');
+const { calculatePriceDemandMultiplier } = require('./pricing');
+
+/**
+ * M-21 (2026-04-28) — price competitiveness as a 0–100 metric.
+ *
+ * Average of `min(priceDemandMultiplier, 1.0) × 100` across products on the
+ * menu. Multipliers above 1 (floor-zone bonus) saturate at 100% so the
+ * metric reads as "how much demand your prices are leaving on the table":
+ *   100 = demand-optimal pricing (competitive mid or floor)
+ *   < 100 = premium prices reduced your demand share by some %
+ *
+ * Closed bakery (no offered products) → returns 100 as a neutral default
+ * so the UI doesn't render a misleading "0% price competitiveness" for a
+ * team that didn't open the doors.
+ *
+ * @param {object} resolvedPrices - { [product]: number } resolved prices
+ * @param {object} offeredSet - { [product]: any } map whose keys are the
+ *   products on the menu (e.g. monthlyPerProductSatisfaction)
+ * @param {object} cfg - merged game config (for PRICE_ZONES)
+ * @returns {number} 0–100, integer
+ */
+function priceCompetitivenessPctFromPrices(resolvedPrices, offeredSet, cfg) {
+  const zones = (cfg && cfg.PRICE_ZONES) || config.PRICE_ZONES || {};
+  const offered = Object.keys(offeredSet || {});
+  if (offered.length === 0) return 100;
+  let sum = 0;
+  let n = 0;
+  for (const p of offered) {
+    const z = zones[p];
+    const price = Number((resolvedPrices && resolvedPrices[p]) || 0);
+    if (!z || !Number.isFinite(price) || price <= 0) continue;
+    const mult = calculatePriceDemandMultiplier(price, z);
+    sum += Math.min(1, Math.max(0, mult));
+    n += 1;
+  }
+  if (n === 0) return 100;
+  return Math.round((sum / n) * 100);
+}
 
 /**
  * Build a per-day deterministic demand-variability multiplier.
@@ -343,6 +381,15 @@ function runMonthlySimulation(players, roundPreferences, cfg = config, { gameId 
       equipmentUpgradePurchased: equipmentUpgradeApplied,
     });
 
+    // M-21: price competitiveness on a 0–100 scale, computed from the
+    // resolved prices used by the simulation against the products that
+    // were actually on the menu (= keys of monthlyPerProductSatisfaction).
+    const priceCompetitivenessPct = priceCompetitivenessPctFromPrices(
+      last.productPrices || {},
+      monthlyPerProductSatisfaction,
+      cfg,
+    );
+
     monthlyResults.push({
       playerId: p.playerId,
       displayName: p.displayName,
@@ -372,6 +419,8 @@ function runMonthlySimulation(players, roundPreferences, cfg = config, { gameId 
       cleanlinessScore,
       cleanlinessGrade,
       equipmentUpgradeApplied,
+      // M-21: surfaces "what hurt this round" signals to the FE.
+      priceCompetitivenessPct,
       // Daily breakdown for CSV per-day rows.
       dailyResults: dailyApportioned,
     });

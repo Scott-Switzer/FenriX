@@ -2474,6 +2474,32 @@ async function runSimulationAndPersist(gameRef, round, config) {
                 aggregateSatisfactionPct: d.aggregateSatisfactionPct,
               }))
             : [],
+          // M-21 (2026-04-28): "what hurt this round" signals grouped on
+          // one object so the FE (Barlava — B-07) can render a single
+          // panel of indicators. The first four are pure passthrough; the
+          // last is computed in multi-day-simulation.js
+          // (priceCompetitivenessPctFromPrices). Satisfaction in this
+          // game is fill-rate-driven; price affects DEMAND not
+          // satisfaction; cleanliness affects FOOT TRAFFIC not
+          // satisfaction — see M-21 investigation in tasks-april-28.md
+          // for the full rationale on why these are sibling signals
+          // rather than "components of satisfaction".
+          roundSignals: {
+            satisfactionPct: r.aggregateSatisfactionPct,
+            // Map to { [product]: number } to match the FE type
+            // (Partial<Record<ProductKey, number>>) — r.perProductSatisfaction
+            // values are objects { satisfactionPct, qtySold, qtyStocked, ... }.
+            perProductSatisfaction: Object.fromEntries(
+              Object.entries(r.perProductSatisfaction || {})
+                .map(([product, pps]) => [
+                  product,
+                  numberOrDefault(pps && pps.satisfactionPct, 0),
+                ]),
+            ),
+            cleanlinessGrade: r.cleanlinessGrade,
+            cleanlinessScore: r.cleanlinessScore,
+            priceCompetitivenessPct: numberOrDefault(r.priceCompetitivenessPct, 100),
+          },
         },
         updatedAt: FieldValue.serverTimestamp(),
       };
