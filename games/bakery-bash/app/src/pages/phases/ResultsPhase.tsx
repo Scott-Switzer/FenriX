@@ -3,6 +3,7 @@ import { doc, onSnapshot, type DocumentData } from "firebase/firestore";
 import { useGame } from "../../contexts/GameContext";
 import { LoanSharkCallout } from "../../components/game/LoanSharkCallout";
 import { downloadResultsCsv } from "../../components/game/RoundHeader";
+import { DataPurchaseSection } from "../../components/game/DataPurchaseSection";
 import type { ProductKey, RoundEvent, RoundResult } from "../../types/game";
 import { formatDaysInRound } from "../../lib/dateSystem";
 import { db } from "../../lib/firebase";
@@ -319,6 +320,12 @@ export function ResultsPhase() {
           </button>
         )}
       </header>
+
+      {/* B-05 (2026-04-29): data purchases now live on Results, gated to
+          Analyst / Solo, scoped to the current round. The component
+          self-hides for non-Analyst roles and during the very first
+          render (before currentRound is set). */}
+      <DataPurchaseSection />
 
       {latest ? (
         <>

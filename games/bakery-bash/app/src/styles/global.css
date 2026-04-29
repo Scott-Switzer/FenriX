@@ -4137,11 +4137,52 @@ h3 { font-size: 0.7rem; }
 /* ── FE-N09: Round header timer expired message ──────────────────────── */
 .round-header__timer-expired { font-size: 0.85rem; color: var(--berry, #ef4444); font-weight: bold; }
 
-/* ── FE-N09: Competitor intel sidebar section ────────────────────────── */
-.sidebar__intel-section { padding: 0.75rem; border-top: 1px solid #eee; }
-.sidebar__intel-btn     { width: 100%; font-size: 0.8rem; }
-.sidebar__intel-confirm { background: var(--cream, #fff7e6); border-radius: 6px; padding: 0.75rem; margin-top: 0.5rem; font-size: 0.85rem; }
-.sidebar__intel-result  { margin-top: 0.5rem; font-size: 0.85rem; }
+/* ── B-05: Data-purchase section on the Results screen ──────────────── */
+/* (Lifted out of the right sidebar; the old sidebar styles are gone.) */
+.results-phase__data-purchases {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: var(--cream, #fff7e6);
+  border-radius: 8px;
+  border: 1px solid var(--honey, #f59e0b);
+}
+.results-phase__data-purchases-hint {
+  font-size: 0.85rem;
+  color: var(--dark-roast, #6b4226);
+  margin: 0 0 0.75rem 0;
+}
+.results-phase__data-purchase-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.6rem;
+}
+.results-phase__data-purchase-hint {
+  font-size: 0.75rem;
+  color: #555;
+  margin: 0;
+}
+.results-phase__intel-confirm {
+  background: #fff;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  border: 1px dashed var(--honey, #f59e0b);
+}
+.results-phase__intel-confirm > p {
+  margin: 0 0 0.5rem 0;
+}
+.results-phase__data-info {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--sage, #5e8055);
+}
+.results-phase__data-error {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--berry, #ef4444);
+}
 
 /* ── Results phase — metric cards ───────────────────────────────────── */
 .results-phase__metric-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; }

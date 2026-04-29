@@ -676,7 +676,7 @@ Add `max={N}` and a red `--error` class + helper text per the pattern already pr
 
 ---
 
-## [ ] B-05 [P1, M] — Move data purchases out of the sidebar into the Results screen
+## [x] B-05 [P1, M] — Move data purchases out of the sidebar into the Results screen (✅ DONE 2026-04-29 by Claude/Barlava)
 
 **Problem.** `GameSidebar.tsx:197-288` houses competitor intel + Tier 1/2 chef data, gated to Finance during decide. Per Q3, user wants them on Results, gated to the just-played round only — no buying older rounds.
 
