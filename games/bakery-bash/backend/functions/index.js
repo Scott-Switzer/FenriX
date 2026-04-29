@@ -4850,7 +4850,12 @@ exports.extendPhase = onCall(CALLABLE_OPTS, async (request) => {
   const gameSnap = await gameRef.get();
   if (!gameSnap.exists) throw new HttpsError("not-found", "Game not found.");
   const game = gameSnap.data();
-  const isProfessor = request.auth.uid === game.professorUid ||
+  // Mirror assertCallerIsProfessor / endGame / setPausedFlag: check both
+  // professorUid and the legacy professorId alias. The custom claim
+  // remains a global override path for admin tooling.
+  const isProfessor =
+    request.auth.uid === game.professorUid ||
+    request.auth.uid === game.professorId ||
     (request.auth.token && request.auth.token.professor === true);
   if (!isProfessor) throw new HttpsError("permission-denied", "Professors only.");
   const terminalPhases = ["lobby", "game_over", "simulating"];
