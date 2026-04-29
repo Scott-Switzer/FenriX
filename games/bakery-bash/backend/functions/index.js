@@ -4670,19 +4670,16 @@ exports.onBotPhaseChange = onDocumentWritten(
         }
 
         if (parsed.phase === 'roster' && decisions.layoffs && decisions.layoffs.length > 0) {
-          for (const chefId of decisions.layoffs) {
-            const remaining = (botData.specialtyChefs || []).filter((c) => c.id !== chefId);
-            await botDoc.ref.update({
-              specialtyChefs: remaining,
-              pendingRosterAction: remaining.length > numberOrDefault(config.specialtyChefCap, 3),
-            });
-          }
-          // Auto-continue from roster if now at or under cap
-          const updatedSnap = await botDoc.ref.get();
-          const updatedChefs = updatedSnap.data().specialtyChefs || [];
-          if (updatedChefs.length <= numberOrDefault(config.specialtyChefCap, 3)) {
-            await botDoc.ref.update({ rosterCompleted: true });
-          }
+          // Single atomic update: remove all layoffs at once
+          const remaining = (botData.specialtyChefs || []).filter(
+            (c) => !decisions.layoffs.includes(c.id)
+          );
+          const cap = numberOrDefault(config.specialtyChefCap, 3);
+          await botDoc.ref.update({
+            specialtyChefs: remaining,
+            pendingRosterAction: remaining.length > cap,
+            rosterCompleted: remaining.length <= cap,
+          });
         }
 
         if (parsed.phase === 'decide') {
