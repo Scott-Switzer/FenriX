@@ -2680,6 +2680,18 @@ h3 { font-size: 0.7rem; }
   opacity: 0.75;
 }
 
+/* S-04 — flips on when the auto-snapshot for the current round didn't
+   land. Drops the muted opacity and adds an amber tint so the prof
+   actually notices, since the recovery point is now stale. */
+.professor-page__last-saved--stale {
+  opacity: 1;
+  color: #b45309; /* amber-700, readable on the cream page background */
+}
+
+.professor-page__last-saved-warning {
+  font-weight: 600;
+}
+
 .professor-page__restore-overlay {
   position: fixed;
   inset: 0;

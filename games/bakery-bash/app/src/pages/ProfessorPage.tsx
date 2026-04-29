@@ -1232,14 +1232,43 @@ export function ProfessorPage() {
       })()}
 
       {/* T2.4: "Last saved" indicator. Hidden until the prof has at least
-          one snapshot — auto-save fires when the game enters round 1. */}
-      {gameId && latestSnapshot && (
-        <p className="professor-page__last-saved">
-          Last saved: round {latestSnapshot.round} ·{" "}
-          {formatSnapshotTime(latestSnapshot.capturedAt)}
-          {latestSnapshot.capturedBy === "manual" && " (manual)"}
-        </p>
-      )}
+          one snapshot — auto-save fires when the game enters round 1.
+          S-04 (2026-04-29): the auto-snapshot at round-start is fire-and-
+          forget (advanceGamePhase doesn't await it — see index.js:1916),
+          so a transient Firestore failure leaves the prof with no
+          snapshot for the current round and no surface to know about it.
+          The "stale" chip flips on when the live game has moved past a
+          round but the latest snapshot's round number hasn't caught up,
+          telling the prof their only restore point is round N-1, not the
+          current round. The next phase advance will retry the
+          auto-snapshot path; if the chip persists across that, something
+          structural is wrong and the prof should treat the older snapshot
+          as the recovery target. */}
+      {gameId && latestSnapshot && (() => {
+        const liveRound = typeof currentRound === "number" ? currentRound : 0;
+        const isStale =
+          isRunning &&
+          liveRound > 0 &&
+          latestSnapshot.round < liveRound;
+        return (
+          <p
+            className={`professor-page__last-saved${
+              isStale ? " professor-page__last-saved--stale" : ""
+            }`}
+          >
+            Last saved: round {latestSnapshot.round} ·{" "}
+            {formatSnapshotTime(latestSnapshot.capturedAt)}
+            {latestSnapshot.capturedBy === "manual" && " (manual)"}
+            {isStale && (
+              <span className="professor-page__last-saved-warning">
+                {" "}
+                ⚠ no snapshot yet for round {liveRound} — restore would
+                roll back to round {latestSnapshot.round}.
+              </span>
+            )}
+          </p>
+        );
+      })()}
 
       <div className="professor-page__controls">
         <button
