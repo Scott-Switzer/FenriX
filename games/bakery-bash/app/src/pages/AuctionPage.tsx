@@ -715,25 +715,6 @@ export function AuctionPage() {
     [isAdPhase, pendingAdBids, topBidsAd, topBidsLeaderAd, myTeamKey],
   );
 
-  // True when the player has matched the top bid but someone else submitted
-  // first and will win the tie — they need to raise to actually win.
-  const isTiedAdBid = useCallback(
-    (adType: AdType) => {
-      const myBid = pendingAdBids[adType] ?? 0;
-      const topBid = topBidsAd[adType] ?? 0;
-      const leader = topBidsLeaderAd[adType];
-      return (
-        myBid > 0 &&
-        topBid > 0 &&
-        myBid === topBid &&
-        !!myTeamKey &&
-        !!leader &&
-        leader !== myTeamKey
-      );
-    },
-    [pendingAdBids, topBidsAd, topBidsLeaderAd, myTeamKey],
-  );
-
   const isLockedChefBid = useCallback(
     (chefId: string) => {
       if (!isChefPhase) return true;
@@ -749,23 +730,6 @@ export function AuctionPage() {
       );
     },
     [isChefPhase, pendingChefBids, topBidsChef, topBidsLeaderChef, myTeamKey],
-  );
-
-  const isTiedChefBid = useCallback(
-    (chefId: string) => {
-      const myBid = pendingChefBids[chefId] ?? 0;
-      const topBid = topBidsChef[chefId] ?? 0;
-      const leader = topBidsLeaderChef[chefId];
-      return (
-        myBid > 0 &&
-        topBid > 0 &&
-        myBid === topBid &&
-        !!myTeamKey &&
-        !!leader &&
-        leader !== myTeamKey
-      );
-    },
-    [pendingChefBids, topBidsChef, topBidsLeaderChef, myTeamKey],
   );
 
   const hasEditableAdBid = isAdPhase
@@ -851,8 +815,15 @@ export function AuctionPage() {
               bakery.
             </p>
             <p className="auction-page__ad-description">
-              The highest bidder for each ad holds it for the entire round &#8212; one full month of exclusive
-              reach. Ownership resets every auction, so no team can hold a slot forever. May the best bid win!
+              {/* B-01 (2026-04-29): switched from open-bid to sealed-bid
+                  semantics. We still fetch top bids in the background to
+                  drive the lock-out logic for slots you currently lead,
+                  but we don't display competitor bid values during the
+                  auction. */}
+              Sealed-bid auction: submit your best bid before the timer
+              runs out — you won't see opponents' bids until results.
+              The highest bidder per slot holds the ad for the whole
+              round; ownership resets next auction.
             </p>
             <div className="auction-ads__grid">
               {isAdPhase && hasEditableBid && (
@@ -877,12 +848,14 @@ export function AuctionPage() {
                     <span className="auction-ad__name">{ad.label}</span>
                     <span className="auction-ad__desc">{ad.desc}</span>
                   </div>
+                  {/* B-01 (2026-04-29): hide the live top-bid value for
+                      sealed-bid semantics. Keep the slot for layout
+                      stability and surface a sealed placeholder so the
+                      space doesn't read as "no data". */}
                   <div className="auction-ad__top-bid">
                     <span className="auction-ad__top-bid-label">Top Bid</span>
-                    <span className="auction-ad__top-bid-value">
-                      {typeof topBidsAd[ad.id] === "number"
-                        ? `$${topBidsAd[ad.id]!.toLocaleString()}`
-                        : "--"}
+                    <span className="auction-ad__top-bid-value auction-ad__top-bid-value--sealed">
+                      Sealed
                     </span>
                   </div>
                   {adMinBid !== null && (
@@ -919,6 +892,14 @@ export function AuctionPage() {
                             setAdBid(ad.id, parsed);
                           }
                         }}
+                        onKeyDown={(e) => {
+                          // B-03 (2026-04-29): Enter submits all ad bids
+                          // at once (matches the bottom Submit button).
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleSubmitBids();
+                          }
+                        }}
                       />
                     </div>
                     {adBelowMinimum && (
@@ -926,11 +907,9 @@ export function AuctionPage() {
                         Bid at least ${adMinBid!.toLocaleString()} to qualify.
                       </p>
                     )}
-                    {!adBelowMinimum && isTiedAdBid(ad.id) && (
-                      <p className="auction-page__tied-warning" role="alert">
-                        ⚠ Tied — raise your bid to win
-                      </p>
-                    )}
+                    {/* B-01 (2026-04-29): "Tied — raise your bid to win"
+                        leaked sealed-bid information; removed alongside
+                        the live top-bid display. */}
                   </div>
                 </div>
                 );
@@ -996,12 +975,11 @@ export function AuctionPage() {
                         {NATIONALITY_LABELS[chef.nationality]}
                       </span>
                     </div>
+                    {/* B-01 (2026-04-29): sealed-bid — hide live value. */}
                     <div className="auction-chef__top-bid">
                       <span className="auction-chef__top-bid-label">Top Bid</span>
-                      <span className="auction-chef__top-bid-value">
-                        {typeof topBidsChef[chef.id] === "number"
-                          ? `$${topBidsChef[chef.id]!.toLocaleString()}`
-                          : "--"}
+                      <span className="auction-chef__top-bid-value auction-chef__top-bid-value--sealed">
+                        Sealed
                       </span>
                     </div>
                     {minBid !== null && (
@@ -1041,6 +1019,23 @@ export function AuctionPage() {
                               setChefBid(chef.id, 0);
                             }
                           }}
+                          onKeyDown={(e) => {
+                            // B-03 (2026-04-29): Enter submits this
+                            // chef's bid (each chef has its own row +
+                            // submit, so we target the single chef
+                            // rather than the round-wide submit).
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              if (
+                                !timerExpired &&
+                                pendingChefBids[chef.id] &&
+                                !isLockedChefBid(chef.id) &&
+                                !belowMinimum
+                              ) {
+                                void handleSubmitSingleBid(chef.id);
+                              }
+                            }
+                          }}
                         />
                       </div>
                       {belowMinimum && minBid !== null && (
@@ -1048,11 +1043,8 @@ export function AuctionPage() {
                           Bid must be at least ${minBid.toLocaleString()}.
                         </p>
                       )}
-                      {!belowMinimum && isTiedChefBid(chef.id) && (
-                        <p className="auction-page__tied-warning" role="alert">
-                          ⚠ Tied — raise your bid to win
-                        </p>
-                      )}
+                      {/* B-01 (2026-04-29): tied-bid warning removed
+                          (leaked sealed-bid info). */}
                       <button
                         className="btn btn--small chef-card__submit"
                         disabled={timerExpired || !pendingChefBids[chef.id] || isLockedChefBid(chef.id) || belowMinimum}

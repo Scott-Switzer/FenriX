@@ -56,12 +56,12 @@ const HOW_TO_PLAY_STAGES = [
   {
     label: "Ad Auction",
     tagline: "The loudest bakery wins the crowd.",
-    body: "Your Analyst submits ad bids. Teams compete for four slots — TV, Radio, Newspaper, Billboard — and the highest bidder locks that slot for the whole round. Each ad type gives a different foot-traffic bump; figure out which is worth what from your data model.",
+    body: "Your Analyst submits ad bids. Teams compete for four slots — TV, Radio, Newspaper, Billboard. This is a sealed-bid auction: submit your best bid before the timer runs out — you won't see opponents' bids until results. The highest bidder locks each slot for the whole round.",
   },
   {
     label: "Chef Auction",
     tagline: "Great chefs don't come cheap.",
-    body: "Your Analyst submits chef bids. A fresh pool of specialty chefs goes up for auction each round. Specialty chefs don't have station assignments — they boost the whole bakery's output. Sous chefs still live on stations. Nationality + tier hints at who's great at what.",
+    body: "Your Analyst submits chef bids. A fresh pool of specialty chefs goes up for auction each round. Sealed-bid: nobody sees your number, you don't see theirs — the highest bid wins. Specialty chefs don't have station assignments; they boost the whole bakery's output. Sous chefs still live on stations.",
   },
   {
     label: "Kitchen Roster",

@@ -1745,6 +1745,18 @@ h3 { font-size: 0.7rem; }
   font-weight: 700;
 }
 
+/* B-01 (2026-04-29): sealed-bid placeholder reads as muted/secondary
+   so the slot doesn't compete visually with the player's own bid. */
+.auction-chef__top-bid-value--sealed,
+.auction-ad__top-bid-value--sealed {
+  font-size: 0.9rem;
+  color: var(--dark-roast, #6b4226);
+  text-shadow: none;
+  font-weight: 500;
+  font-style: italic;
+  letter-spacing: 0.02em;
+}
+
 .auction-chef__bid {
   display: flex;
   flex-direction: column;
@@ -4136,12 +4148,6 @@ h3 { font-size: 0.7rem; }
 .auction-page__bid-wrapper { display: flex; align-items: center; gap: 4px; }
 .auction-page__bid-prefix  { font-weight: bold; font-size: 1rem; line-height: 1; }
 .auction-page__bid-input   { width: 130px; min-width: 130px; }
-.auction-page__tied-warning {
-  margin: 0.25rem 0 0;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #c05c00;
-}
 .auction-page__ad-description { font-size: 0.875rem; color: #555; line-height: 1.5; margin: 0 0 1rem; padding: 0.75rem; background: var(--cream, #fff7e6); border-radius: 6px; border-left: 3px solid var(--honey, #f59e0b); }
 
 /* ── Auction timer expired popup ────────────────────────────────────── */

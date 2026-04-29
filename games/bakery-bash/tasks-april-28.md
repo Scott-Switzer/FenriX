@@ -618,7 +618,7 @@ The button itself isn't the gate — it's just the submit. The actual friction c
 
 > Solo work, ~1 day. AuctionPage is the main file; data purchases move from GameSidebar to ResultsPhase.
 
-## [ ] B-01 [P0, S] — Hide live "Top Bid" during the auction (sealed bid)
+## [x] B-01 [P0, S] — Hide live "Top Bid" during the auction (sealed bid) (✅ DONE 2026-04-29 by Claude/Barlava)
 
 **Problem.** `AuctionPage.tsx:854-861` (ads) and `:962-968` (chefs) render the live top bid. User wants sealed-bid behavior.
 
@@ -652,7 +652,7 @@ Add `max={N}` and a red `--error` class + helper text per the pattern already pr
 
 ---
 
-## [ ] B-03 [P0, XS] — Press Enter to submit bids
+## [x] B-03 [P0, XS] — Press Enter to submit bids (✅ DONE 2026-04-29 by Claude/Barlava)
 
 **Problem.** Confirmed: bid inputs only have `onChange`, no Enter handler.
 
