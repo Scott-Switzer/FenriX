@@ -691,7 +691,7 @@ Add `max={N}` and a red `--error` class + helper text per the pattern already pr
 
 ---
 
-## [ ] B-06 [P1, S] — Make the loan shark visible (Q4 confirmed: show inline warning during Decide)
+## [x] B-06 [P1, S] — Make the loan shark visible (Q4 confirmed: show inline warning during Decide) (✅ DONE 2026-04-29 by Claude/Barlava)
 
 **Problem.** `LoanSharkCallout.tsx:25` only renders when `amountBorrowed > 0` and only on the Results phase. No live warning during decide that "this decision will trigger borrowing." User report: "Loan shark is not clear."
 
