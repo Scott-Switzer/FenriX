@@ -2381,6 +2381,55 @@ h3 { font-size: 0.7rem; }
   font-weight: 700;
 }
 
+/* S-01 — per-teammate role pill cluster. Sits inline with the team label
+   and the existing "Active: <role>" badge. The signed-in player is
+   highlighted (bold "You" + caramel border); the teammate whose role
+   owns the current phase gets a filled pip so the team can quickly tell
+   whose move it is right now. */
+.round-header__roster-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.round-header__roster-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: var(--cream, #fff7e6);
+  border: 1px solid var(--honey, #f59e0b);
+  color: var(--espresso);
+  font-family: var(--font-pixel);
+  font-size: 0.5rem;
+  white-space: nowrap;
+}
+
+.round-header__roster-pill--mine {
+  border-color: var(--caramel, #d97706);
+  border-width: 2px;
+}
+
+.round-header__roster-pill--active {
+  background: var(--caramel, #d97706);
+  border-color: var(--caramel, #d97706);
+  color: #fff;
+}
+
+.round-header__roster-pill-sep {
+  opacity: 0.6;
+}
+
+.round-header__roster-pill-role {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 /* ─── Professor monitor (April 19) ───────────────────────── */
 
 .professor-page__monitor {

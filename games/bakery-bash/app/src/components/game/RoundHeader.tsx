@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useGame } from "../../contexts/GameContext";
 import { usePhaseCountdownSeconds } from "../../hooks/usePhaseCountdownSeconds";
+import { useGameRoster } from "../../hooks/useGameRoster";
 import { CsvInboxModal } from "./CsvInboxModal";
 import { GameProgressBar } from "./GameProgressBar";
 import {
@@ -10,6 +11,7 @@ import {
   roleOwnsAdBids,
   roleOwnsChefBids,
   roleOwnsRoster,
+  type PlayerRole,
   type RoundResult,
   type StaffCounts,
 } from "../../types/game";
@@ -220,6 +222,8 @@ export function downloadResultsCsv(results: RoundResult[]) {
 
 export function RoundHeader() {
   const {
+    gameId,
+    playerId,
     currentRound,
     totalRounds,
     teamName,
@@ -232,6 +236,10 @@ export function RoundHeader() {
 
   const [inboxOpen, setInboxOpen] = useState(false);
   const displaySeconds = usePhaseCountdownSeconds();
+  // S-01 — names for the per-teammate role pills. Falls back to a short
+  // suffix of the uid when the roster doc hasn't landed yet (e.g. a fresh
+  // anon auth) so the pill still renders something legible.
+  const rosterByUid = useGameRoster(gameId);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -254,6 +262,48 @@ export function RoundHeader() {
     (parsed.base === "bid_ad" && roleOwnsAdBids(role, teamRoleAssignments)) ||
     (parsed.base === "bid_chef" && roleOwnsChefBids(role, teamRoleAssignments)) ||
     (parsed.base === "roster" && roleOwnsRoster(role, teamRoleAssignments));
+
+  /**
+   * S-01 — given a teammate's role, return whether THEIR role owns the
+   * current phase. This is the per-pill version of `isActiveRole`. We
+   * pass each teammate's role as the first arg and the FULL team
+   * roleAssignments map as the second so the same fallback rules apply
+   * (a teammate filling a vacant specialist role still lights up).
+   */
+  const isOwnerForPhase = (teammateRole: PlayerRole): boolean => {
+    switch (parsed.base) {
+      case "decide":
+        return roleOwnsDecide(teammateRole, teamRoleAssignments);
+      case "bid_ad":
+        return roleOwnsAdBids(teammateRole, teamRoleAssignments);
+      case "bid_chef":
+        return roleOwnsChefBids(teammateRole, teamRoleAssignments);
+      case "roster":
+        return roleOwnsRoster(teammateRole, teamRoleAssignments);
+      default:
+        return false;
+    }
+  };
+
+  /**
+   * S-01 — sorted list of teammates with role pills. The signed-in player
+   * is first ("You"), other teammates after. Pills render whether or not
+   * a roster doc exists (uid suffix fallback).
+   */
+  const teammateEntries = (() => {
+    const entries = Object.entries(teamRoleAssignments).filter(
+      ([, r]) => r !== null,
+    ) as Array<[string, PlayerRole]>;
+    // Sort: self first, then by displayName (or uid) for stable order.
+    entries.sort(([uidA], [uidB]) => {
+      if (uidA === playerId) return -1;
+      if (uidB === playerId) return 1;
+      const nameA = rosterByUid[uidA]?.displayName ?? uidA;
+      const nameB = rosterByUid[uidB]?.displayName ?? uidB;
+      return nameA.localeCompare(nameB);
+    });
+    return entries;
+  })();
 
   return (
     <header className="round-header">
@@ -293,6 +343,45 @@ export function RoundHeader() {
             <div className={`round-header__role-badge${isActiveRole ? " round-header__role-badge--active" : ""}`}>
               {isActiveRole ? `Your turn: ${roleLabel}` : `Active: ${roleLabel}`}
             </div>
+          )}
+          {/* S-01 — per-teammate role pills. Bold "You" pill is highlighted
+              when the signed-in player is the active role for the current
+              phase; teammates light up when THEIR role owns the phase. */}
+          {teamId && teammateEntries.length > 0 && (
+            <ul
+              className="round-header__roster-pills"
+              role="list"
+              aria-label="Team roles"
+            >
+              {teammateEntries.map(([uid, teammateRole]) => {
+                const isMe = uid === playerId;
+                const isPhaseOwner = isOwnerForPhase(teammateRole);
+                const rosterEntry = rosterByUid[uid];
+                const name = isMe
+                  ? "You"
+                  : rosterEntry?.displayName ?? `Player ${uid.slice(0, 4)}`;
+                return (
+                  <li
+                    key={uid}
+                    className={`round-header__roster-pill${
+                      isMe ? " round-header__roster-pill--mine" : ""
+                    }${
+                      isPhaseOwner
+                        ? " round-header__roster-pill--active"
+                        : ""
+                    }`}
+                  >
+                    <span className="round-header__roster-pill-name">
+                      {isMe ? <strong>{name}</strong> : name}
+                    </span>
+                    <span className="round-header__roster-pill-sep"> — </span>
+                    <span className="round-header__roster-pill-role">
+                      {PLAYER_ROLE_LABELS[teammateRole]}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
       )}

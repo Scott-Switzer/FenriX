@@ -745,7 +745,7 @@ For fill rate, surface the WORST per-product satisfaction (e.g. "Bagel: 22%") si
 
 > Solo work, ~1 day. Smaller, mostly UX polish.
 
-## [ ] S-01 [P0, S] — Top-bar bold role display + teammate role roster
+## [x] S-01 [P0, S] — Top-bar bold role display + teammate role roster (✅ DONE 2026-04-29 by Claude/Scott)
 
 **Problem.** `RoundHeader.tsx:286-298` shows the team label + a single role badge ("Active: X" or "Your turn: X"). User wants:
 - Boldly specify who the current player is
