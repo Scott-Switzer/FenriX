@@ -45,6 +45,9 @@ interface ProfessorRosterEntry {
   displayName: string;
   bakeryName?: string;
   joinedAt?: Timestamp | null;
+  isBot?: boolean;
+  difficulty?: string | null;
+  personality?: string | null;
 }
 
 interface ProfessorTeamEntry {
@@ -133,6 +136,7 @@ const WARMUP_CALLABLES = [
   "advanceGamePhase",
   "joinGame",
   "createTeam",
+  "createBotPlayer",
 ] as const;
 
 export function ProfessorPage() {
@@ -183,6 +187,23 @@ export function ProfessorPage() {
       }
     };
   }, []);
+
+  // Bot-management form.
+  const [selectedPreset, setSelectedPreset] = useState<string>("");
+  const [manualDifficulty, setManualDifficulty] = useState<string>("medium");
+  const [manualPersonality, setManualPersonality] = useState<string>("balanced");
+  const botsInGame = useMemo(
+    () =>
+      roster
+        .filter((r) => r.isBot)
+        .map((r) => ({
+          uid: r.uid,
+          name: r.displayName,
+          difficulty: r.difficulty ?? "unknown",
+          personality: r.personality ?? "unknown",
+        })),
+    [roster],
+  );
 
   // Create-game form.
   const [totalRounds, setTotalRounds] = useState<number>(5);
@@ -317,6 +338,9 @@ export function ProfessorPage() {
             bakeryName:
               typeof data.bakeryName === "string" ? data.bakeryName : undefined,
             joinedAt: (data.joinedAt as Timestamp | null) ?? null,
+            isBot: data.isBot === true,
+            difficulty: typeof data.difficulty === "string" ? data.difficulty : null,
+            personality: typeof data.personality === "string" ? data.personality : null,
           };
         });
         entries.sort((a, b) => {
@@ -1041,6 +1065,97 @@ export function ProfessorPage() {
           </div>
         )}
       </section>
+
+      {/* Add Bots (lobby only). */}
+      {gameId && inLobby && isOwner && (
+        <section className="professor-page__bots">
+          <h2 className="professor-page__section-title">Add AI Opponents</h2>
+          <div className="professor-page__bots-form">
+            <label className="professor-page__field">
+              <span>Character Preset</span>
+              <select
+                value={selectedPreset}
+                onChange={(e) => setSelectedPreset(e.target.value)}
+              >
+                <option value="">— Choose a character —</option>
+                <option value="chaotic_charlie">Chaotic Charlie (Novice, Random)</option>
+                <option value="unlucky_larry">Unlucky Larry (Novice, Balanced)</option>
+                <option value="balanced_bob">Balanced Bob (Medium, Balanced)</option>
+                <option value="cautious_carla">Cautious Carla (Medium, Conservative)</option>
+                <option value="risky_ricky">Risky Ricky (Hard, Aggressive)</option>
+                <option value="chef_pierre">Chef Pierre (Hard, Chef-Focused)</option>
+                <option value="marketing_molly">Marketing Molly (Hard, Ad-Focused)</option>
+                <option value="perfect_patricia">Perfect Patricia (Perfect, Balanced)</option>
+              </select>
+            </label>
+            <span className="professor-page__bots-or">or</span>
+            <label className="professor-page__field">
+              <span>Difficulty</span>
+              <select
+                value={manualDifficulty}
+                onChange={(e) => setManualDifficulty(e.target.value)}
+              >
+                <option value="novice">Novice</option>
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+                <option value="perfect">Perfect</option>
+              </select>
+            </label>
+            <label className="professor-page__field">
+              <span>Personality</span>
+              <select
+                value={manualPersonality}
+                onChange={(e) => setManualPersonality(e.target.value)}
+              >
+                <option value="balanced">Balanced</option>
+                <option value="aggressive">Aggressive</option>
+                <option value="conservative">Conservative</option>
+                <option value="random">Random</option>
+                <option value="chef_focused">Chef-Focused</option>
+                <option value="ad_focused">Ad-Focused</option>
+                <option value="volume">Volume</option>
+                <option value="margin">Margin</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              className="btn btn--secondary"
+              disabled={busy || !user}
+              onClick={async () => {
+                if (!gameId) return;
+                setPendingAction("add-bot");
+                setError(null);
+                setInfo(null);
+                try {
+                  const payload = selectedPreset
+                    ? { gameId, preset: selectedPreset }
+                    : { gameId, difficulty: manualDifficulty, personality: manualPersonality };
+                  const res = await httpsCallable(functions, "createBotPlayer")(payload);
+                  const bot = res.data as { botUid: string; displayName: string; difficulty: string; personality: string };
+                  setInfo(`Added ${bot.displayName}`);
+                  setSelectedPreset("");
+                } catch (err) {
+                  setError(humanizeFunctionError(err));
+                } finally {
+                  setPendingAction(null);
+                }
+              }}
+            >
+              {pendingAction === "add-bot" ? "Adding…" : "Add Bot"}
+            </button>
+          </div>
+          {botsInGame.length > 0 && (
+            <ul className="professor-page__bot-list">
+              {botsInGame.map((bot) => (
+                <li key={bot.uid} className="professor-page__bot-item">
+                  {bot.name} — {bot.difficulty} / {bot.personality}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {/* Live game controls. */}
       {gameId ? (

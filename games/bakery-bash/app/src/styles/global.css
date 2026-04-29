@@ -2802,6 +2802,51 @@ h3 { font-size: 0.7rem; }
   margin-left: auto;
 }
 
+/* Bot management section. */
+.professor-page__bots {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: var(--cream);
+  border: 2px solid var(--dough);
+  border-radius: 0.4rem;
+}
+
+.professor-page__bots-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.professor-page__bots-or {
+  font-family: var(--font-pixel);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  color: var(--caramel);
+  margin-bottom: 0.4rem;
+}
+
+.professor-page__field select {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--dough);
+  border-radius: 0.25rem;
+  font-family: var(--font-body);
+  background: var(--cream);
+  min-width: 10rem;
+}
+
+.professor-page__bot-list {
+  margin-top: 0.5rem;
+  padding-left: 1rem;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  color: var(--dark-roast);
+}
+
+.professor-page__bot-item {
+  margin-bottom: 0.15rem;
+}
+
 /* FE-16 — Professor leaderboard page. */
 
 .professor-leaderboard {
