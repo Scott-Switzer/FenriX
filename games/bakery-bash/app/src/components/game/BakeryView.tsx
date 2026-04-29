@@ -4,7 +4,9 @@ import { useGame, useGameDispatch } from "../../contexts/GameContext";
 import {
   BASE_MENU,
   DEFAULT_PRODUCT_UNLOCK_COST,
+  PLAYER_ROLE_LABELS,
   roleOwnsPricing,
+  roleOwnsQuantities,
   type ProductKey,
   type StationId,
 } from "../../types/game";
@@ -133,6 +135,11 @@ interface ProductTileProps {
   onPriceChange: (next: number) => void;
   /** FE-9 — lock quantity + menu toggle once the round is submitted. */
   readOnly?: boolean;
+  /** K-01 (2026-04-29) — disable the quantity stepper when the viewer
+      is not Finance / Solo (the role that owns quantities post M-17). */
+  quantityDisabled: boolean;
+  /** Role-owner copy for the quantity tooltip when disabled. */
+  quantityOwnerLabel: string;
   /** POST-01 — disable the price stepper when the viewer is not Finance. */
   priceDisabled: boolean;
 }
@@ -152,6 +159,8 @@ function ProductTile({
   onPriceChange,
   readOnly = false,
   priceDisabled,
+  quantityDisabled,
+  quantityOwnerLabel,
 }: ProductTileProps) {
   const d = PRODUCT_DISPLAY[product];
   // Two states for a non-base tile (K-04 collapsed the old "+ Add"
@@ -190,12 +199,17 @@ function ProductTile({
               className="product-tile__stepper"
               role="group"
               aria-label={`${d.name} quantity`}
+              title={
+                quantityDisabled
+                  ? `Your ${quantityOwnerLabel} teammate submits quantities.`
+                  : undefined
+              }
             >
               <button
                 type="button"
                 className="product-tile__step-btn"
                 onClick={() => onQtyChange(Math.max(0, qty - 1))}
-                disabled={qty <= 0}
+                disabled={quantityDisabled || qty <= 0}
                 aria-label={`Decrease ${d.name}`}
               >
                 −
@@ -218,6 +232,7 @@ function ProductTile({
                 onChange={(e) =>
                   onQtyChange(parseInt(e.target.value, 10) || 0)
                 }
+                disabled={quantityDisabled}
                 aria-invalid={qty > BAKERY_QTY_MAX ? "true" : undefined}
                 aria-label={`${d.name} quantity`}
               />
@@ -225,7 +240,7 @@ function ProductTile({
                 type="button"
                 className="product-tile__step-btn"
                 onClick={() => onQtyChange(qty + 1)}
-                disabled={qty >= BAKERY_QTY_MAX}
+                disabled={quantityDisabled || qty >= BAKERY_QTY_MAX}
                 aria-label={`Increase ${d.name}`}
               >
                 +
@@ -301,6 +316,11 @@ export function BakeryView({ readOnly = false }: BakeryViewProps) {
   // FE-I15: let any teammate edit prices when no one on the team
   // holds finance.
   const canEditPrices = roleOwnsPricing(role, teamRoleAssignments);
+  // K-01 (2026-04-29): per-input role gate. Quantities now belong to
+  // Finance / Solo (M-17 + K-10). Operations / Marketing / Analyst see
+  // the steppers disabled with a tooltip pointing at the role-owner.
+  const canEditQuantities = roleOwnsQuantities(role, teamRoleAssignments);
+  const quantityOwnerLabel = PLAYER_ROLE_LABELS.finance;
 
   // Apr 28 2026 — station-unlock state. Flat cost per unlock, sourced from
   // `/games/{gameId}/config/params.productUnlockCost` with a static fallback
@@ -440,6 +460,8 @@ export function BakeryView({ readOnly = false }: BakeryViewProps) {
                       onPriceChange={(n) => setPrice(product, n)}
                       readOnly={readOnly}
                       priceDisabled={!canEditPrices}
+                      quantityDisabled={!canEditQuantities}
+                      quantityOwnerLabel={quantityOwnerLabel}
                     />
                   );
                 })}

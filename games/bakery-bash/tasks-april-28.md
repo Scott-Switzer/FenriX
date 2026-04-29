@@ -459,7 +459,7 @@ The first four are already computed — pure passthrough. `priceCompetitivenessP
 
 > Pair work — split as you like. Total ~1.5 days for two people. Touching `BakeryView`, `GameContext`, `StaffTab`, sprites.
 
-## [ ] K-01 [P0, M] — Grey out non-role inputs across Decide (split per new role mapping)
+## [x] K-01 [P0, M] — Grey out non-role inputs across Decide (split per new role mapping) (✅ DONE 2026-04-29 by Claude/Kavin-Sofia)
 
 **Problem.** Non-role-owners can edit decide inputs (only the submit button is gated). Confirmed at `GamePage.tsx:736-743` (only `canSubmit` gated) and `BakeryView.tsx:300, 226, 457` (only price gated). Plus the new role split (per Q6 + M-17) means **different inputs need different gates** within the same screen.
 
