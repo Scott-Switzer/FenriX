@@ -3346,6 +3346,9 @@ exports.submitBids = onCall(CALLABLE_OPTS, async (request) => {
     _submitBids_teamKey = getPlayerTeamKey(pSnap);
 
     const game = gSnap.data();
+    if (game.paused === true) {
+      throw new HttpsError('failed-precondition', 'Game is paused. Bids are temporarily disabled.');
+    }
     if (!canSubmitBids(game.phase, bidType)) {
       throw new HttpsError('failed-precondition', `Current phase ${game.phase} does not accept ${bidType} bids.`);
     }
@@ -3546,6 +3549,9 @@ exports.layoffChef = onCall(CALLABLE_OPTS, async (request) => {
     await assertRoleAllowedWithTeam(transaction, gameRef, pSnap, ['operations']);
 
     const game = gSnap.data();
+    if (game.paused === true) {
+      throw new HttpsError('failed-precondition', 'Game is paused. Roster changes are temporarily disabled.');
+    }
     const { phase } = parsePhase(game.phase, game.currentRound || game.round);
     if (phase !== 'roster') {
       throw new HttpsError('failed-precondition', 'Chefs can only be laid off during the roster phase.');
@@ -3643,6 +3649,9 @@ exports.layoffChefs = onCall(CALLABLE_OPTS, async (request) => {
     await assertRoleAllowedWithTeam(transaction, gameRef, pSnap, ['operations']);
 
     const game = gSnap.data();
+    if (game.paused === true) {
+      throw new HttpsError('failed-precondition', 'Game is paused. Roster changes are temporarily disabled.');
+    }
     const { phase } = parsePhase(game.phase, game.currentRound || game.round);
     if (phase !== 'roster') {
       throw new HttpsError('failed-precondition', 'Chefs can only be laid off during the roster phase.');
@@ -3988,6 +3997,9 @@ exports.rehireChef = onCall(CALLABLE_OPTS, async (request) => {
     await assertRoleAllowedWithTeam(transaction, gameRef, pSnap, ['operations']);
 
     const game = gSnap.data();
+    if (game.paused === true) {
+      throw new HttpsError('failed-precondition', 'Game is paused. Roster changes are temporarily disabled.');
+    }
     const { phase } = parsePhase(game.phase, game.currentRound || game.round);
     if (phase !== 'roster') {
       throw new HttpsError(
@@ -4254,6 +4266,9 @@ exports.continueFromRoster = onCall(CALLABLE_OPTS, async (request) => {
     await assertRoleAllowedWithTeam(transaction, gameRef, pSnap, ['operations']);
 
     const game = gSnap.data();
+    if (game.paused === true) {
+      throw new HttpsError('failed-precondition', 'Game is paused. Roster actions are temporarily disabled.');
+    }
     const { phase } = parsePhase(game.phase, game.currentRound || game.round);
     if (phase !== 'roster') {
       throw new HttpsError('failed-precondition', 'Roster actions are only allowed during the roster phase.');
@@ -4867,6 +4882,9 @@ exports.purchaseCompetitorInsight = onCall(CALLABLE_OPTS, async (request) => {
   const gameSnap = await gameRef.get();
   if (!gameSnap.exists) throw new HttpsError("not-found", "Game not found.");
   const game = gameSnap.data();
+  if (game.paused === true) {
+    throw new HttpsError("failed-precondition", "Game is paused. Purchases are temporarily disabled.");
+  }
   const currentPhase = typeof game.phase === "string" ? game.phase : "";
   // B-05 (2026-04-29): the FE moved the buy buttons from the DECIDE-phase
   // sidebar onto the Results screen. During `results_ready` the round
@@ -4958,6 +4976,9 @@ exports.purchaseChefData = onCall(CALLABLE_OPTS, async (request) => {
   const gameSnap = await gameRef.get();
   if (!gameSnap.exists) throw new HttpsError("not-found", "Game not found.");
   const game = gameSnap.data();
+  if (game.paused === true) {
+    throw new HttpsError("failed-precondition", "Game is paused. Purchases are temporarily disabled.");
+  }
   const currentPhase = typeof game.phase === "string" ? game.phase : "";
   // B-05 (2026-04-29): also allowed during `results_ready` — the FE moved
   // these buttons out of the DECIDE-phase sidebar onto the Results screen,
