@@ -5,6 +5,7 @@ import { DevNav } from "./components/ui/DevNav";
 import { LandingPage } from "./pages/LandingPage";
 import { LobbyPage } from "./pages/LobbyPage";
 import { GamePage } from "./pages/GamePage";
+import { AuctionPage } from "./pages/AuctionPage";
 import { LeaderboardPage } from "./pages/LeaderboardPage";
 import { ProfessorPage } from "./pages/ProfessorPage";
 
@@ -19,6 +20,7 @@ export default function App() {
             <Route path="/lobby" element={<LobbyPage />} />
             <Route path="/game" element={<GamePage />} />
             <Route path="/game/:phase" element={<GamePage />} />
+            <Route path="/auction" element={<AuctionPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/professor" element={<ProfessorPage />} />
           </Routes>

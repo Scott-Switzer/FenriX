@@ -1,4 +1,19 @@
-export type GamePhase = "lobby" | "decide" | "bid" | "simulate" | "results" | "email";
+export type GamePhase = "lobby" | "decide" | "bid" | "auction" | "simulate" | "results";
+
+export type ChefNationality = "american" | "french" | "italian" | "japanese";
+export type ChefGender = "m" | "f";
+export type SkillLevel = "low" | "medium" | "high";
+
+export interface ChefListing {
+  id: string;
+  nationality: ChefNationality;
+  gender: ChefGender;
+  name: string;
+  skill: SkillLevel;
+  multiplier: number;
+}
+
+export type AuctionTab = "chefs" | "ads";
 
 export type MenuItemId =
   | "croissant"
@@ -54,4 +69,5 @@ export interface GameState {
   players: Player[];
   roundResults: RoundResult[];
   timeRemaining: number | null;
+  auctionTab: AuctionTab;
 }

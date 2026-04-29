@@ -261,7 +261,11 @@ const DecisionDocument = {
   numProducts: 3,                 // number — count of active menu items
   staffingCost: 0,                // number ($) — dynamic curve once Open Q #7 is resolved
   creditCost: 0,                  // number ($) — overdraft/credit fee once Open Q #6 is resolved
-  totalCosts: 0,                  // number ($) — staffing + inventory costs + credit costs
+  stockCost: 0,                   // number ($) — inventory purchased from totalQuantityCost
+  adBidAmount: 0,                 // number ($) — player's ad bid reserve at submit time
+  chefBidAmount: 0,               // number ($) — player's chef bid reserve at submit time
+  guaranteedCosts: 0,             // number ($) — staffing + stock + credit (always charged)
+  totalCostsMax: 0,               // number ($) — guaranteed + max bid reserve (worst-case at submit)
   budgetBefore: 2000,             // number ($) — snapshot before deductions
 };
 

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" shape-rendering="crispEdges">
+  <title>TV Advertisement</title>
+  <!-- antenna -->
+  <rect x="12" y="3" width="1" height="4" fill="#1c1a1a"/>
+  <rect x="19" y="3" width="1" height="4" fill="#1c1a1a"/>
+  <rect x="13" y="5" width="1" height="2" fill="#1c1a1a"/>
+  <rect x="18" y="5" width="1" height="2" fill="#1c1a1a"/>
+  <rect x="14" y="6" width="4" height="1" fill="#1c1a1a"/>
+  <!-- tv body -->
+  <rect x="6" y="7" width="20" height="2" fill="#3d3d3d"/>
+  <rect x="5" y="9" width="22" height="12" fill="#3d3d3d"/>
+  <rect x="6" y="21" width="20" height="2" fill="#3d3d3d"/>
+  <!-- screen -->
+  <rect x="7" y="9" width="16" height="11" fill="#4a90d9"/>
+  <rect x="7" y="9" width="16" height="3" fill="#5aa0e8"/>
+  <!-- screen glare -->
+  <rect x="8" y="10" width="3" height="1" fill="#8ec4f0"/>
+  <!-- stand -->
+  <rect x="13" y="23" width="6" height="1" fill="#3d3d3d"/>
+  <rect x="11" y="24" width="10" height="1" fill="#3d3d3d"/>
+  <!-- play icon on screen -->
+  <rect x="14" y="13" width="1" height="4" fill="#ffffff"/>
+  <rect x="15" y="14" width="1" height="2" fill="#ffffff"/>
+  <rect x="16" y="14" width="1" height="2" fill="#ffffff"/>
+  <rect x="17" y="15" width="1" height="1" fill="#ffffff"/>
+</svg>

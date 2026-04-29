@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { MenuTab } from "./tabs/MenuTab";
 import { StaffTab } from "./tabs/StaffTab";
-import { AuctionTab } from "./tabs/AuctionTab";
 
-const TABS = ["Menu", "Staff", "Auction"] as const;
+const TABS = ["Menu", "Staff"] as const;
 type Tab = (typeof TABS)[number];
 
 export function GameSidebar() {
@@ -28,7 +27,6 @@ export function GameSidebar() {
       <div className="game-sidebar__panel">
         {activeTab === "Menu" && <MenuTab />}
         {activeTab === "Staff" && <StaffTab />}
-        {activeTab === "Auction" && <AuctionTab />}
       </div>
     </aside>
   );

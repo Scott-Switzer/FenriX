@@ -1,12 +1,33 @@
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const { getApps, initializeApp } = require("firebase-admin/app");
+/**
+ * index.js — Firebase Cloud Functions entry point for the bakery game backend.
+ *
+ * This is the ONLY file that imports Firebase. It orchestrates the pure
+ * modules (config, phases, chef-system, satisfaction, customer-allocation,
+ * revenue, loan-shark, simulation, csv-export, decision-validation,
+ * round-preferences, market-insight).
+ *
+ * Preserved Firebase patterns from index-current.js:
+ *   - Firebase admin init via getApps()/initializeApp()
+ *   - onCall / onDocumentCreated exports
+ *   - Firestore transactions for critical state transitions
+ *   - Batched writes chunked at BATCH_OP_LIMIT = 487 for 150+ player games
+ *   - HttpsError for all client-facing failures
+ *   - Logger for server-side diagnostics
+ */
+
+// ---------------------------------------------------------------------------
+// Firebase imports (only file that does this)
+// ---------------------------------------------------------------------------
+
+const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { getApps, initializeApp } = require('firebase-admin/app');
 const {
   FieldValue,
   Timestamp,
   getFirestore,
-} = require("firebase-admin/firestore");
-const logger = require("firebase-functions/logger");
+} = require('firebase-admin/firestore');
+const logger = require('firebase-functions/logger');
 
 if (!getApps().length) {
   initializeApp();
@@ -14,1749 +35,485 @@ if (!getApps().length) {
 
 const db = getFirestore();
 
-const PRODUCT_KEYS = [
-  "croissant",
-  "cookie",
-  "bagel",
-  "sandwich",
-  "latte",
-  "matchaLatte",
-];
+// ---------------------------------------------------------------------------
+// Pure-module imports
+// ---------------------------------------------------------------------------
 
-const AD_TYPES = ["TV", "Billboard", "Radio", "Newspaper"];
+const {
+  DEFAULT_GAME_CONFIG,
+  mergeConfig,
+  numberOrDefault,
+  objectOrDefault,
+  cleanString,
+} = require('./modules/config');
 
-const AD_TYPE_LOOKUP = {
-  tv: "TV",
-  television: "TV",
-  billboard: "Billboard",
-  radio: "Radio",
-  newspaper: "Newspaper",
-};
+const {
+  parsePhase,
+  getNextPhase,
+  getPhaseDuration,
+  canSubmitDecision,
+  canSubmitBids,
+} = require('./modules/phases');
 
-const PRODUCT_ALIASES = {
-  croissant: "croissant",
-  cookie: "cookie",
-  bagel: "bagel",
-  sandwich: "sandwich",
-  latte: "latte",
-  matchaLatte: "matchaLatte",
-  "matcha-latte": "matchaLatte",
-  matcha_latte: "matchaLatte",
-};
+const {
+  generateChefPool,
+  resolveChefAuction,
+} = require('./modules/chef-system');
 
-const MENU_CATEGORIES = {
-  sweet: ["croissant", "cookie"],
-  savory: ["bagel", "sandwich"],
-  drink: ["latte", "matchaLatte"],
-};
+const {
+  runSimulation,
+} = require('./modules/simulation');
 
-const ROUND_PHASES = [
-  "closing_hours",
-  "auction",
-  "open_for_business",
-  "results",
-];
+const {
+  buildCsvString,
+} = require('./modules/csv-export');
 
-const CSV_COLUMNS = [
-  "day",
-  "revenue",
-  "num_products",
-  "avg_price",
-  "staff_count",
-  "ad_spend",
-  "customer_count",
-  "customer_satisfaction",
-  "headchef_skill",
-  "croissant",
-  "cookie",
-  "bagel",
-  "sandwich",
-  "latte",
-  "matcha_latte",
-  "ad_type",
-];
-
-const DEFAULT_CONFIG = {
-  costPerStaffPerRound: 50,
-  unitCostPerProduct: 1,
-  revenueModel: {
-    base: 500,
-    staffCoefficient: 30,
-    priceCoefficient: -15,
-    adSpendCoefficient: 0.8,
-    numProductsCoefficient: 50,
-    noiseMin: -100,
-    noiseMax: 100,
-  },
-  adBonuses: {
-    TV: 200,
-    Billboard: 150,
-    Radio: 100,
-    Newspaper: 75,
-  },
-  chefBonusPerPoint: 5,
-  customerPoolMultiplier: 100,
-  phaseDurations: {
-    closing_hours: 180,
-    auction: 90,
-    open_for_business: 30,
-    results: 60,
-  },
-  attractivenessWeights: {
-    priceWeight: 100,
-    staffWeight: 5,
-    adSpendWeight: 0.3,
-    numProductsWeight: 10,
-  },
-};
-
-const DEFAULT_PENDING_DECISION = {
-  submitted: false,
-  submittedAt: null,
-  staffCount: 3,
-  adSpend: 0,
-  menu: {
-    croissant: true,
-    cookie: true,
-    bagel: true,
-    sandwich: false,
-    latte: false,
-    matchaLatte: false,
-  },
-  productPrices: {
-    croissant: 0,
-    cookie: 0,
-    bagel: 0,
-    sandwich: 0,
-    latte: 0,
-    matchaLatte: 0,
-  },
-  quantities: {
-    croissant: 0,
-    cookie: 0,
-    bagel: 0,
-    sandwich: 0,
-    latte: 0,
-    matchaLatte: 0,
-  },
-};
-
-const DEFAULT_PENDING_BIDS = {
-  adBid: {
-    adType: null,
-    amount: 0,
-  },
-  chefBid: {
-    skillLevel: 0,
-    amount: 0,
-  },
-};
-
-function cleanString(value) {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function numberOrDefault(value, fallback) {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
-function objectOrDefault(value, fallback) {
-  return value && typeof value === "object" ? value : fallback;
-}
-
-function normalizeProductKey(product) {
-  return PRODUCT_ALIASES[product] || null;
-}
-
-function normalizeAdType(value) {
-  if (value === null || value === undefined || value === "") {
-    return null;
-  }
-
-  return AD_TYPE_LOOKUP[String(value).trim().toLowerCase()] || null;
-}
-
-function integerInRange(value, fieldName, { min = 0, max = Number.MAX_SAFE_INTEGER }) {
-  if (value === null || value === undefined) {
-    throw new HttpsError(
-      "invalid-argument",
-      `${fieldName} is required.`
-    );
-  }
-
-  const numberValue = Number(value);
-
-  if (!Number.isFinite(numberValue) || !Number.isInteger(numberValue) ||
-      numberValue < min || numberValue > max) {
-    throw new HttpsError(
-      "invalid-argument",
-      `${fieldName} must be an integer from ${min} to ${max}.`
-    );
-  }
-
-  return numberValue;
-}
-
-function nonNegativeNumber(value, fieldName) {
-  if (value === null || value === undefined) {
-    return 0; // Default to 0 for optional numeric fields
-  }
-
-  const numberValue = Number(value);
-
-  if (!Number.isFinite(numberValue) || numberValue < 0) {
-    throw new HttpsError(
-      "invalid-argument",
-      `${fieldName} must be a non-negative number.`
-    );
-  }
-
-  return numberValue;
-}
-
-function mergeConfig(rawConfig = {}) {
-  const revenueModel = objectOrDefault(
-    rawConfig.revenueModel,
-    DEFAULT_CONFIG.revenueModel
-  );
-  const adBonuses = objectOrDefault(rawConfig.adBonuses, DEFAULT_CONFIG.adBonuses);
-  const attractivenessWeights = objectOrDefault(
-    rawConfig.attractivenessWeights,
-    DEFAULT_CONFIG.attractivenessWeights
-  );
-  const phaseDurations = objectOrDefault(
-    rawConfig.phaseDurations,
-    DEFAULT_CONFIG.phaseDurations
-  );
-
-  return {
-    costPerStaffPerRound: numberOrDefault(
-      rawConfig.costPerStaffPerRound,
-      DEFAULT_CONFIG.costPerStaffPerRound
-    ),
-    unitCostPerProduct: numberOrDefault(
-      rawConfig.unitCostPerProduct,
-      DEFAULT_CONFIG.unitCostPerProduct
-    ),
-    revenueModel: {
-      base: numberOrDefault(revenueModel.base, DEFAULT_CONFIG.revenueModel.base),
-      staffCoefficient: numberOrDefault(
-        revenueModel.staffCoefficient,
-        DEFAULT_CONFIG.revenueModel.staffCoefficient
-      ),
-      priceCoefficient: numberOrDefault(
-        revenueModel.priceCoefficient,
-        DEFAULT_CONFIG.revenueModel.priceCoefficient
-      ),
-      adSpendCoefficient: numberOrDefault(
-        revenueModel.adSpendCoefficient,
-        DEFAULT_CONFIG.revenueModel.adSpendCoefficient
-      ),
-      numProductsCoefficient: numberOrDefault(
-        revenueModel.numProductsCoefficient,
-        DEFAULT_CONFIG.revenueModel.numProductsCoefficient
-      ),
-      noiseMin: numberOrDefault(
-        revenueModel.noiseMin,
-        DEFAULT_CONFIG.revenueModel.noiseMin
-      ),
-      noiseMax: numberOrDefault(
-        revenueModel.noiseMax,
-        DEFAULT_CONFIG.revenueModel.noiseMax
-      ),
-    },
-    adBonuses: Object.fromEntries(
-      AD_TYPES.map((adType) => [
-        adType,
-        numberOrDefault(adBonuses[adType], DEFAULT_CONFIG.adBonuses[adType]),
-      ])
-    ),
-    chefBonusPerPoint: numberOrDefault(
-      rawConfig.chefBonusPerPoint,
-      DEFAULT_CONFIG.chefBonusPerPoint
-    ),
-    customerPoolMultiplier: numberOrDefault(
-      rawConfig.customerPoolMultiplier,
-      DEFAULT_CONFIG.customerPoolMultiplier
-    ),
-    phaseDurations: {
-      closing_hours: numberOrDefault(
-        phaseDurations.closing_hours ?? phaseDurations.decide,
-        DEFAULT_CONFIG.phaseDurations.closing_hours
-      ),
-      auction: numberOrDefault(
-        phaseDurations.auction ?? phaseDurations.bid,
-        DEFAULT_CONFIG.phaseDurations.auction
-      ),
-      open_for_business: numberOrDefault(
-        phaseDurations.open_for_business ?? phaseDurations.simulate,
-        DEFAULT_CONFIG.phaseDurations.open_for_business
-      ),
-      results: numberOrDefault(
-        phaseDurations.results,
-        DEFAULT_CONFIG.phaseDurations.results
-      ),
-    },
-    attractivenessWeights: {
-      priceWeight: numberOrDefault(
-        attractivenessWeights.priceWeight,
-        DEFAULT_CONFIG.attractivenessWeights.priceWeight
-      ),
-      staffWeight: numberOrDefault(
-        attractivenessWeights.staffWeight,
-        DEFAULT_CONFIG.attractivenessWeights.staffWeight
-      ),
-      adSpendWeight: numberOrDefault(
-        attractivenessWeights.adSpendWeight,
-        DEFAULT_CONFIG.attractivenessWeights.adSpendWeight
-      ),
-      numProductsWeight: numberOrDefault(
-        attractivenessWeights.numProductsWeight,
-        DEFAULT_CONFIG.attractivenessWeights.numProductsWeight
-      ),
-    },
+// The following modules are part of the full backend surface. They are
+// required only where needed so that missing optional helpers do not break
+// the lobby / decision / bid flows.
+let decisionValidation = null;
+try {
+  decisionValidation = require('./modules/decision-validation');
+} catch (loadErr) {
+  logger.error('decision-validation module failed to load — using passthrough fallback.', {
+    error: loadErr && loadErr.message,
+  });
+  decisionValidation = {
+    validateDecision: (d) => d,
+    validateAdBids: (d) => d,
+    validateChefBids: (d) => d,
   };
 }
 
-function gaussianNoise(min, max) {
-  let u = 0;
-  let v = 0;
-
-  while (u === 0) {
-    u = Math.random();
-  }
-  while (v === 0) {
-    v = Math.random();
-  }
-
-  const standardNormal =
-    Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
-  const mean = (min + max) / 2;
-  const stdDev = (max - min) / 6;
-  const value = mean + standardNormal * stdDev;
-
-  return Math.max(min, Math.min(max, value));
-}
-
-function activeProducts(menu = {}) {
-  return PRODUCT_KEYS.filter((product) => menu[product] === true);
-}
-
-function averagePrice(menu, productPrices = {}) {
-  const products = activeProducts(menu);
-  const prices = products
-    .map((product) => numberOrDefault(productPrices[product], 0))
-    .filter((price) => price > 0);
-
-  if (!prices.length) {
-    return 0;
-  }
-
-  return prices.reduce((total, price) => total + price, 0) / prices.length;
-}
-
-function totalQuantityCost(quantities = {}, unitCostPerProduct) {
-  return PRODUCT_KEYS.reduce((total, product) => {
-    return total + Math.max(0, numberOrDefault(quantities[product], 0));
-  }, 0) * unitCostPerProduct;
-}
-
-function decisionRoundCost(config, decision) {
-  const staffCount = Math.max(0, numberOrDefault(decision.staffCount, 0));
-  const adSpend = Math.max(0, numberOrDefault(decision.adSpend, 0));
-  const stockCost = totalQuantityCost(
-    objectOrDefault(decision.quantities, {}),
-    config.unitCostPerProduct
-  );
-  const adBid = objectOrDefault(decision.adBid, {});
-  const chefBid = objectOrDefault(decision.chefBid, {});
-  const adBidAmount = adTypeForDecision(decision)
-    ? Math.max(0, numberOrDefault(adBid.amount, 0))
-    : 0;
-  const chefBidAmount = Math.max(0, numberOrDefault(chefBid.amount, 0));
-
-  // adSpend is NOT added separately — adBidAmount already represents the
-  // player's ad expenditure (validateDecisionInput sets adBid.amount = adSpend).
-  // Adding both would double-charge the player.
-  return (
-    staffCount * config.costPerStaffPerRound +
-    stockCost +
-    adBidAmount +
-    chefBidAmount
-  );
-}
-
-function computeRevenue(config, inputs) {
-  const model = config.revenueModel;
-  const noise = gaussianNoise(model.noiseMin, model.noiseMax);
-
-  return (
-    model.base +
-    model.staffCoefficient * inputs.staffCount +
-    model.priceCoefficient * inputs.avgPrice +
-    model.adSpendCoefficient * inputs.adSpend +
-    model.numProductsCoefficient * inputs.numProducts +
-    config.chefBonusPerPoint * inputs.headchefSkill +
-    inputs.adBonus +
-    noise
-  );
-}
-
-function attractivenessScore(config, decision, avgPrice, numProducts) {
-  const weights = config.attractivenessWeights;
-  const staffCount = Math.max(0, numberOrDefault(decision.staffCount, 0));
-  const adSpend = Math.max(0, numberOrDefault(decision.adSpend, 0));
-
-  return (
-    (avgPrice > 0 ? (1 / avgPrice) * weights.priceWeight : 0) +
-    staffCount * weights.staffWeight +
-    adSpend * weights.adSpendWeight +
-    numProducts * weights.numProductsWeight
-  );
-}
-
-function allocateCustomers(totalCustomers, playerInputs) {
-  const totalScore = playerInputs.reduce(
-    (total, playerInput) => total + playerInput.attractivenessScore,
-    0
-  );
-
-  if (!playerInputs.length) {
-    return new Map();
-  }
-
-  let allocations;
-
-  if (totalScore <= 0) {
-    const evenShare = Math.floor(totalCustomers / playerInputs.length);
-    allocations = playerInputs.map((playerInput) => ({
-      playerId: playerInput.playerId,
-      count: evenShare,
-      score: 0,
-    }));
-  } else {
-    allocations = playerInputs.map((playerInput) => ({
-      playerId: playerInput.playerId,
-      count: Math.floor(
-        (playerInput.attractivenessScore / totalScore) * totalCustomers
-      ),
-      score: playerInput.attractivenessScore,
-    }));
-  }
-
-  // Distribute remainder customers (lost to Math.floor) to the player(s)
-  // with the highest attractiveness score, one at a time.
-  const allocated = allocations.reduce((sum, a) => sum + a.count, 0);
-  let remainder = totalCustomers - allocated;
-
-  if (remainder > 0) {
-    // Sort descending by score, then by current count (ascending) for fairness
-    const sorted = allocations.slice().sort((a, b) =>
-      b.score - a.score || a.count - b.count
-    );
-    let idx = 0;
-
-    while (remainder > 0) {
-      sorted[idx % sorted.length].count += 1;
-      remainder -= 1;
-      idx += 1;
-    }
-  }
-
-  return new Map(allocations.map((a) => [a.playerId, a.count]));
-}
-
-function customerSatisfaction(decision, customerCount, avgPrice, numProducts) {
-  const staffCount = Math.max(0, numberOrDefault(decision.staffCount, 0));
-  let satisfaction = 70;
-
-  satisfaction += numProducts * 3;
-  satisfaction -= Math.max(0, avgPrice - 8) * 2;
-
-  if (staffCount > 0) {
-    satisfaction -= Math.max(0, customerCount / staffCount - 20) * 0.5;
-  } else if (customerCount > 0) {
-    satisfaction -= 25;
-  }
-
-  return Math.max(0, Math.min(100, satisfaction));
-}
-
-function productsSold(decision, customerCount) {
-  const products = activeProducts(decision.menu);
-  const demandPerProduct = products.length
-    ? Math.floor(customerCount / products.length)
-    : 0;
-
-  return Object.fromEntries(
-    PRODUCT_KEYS.map((product) => {
-      if (!products.includes(product)) {
-        return [product, 0];
-      }
-
-      const stocked = Math.max(
-        0,
-        numberOrDefault(objectOrDefault(decision.quantities, {})[product], 0)
-      );
-      return [product, Math.min(demandPerProduct, stocked)];
-    })
-  );
-}
-
-function adTypeForDecision(decision) {
-  const adBid = objectOrDefault(decision.adBid, {});
-  return AD_TYPES.includes(adBid.adType) ? adBid.adType : null;
-}
-
-function submittedAtMillis(decision) {
-  const submittedAt = decision?.submittedAt;
-
-  if (submittedAt instanceof Timestamp) {
-    return submittedAt.toMillis();
-  }
-
-  if (submittedAt && typeof submittedAt.toMillis === "function") {
-    return submittedAt.toMillis();
-  }
-
-  if (submittedAt instanceof Date) {
-    return submittedAt.getTime();
-  }
-
-  return Number.POSITIVE_INFINITY;
-}
-
-function isWinningBid(amount, submittedAt, winner) {
-  if (amount <= 0) {
-    return false;
-  }
-
-  if (amount > winner.winningBid) {
-    return true;
-  }
-
-  return amount === winner.winningBid && submittedAt < winner.submittedAtMillis;
-}
-
-function resolveAuctions(playerInputs) {
-  const adWinners = Object.fromEntries(
-    AD_TYPES.map((adType) => [
-      adType,
-      {
-        winnerId: null,
-        winningBid: 0,
-        submittedAtMillis: Number.POSITIVE_INFINITY,
-      },
-    ])
-  );
-  const chefWinner = {
-    winnerId: null,
-    winningBid: 0,
-    skillLevel: 0,
-    submittedAtMillis: Number.POSITIVE_INFINITY,
-  };
-
-  for (const input of playerInputs) {
-    const adBid = objectOrDefault(input.decision.adBid, {});
-    const adType = adTypeForDecision(input.decision);
-    const adAmount = Math.max(0, numberOrDefault(adBid.amount, 0));
-    const submittedAt = submittedAtMillis(input.decision);
-
-    if (adType && isWinningBid(adAmount, submittedAt, adWinners[adType])) {
-      adWinners[adType] = {
-        winnerId: input.playerId,
-        winningBid: adAmount,
-        submittedAtMillis: submittedAt,
-      };
-    }
-
-    const chefBid = objectOrDefault(input.decision.chefBid, {});
-    const chefAmount = Math.max(0, numberOrDefault(chefBid.amount, 0));
-
-    if (isWinningBid(chefAmount, submittedAt, chefWinner)) {
-      chefWinner.winnerId = input.playerId;
-      chefWinner.winningBid = chefAmount;
-      // skillLevel is generated server-side below, NOT taken from the bid.
-      chefWinner.submittedAtMillis = submittedAt;
-    }
-  }
-
-  // Server-side chef skill randomization (spec requirement).
-  // The player bids a dollar amount to hire the chef; the actual skill
-  // level the winner receives is randomised by the server (0–100).
-  const chefSkillLevel = chefWinner.winnerId !== null
-    ? Math.floor(Math.random() * 101) // 0–100 inclusive
-    : 0;
-
-  return {
-    ads: Object.fromEntries(
-      Object.entries(adWinners).map(([adType, winner]) => [
-        adType,
-        {
-          winnerId: winner.winnerId,
-          winningBid: winner.winningBid,
-          tieBreaker: "earliest_submission",
-        },
-      ])
-    ),
-    chef: {
-      winnerId: chefWinner.winnerId,
-      winningBid: chefWinner.winningBid,
-      skillLevel: chefSkillLevel,
-      tieBreaker: "earliest_submission",
-    },
+let roundPreferencesModule = null;
+try {
+  roundPreferencesModule = require('./modules/round-preferences');
+} catch (loadErr) {
+  logger.error('round-preferences module failed to load — all rounds will have neutral modifiers.', {
+    error: loadErr && loadErr.message,
+  });
+  roundPreferencesModule = {
+    generateRoundPreferences: (totalRounds) =>
+      Array.from({ length: totalRounds }, () => ({ modifiers: {} })),
   };
 }
 
-function roundNumberFromId(roundId) {
-  const match = /^round_(\d+)$/.exec(roundId);
-  return match ? Number.parseInt(match[1], 10) : Number.NaN;
+// market-insight functionality lives in round-preferences.js.
+// We wrap it in the interface index.js expects: buildMarketInsightEmail({ round, preferences, config })
+const marketInsightModule = {
+  buildMarketInsightEmail: ({ round, preferences }) => {
+    if (roundPreferencesModule && roundPreferencesModule.generateMarketInsightEmail) {
+      return roundPreferencesModule.generateMarketInsightEmail(preferences || {});
+    }
+    return {
+      round,
+      subject: `Round ${round} market insight`,
+      body: 'Market insight is unavailable this round.',
+      from: 'The Plaza Times',
+    };
+  },
+};
+
+let conclusionModule = null;
+try {
+  conclusionModule = require('./modules/conclusion');
+} catch (loadErr) {
+  logger.error('conclusion module failed to load — using minimal rankings fallback.', {
+    error: loadErr && loadErr.message,
+  });
+  conclusionModule = {
+    computeConclusion: (results) => ({ rankings: results }),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/**
+ * Firestore batched writes are capped at 500 ops. We leave 13 ops of headroom
+ * for the 2 aggregate writes (round doc, leaderboard) appended to the final
+ * batch, plus margin for any future additions.
+ */
+const BATCH_OP_LIMIT = 487;
+
+/** Chars allowed in generated join codes — avoids 0/O/1/I confusion. */
+const JOIN_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+// ---------------------------------------------------------------------------
+// Small utility helpers
+// ---------------------------------------------------------------------------
+
+function requireAuth(request, message = 'Sign in before continuing.') {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', message);
+  }
+  return request.auth;
 }
 
 function cleanGameId(value) {
   const gameId = cleanString(value);
-
   if (!/^[A-Za-z0-9_-]{3,80}$/.test(gameId)) {
-    throw new HttpsError(
-      "invalid-argument",
-      "gameId must be a valid game document id."
-    );
+    throw new HttpsError('invalid-argument', 'gameId must be a valid game document id.');
   }
-
   return gameId;
 }
 
-function normalizeMenuPayload(data) {
-  const rawMenu = data.menu ?? data.menuSelections ?? data.selectedMenu ?? {};
-  const rawPrices = objectOrDefault(data.productPrices ?? data.prices, {});
-  const rawQuantities = objectOrDefault(data.quantities ?? data.stockQuantities, {});
-  const menu = Object.fromEntries(PRODUCT_KEYS.map((product) => [product, false]));
-  const productPrices = Object.fromEntries(PRODUCT_KEYS.map((product) => [product, 0]));
-  const quantities = Object.fromEntries(PRODUCT_KEYS.map((product) => [product, 0]));
-
-  if (Array.isArray(rawMenu)) {
-    for (const product of rawMenu) {
-      const normalized = normalizeProductKey(product);
-
-      if (!normalized) {
-        throw new HttpsError(
-          "invalid-argument",
-          `Unknown menu item: ${product}.`
-        );
-      }
-
-      menu[normalized] = true;
-    }
-  } else if (rawMenu && typeof rawMenu === "object") {
-    for (const [product, selected] of Object.entries(rawMenu)) {
-      const normalized = normalizeProductKey(product);
-
-      if (!normalized) {
-        throw new HttpsError(
-          "invalid-argument",
-          `Unknown menu item: ${product}.`
-        );
-      }
-
-      // If an alias (e.g. "matcha-latte") already set the canonical key to
-      // true, a later entry for the canonical key ("matchaLatte": false)
-      // must not override it.  Take the boolean OR so aliases work correctly.
-      if (selected === true) {
-        menu[normalized] = true;
-      } else if (!menu[normalized]) {
-        menu[normalized] = false;
-      }
-    }
-  } else {
-    throw new HttpsError(
-      "invalid-argument",
-      "menu must be an array of selected items or an object keyed by menu item."
-    );
+/**
+ * Generate a 6-character join code from the restricted alphabet.
+ */
+function generateJoinCode() {
+  let out = '';
+  for (let i = 0; i < 6; i++) {
+    out += JOIN_CODE_ALPHABET[Math.floor(Math.random() * JOIN_CODE_ALPHABET.length)];
   }
-
-  for (const [product, price] of Object.entries(rawPrices)) {
-    const normalized = normalizeProductKey(product);
-
-    if (!normalized) {
-      throw new HttpsError(
-        "invalid-argument",
-        `Unknown product price item: ${product}.`
-      );
-    }
-
-    productPrices[normalized] = nonNegativeNumber(
-      price,
-      `productPrices.${product}`
-    );
-  }
-
-  for (const [product, quantity] of Object.entries(rawQuantities)) {
-    const normalized = normalizeProductKey(product);
-
-    if (!normalized) {
-      throw new HttpsError(
-        "invalid-argument",
-        `Unknown quantity item: ${product}.`
-      );
-    }
-
-    quantities[normalized] = integerInRange(quantity, `quantities.${product}`, {
-      min: 0,
-      max: 10000,
-    });
-  }
-
-  for (const product of PRODUCT_KEYS) {
-    if (menu[product] && productPrices[product] <= 0) {
-      throw new HttpsError(
-        "invalid-argument",
-        `${product} is on the menu and must have a price greater than $0.`
-      );
-    }
-  }
-
-  const activeMenuItems = activeProducts(menu);
-  const hasCategory = (category) =>
-    MENU_CATEGORIES[category].some((product) => menu[product] === true);
-
-  if (!hasCategory("sweet")) {
-    throw new HttpsError(
-      "invalid-argument",
-      "Menu must include at least one sweet item."
-    );
-  }
-
-  if (!hasCategory("savory")) {
-    throw new HttpsError(
-      "invalid-argument",
-      "Menu must include at least one savory item."
-    );
-  }
-
-  if (!hasCategory("drink")) {
-    throw new HttpsError(
-      "invalid-argument",
-      "Menu must include at least one drink."
-    );
-  }
-
-  return {
-    menu,
-    productPrices,
-    quantities,
-    numProducts: activeMenuItems.length,
-  };
-}
-
-function validateDecisionInput(data) {
-  const staffCount = integerInRange(data.staffCount, "staffCount", {
-    min: 1,
-    max: 20,
-  });
-  const adSpend = nonNegativeNumber(data.adSpend ?? data.adBid?.amount ?? 0, "adSpend");
-  const adType = normalizeAdType(data.adType ?? data.adBid?.adType);
-
-  if (adSpend > 0 && !adType) {
-    throw new HttpsError(
-      "invalid-argument",
-      "adType must be TV, Radio, Newspaper, or Billboard when adSpend is greater than $0."
-    );
-  }
-
-  const chefBidData = objectOrDefault(data.chefBid, {});
-  const chefBid = {
-    skillLevel: integerInRange(chefBidData.skillLevel ?? 0, "chefBid.skillLevel", {
-      min: 0,
-      max: 100,
-    }),
-    amount: nonNegativeNumber(chefBidData.amount ?? 0, "chefBid.amount"),
-  };
-  const normalizedMenu = normalizeMenuPayload(data);
-
-  return {
-    staffCount,
-    adSpend,
-    ...normalizedMenu,
-    adBid: {
-      adType,
-      amount: adSpend,
-    },
-    chefBid,
-  };
-}
-
-function phaseEndTimeFromNow(config, phase) {
-  const durationSeconds = numberOrDefault(
-    config.phaseDurations[phase],
-    DEFAULT_CONFIG.phaseDurations[phase] || 60
-  );
-
-  return Timestamp.fromMillis(Date.now() + durationSeconds * 1000);
-}
-
-function nextPhaseFor(game) {
-  const currentRound = numberOrDefault(game.currentRound, 1);
-  const totalRounds = numberOrDefault(game.totalRounds, 5);
-
-  if (game.phase === "lobby") {
-    return { phase: "closing_hours", round: 1 };
-  }
-
-  if (game.phase === "closing_hours" || game.phase === "decide") {
-    return { phase: "auction", round: currentRound };
-  }
-
-  if (game.phase === "auction" || game.phase === "bid") {
-    return { phase: "open_for_business", round: currentRound };
-  }
-
-  if (game.phase === "open_for_business" || game.phase === "simulating") {
-    return { phase: "results", round: currentRound };
-  }
-
-  if (game.phase === "results" || game.phase === "results_ready") {
-    if (currentRound >= totalRounds) {
-      return { phase: "game_over", round: currentRound };
-    }
-
-    return { phase: "closing_hours", round: currentRound + 1 };
-  }
-
-  if (game.phase === "game_over") {
-    throw new HttpsError("failed-precondition", "This game is already over.");
-  }
-
-  throw new HttpsError(
-    "failed-precondition",
-    `Cannot advance unknown phase: ${game.phase}`
-  );
-}
-
-async function assertProfessor(request, gameRef) {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "Sign in before controlling a game.");
-  }
-
-  const gameSnap = await gameRef.get();
-
-  if (!gameSnap.exists) {
-    throw new HttpsError("not-found", "Game not found.");
-  }
-
-  if (gameSnap.get("professorId") !== request.auth.uid) {
-    throw new HttpsError(
-      "permission-denied",
-      "Only the professor can control game phases."
-    );
-  }
-
-  return gameSnap;
-}
-
-function csvCell(value) {
-  if (value === null || value === undefined) {
-    return "";
-  }
-
-  const stringValue = String(value);
-
-  if (/[",\n\r]/.test(stringValue)) {
-    return `"${stringValue.replaceAll('"', '""')}"`;
-  }
-
-  return stringValue;
-}
-
-function rowsToCsv(rows) {
-  const header = CSV_COLUMNS.join(",");
-  const lines = rows.map((row) =>
-    CSV_COLUMNS.map((column) => csvCell(row[column])).join(",")
-  );
-
-  return [header, ...lines].join("\n");
-}
-
-async function buildPlayerCsvEmail({
-  gameRef,
-  playerId,
-  displayName,
-  completedRound,
-  currentRow,
-}) {
-  const previousRowsSnap = await gameRef
-    .collection("csvRows")
-    .doc(playerId)
-    .collection("rounds")
-    .get();
-  const previousRows = previousRowsSnap.docs
-    .map((doc) => ({
-      round: numberOrDefault(doc.get("round"), 0),
-      row: doc.get("row"),
-    }))
-    .filter((entry) => entry.round > 0 && entry.round < completedRound)
-    .sort((a, b) => a.round - b.round)
-    .map((entry) => entry.row);
-  const rows = [...previousRows, currentRow];
-  const nextRound = completedRound + 1;
-
-  return {
-    type: "round_data_csv",
-    round: nextRound,
-    availableAfterRound: completedRound,
-    recipientPlayerId: playerId,
-    subject: `Round ${completedRound} data is ready`,
-    sender: "Bakery Bash Analytics",
-    body:
-      `Hi ${displayName || "there"}, your latest performance data is attached. ` +
-      `Use this CSV before Round ${nextRound} to update your model and plan decisions.`,
-    read: false,
-    createdAt: FieldValue.serverTimestamp(),
-    attachments: [
-      {
-        filename: `bakery-bash-through-round-${completedRound}.csv`,
-        contentType: "text/csv",
-        csvText: rowsToCsv(rows),
-        rowCount: rows.length,
-        includedThroughRound: completedRound,
-      },
-    ],
-  };
-}
-
-async function claimSimulationRun(gameId, roundId) {
-  const gameRef = db.collection("games").doc(gameId);
-  const roundRef = gameRef.collection("rounds").doc(roundId);
-  const roundNumber = roundNumberFromId(roundId);
-  let shouldRun = false;
-
-  await db.runTransaction(async (transaction) => {
-    const gameSnap = await transaction.get(gameRef);
-
-    if (!gameSnap.exists) {
-      logger.warn("Decision submitted for missing game.", { gameId, roundId });
-      return;
-    }
-
-    const game = gameSnap.data();
-    const phase = game.phase;
-
-    // Only run the simulation when the game has reached open_for_business.
-    // Previous versions allowed triggering from closing_hours/auction, which
-    // caused the simulation to skip the auction phase entirely when all
-    // players submitted early.  The professor must manually advance through
-    // closing_hours → auction → open_for_business before the sim fires.
-    if (phase !== "open_for_business") {
-      logger.info("Decision submitted outside simulation-ready phase.", {
-        gameId,
-        roundId,
-        phase,
-      });
-      return;
-    }
-
-    if (game.currentRound !== roundNumber) {
-      logger.info("Decision submitted for non-current round.", {
-        gameId,
-        roundId,
-        currentRound: game.currentRound,
-      });
-      return;
-    }
-
-    const configSnap = await transaction.get(gameRef.collection("config").doc("params"));
-    const config = mergeConfig(configSnap.exists ? configSnap.data() : {});
-    const playersSnap = await transaction.get(gameRef.collection("players"));
-
-    if (playersSnap.empty) {
-      logger.warn("Simulation skipped because game has no players.", {
-        gameId,
-        roundId,
-      });
-      return;
-    }
-
-    const decisionSnaps = await Promise.all(
-      playersSnap.docs.map((playerDoc) =>
-        transaction.get(playerDoc.ref.collection("decisions").doc(roundId))
-      )
-    );
-
-    const submittedCount = decisionSnaps.filter((snap) => snap.exists).length;
-
-    if (submittedCount < playersSnap.size) {
-      transaction.update(gameRef, {
-        submittedCount,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-      logger.info("Waiting for remaining player decisions.", {
-        gameId,
-        roundId,
-        submittedCount,
-        totalPlayers: playersSnap.size,
-      });
-      return;
-    }
-
-    const roundSnap = await transaction.get(roundRef);
-    const simulationStatus = roundSnap.exists
-      ? roundSnap.get("simulationStatus")
-      : null;
-
-    if (simulationStatus === "running" || simulationStatus === "complete") {
-      logger.info("Simulation already claimed.", {
-        gameId,
-        roundId,
-        simulationStatus,
-      });
-      return;
-    }
-
-    transaction.set(
-      roundRef,
-      {
-        round: roundNumber,
-        simulationStatus: "running",
-        simulationStartedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
-    transaction.update(gameRef, {
-      phase: "open_for_business",
-      phaseEndTime: phaseEndTimeFromNow(config, "open_for_business"),
-      submittedCount,
-      phaseStartedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-    shouldRun = true;
-  });
-
-  return shouldRun;
+  return out;
 }
 
 /**
- * Mark a simulation as failed and roll the game phase back to closing_hours.
- *
- * Recovery path: professor calls advanceGamePhase again, which walks through
- * auction → open_for_business and re-triggers the simulation. Rolling back to
- * closing_hours (not auction) gives players the option to revise decisions if
- * the failure was caused by invalid data, while keeping existing decisions
- * intact if they choose not to resubmit.
+ * Generate a unique join code by retrying until we find one not already used.
+ * 32^6 search space (~1 billion codes) is comfortable for a single classroom.
  */
-async function markSimulationFailed(gameId, roundId, error) {
-  const gameRef = db.collection("games").doc(gameId);
-  const configSnap = await gameRef.collection("config").doc("params").get();
-  const config = mergeConfig(configSnap.exists ? configSnap.data() : {});
-  const failureUpdate = {
-    simulationStatus: "failed",
-    simulationError:
-      error instanceof Error ? error.message : "Unknown simulation error",
-    failedAt: FieldValue.serverTimestamp(),
-  };
-
-  await gameRef.collection("rounds").doc(roundId).set(failureUpdate, { merge: true });
-  await gameRef.update({
-    phase: "closing_hours",
-    phaseEndTime: phaseEndTimeFromNow(config, "closing_hours"),
-    phaseStartedAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-    // Reset submitted count so the dashboard no longer shows a stale
-    // "X/Y submitted" after the rollback to closing_hours.
-    submittedCount: 0,
-  });
+async function generateUniqueJoinCode(maxAttempts = 10) {
+  for (let i = 0; i < maxAttempts; i++) {
+    const code = generateJoinCode();
+    const existing = await db
+      .collection('games')
+      .where('joinCode', '==', code)
+      .limit(1)
+      .get();
+    if (existing.empty) return code;
+  }
+  // Extremely unlikely — bubble up so the professor can retry.
+  throw new HttpsError('aborted', 'Could not generate a unique join code. Please retry.');
 }
 
-async function runRoundSimulation(gameId, roundId) {
-  const gameRef = db.collection("games").doc(gameId);
-  const configRef = gameRef.collection("config").doc("params");
-  const roundRef = gameRef.collection("rounds").doc(roundId);
-  const roundNumber = roundNumberFromId(roundId);
+/**
+ * Turn a phase name + config into a Firestore Timestamp for phaseEndsAt.
+ */
+function phaseEndsAtFromNow(phaseName, config) {
+  const seconds = getPhaseDuration(phaseName, config);
+  return Timestamp.fromMillis(Date.now() + seconds * 1000);
+}
 
-  const [gameSnap, configSnap, playersSnap] = await Promise.all([
-    gameRef.get(),
-    configRef.get(),
-    gameRef.collection("players").get(),
-  ]);
+/**
+ * `games/{gameId}` ref helper.
+ */
+function gameDoc(gameId) {
+  return db.collection('games').doc(gameId);
+}
 
-  if (!gameSnap.exists) {
-    throw new Error(`Game ${gameId} not found.`);
+/**
+ * Load config for a game.
+ */
+async function loadGameConfig(gameRef) {
+  const snap = await gameRef.collection('config').doc('params').get();
+  return mergeConfig(snap.exists ? snap.data() : {});
+}
+
+/**
+ * Load the preferences doc for one round.
+ */
+async function loadRoundPreferences(gameRef, round) {
+  const snap = await gameRef.collection('preferences').doc(`round_${round}`).get();
+  if (!snap.exists) return { modifiers: {} };
+  return snap.data() || { modifiers: {} };
+}
+
+/**
+ * Load all auction results for a round: read `rounds/{round}` doc and any
+ * child auction docs. Returns a Map<playerId, { adWon, adBidPaid, chefsWon, chefBidPaid }>.
+ */
+async function loadAuctionResultsByPlayer(gameRef, round) {
+  const byPlayer = new Map();
+  const roundRef = gameRef.collection('rounds').doc(`round_${round}`);
+  const roundSnap = await roundRef.get();
+  if (!roundSnap.exists) return byPlayer;
+
+  const data = roundSnap.data() || {};
+  const adResults = objectOrDefault(data.adAuctionResults, {});
+  const chefResults = objectOrDefault(data.chefAuctionResults, {});
+
+  // Ad auction: keyed by playerId → { adType, amount }
+  for (const [playerId, r] of Object.entries(adResults)) {
+    if (!byPlayer.has(playerId)) {
+      byPlayer.set(playerId, { adWon: null, adBidPaid: 0, chefsWon: [], chefBidPaid: 0 });
+    }
+    const entry = byPlayer.get(playerId);
+    entry.adWon = (r && r.adType) || null;
+    entry.adBidPaid = numberOrDefault(r && r.amount, 0);
   }
 
-  const config = mergeConfig(configSnap.exists ? configSnap.data() : {});
-  const playerDocs = playersSnap.docs;
-  const decisionSnaps = await Promise.all(
-    playerDocs.map((playerDoc) =>
-      playerDoc.ref.collection("decisions").doc(roundId).get()
+  // Chef auction: keyed by playerId → { chefs: [chef], totalPaid }
+  for (const [playerId, r] of Object.entries(chefResults)) {
+    if (!byPlayer.has(playerId)) {
+      byPlayer.set(playerId, { adWon: null, adBidPaid: 0, chefsWon: [], chefBidPaid: 0 });
+    }
+    const entry = byPlayer.get(playerId);
+    entry.chefsWon = Array.isArray(r && r.chefs) ? r.chefs : [];
+    entry.chefBidPaid = numberOrDefault(r && r.totalPaid, 0);
+  }
+
+  return byPlayer;
+}
+
+/**
+ * MED-11 / HIGH-04: Resolve the chef auction for a round, write auction
+ * results to the round doc, append won chefs to each winner's specialtyChefs
+ * array, and set pendingRosterAction for anyone who exceeds the chef cap.
+ */
+async function resolveAndApplyChefAuction(gameRef, round, config) {
+  const roundId = `round_${round}`;
+  const roundRef = gameRef.collection('rounds').doc(roundId);
+
+  // Read the round's chefPool and all player bids for this round in parallel.
+  const [roundSnap, playersSnap] = await Promise.all([
+    roundRef.get(),
+    gameRef.collection('players').get(),
+  ]);
+
+  const chefPool = (roundSnap.exists && roundSnap.data().chefPool) || [];
+  if (chefPool.length === 0) {
+    logger.info('No chef pool for this round; skipping auction.', {
+      gameId: gameRef.id, round,
+    });
+    return;
+  }
+
+  // Read all player bid docs for this round.
+  const bidSnaps = await Promise.all(
+    playersSnap.docs.map((pd) =>
+      pd.ref.collection('bids').doc(roundId).get()
     )
   );
 
-  const playerInputs = playerDocs.map((playerDoc, index) => {
-    const player = playerDoc.data();
-    const decision = decisionSnaps[index].exists
-      ? decisionSnaps[index].data()
-      : objectOrDefault(player.pendingDecision, DEFAULT_PENDING_DECISION);
-    const avgPrice = averagePrice(decision.menu, decision.productPrices);
-    const numProducts = activeProducts(decision.menu).length;
-
-    return {
-      playerId: playerDoc.id,
-      player,
-      decision,
-      avgPrice,
-      numProducts,
-      attractivenessScore: attractivenessScore(
-        config,
-        decision,
-        avgPrice,
-        numProducts
-      ),
-    };
-  });
-
-  const auctions = resolveAuctions(playerInputs);
-  const totalCustomers = Math.max(
-    0,
-    Math.floor(config.customerPoolMultiplier * playerInputs.length)
-  );
-  const customerCounts = allocateCustomers(totalCustomers, playerInputs);
-  const results = [];
-
-  for (const input of playerInputs) {
-    const decision = input.decision;
-    const player = input.player;
-    const staffCount = Math.max(0, numberOrDefault(decision.staffCount, 0));
-    const adSpend = Math.max(0, numberOrDefault(decision.adSpend, 0));
-    const adTypeWon =
-      AD_TYPES.find((adType) => auctions.ads[adType].winnerId === input.playerId) ||
-      null;
-    const adWinningBid = adTypeWon ? auctions.ads[adTypeWon].winningBid : 0;
-    const wonChef = auctions.chef.winnerId === input.playerId;
-    const chefWinningBid = wonChef ? auctions.chef.winningBid : 0;
-    const headchefSkill = wonChef ? auctions.chef.skillLevel : 0;
-    const adBonus = adTypeWon ? config.adBonuses[adTypeWon] : 0;
-    const chefBonus = headchefSkill * config.chefBonusPerPoint;
-    const customerCount = customerCounts.get(input.playerId) || 0;
-    const productsSoldForRound = productsSold(decision, customerCount);
-    const staffingCost = staffCount * config.costPerStaffPerRound;
-    const stockCost = totalQuantityCost(
-      objectOrDefault(decision.quantities, {}),
-      config.unitCostPerProduct
-    );
-    const creditCost = 0;
-    // Only charge the ACTUAL auction cost: winners pay their bid, losers
-    // pay nothing.  adSpend is NOT added separately — adWinningBid already
-    // represents the ad expenditure for the winner.
-    const totalCosts =
-      staffingCost + stockCost + adWinningBid + chefWinningBid + creditCost;
-    const budgetBefore = numberOrDefault(player.budgetCurrent, 0);
-    const creditBalanceBefore = numberOrDefault(player.creditBalance, 0);
-    const revenue = Math.round(
-      computeRevenue(config, {
-        staffCount,
-        avgPrice: input.avgPrice,
-        adSpend,
-        numProducts: input.numProducts,
-        headchefSkill,
-        adBonus,
-      })
-    );
-    const budgetDelta = revenue - totalCosts;
-    const budgetAfter = Math.round(budgetBefore + budgetDelta);
-    const satisfaction = Number(
-      customerSatisfaction(
-        decision,
-        customerCount,
-        input.avgPrice,
-        input.numProducts
-      ).toFixed(1)
-    );
-    const csvRow = {
-      day: roundNumber,
-      revenue,
-      num_products: input.numProducts,
-      avg_price: input.avgPrice,
-      staff_count: staffCount,
-      ad_spend: adSpend,
-      customer_count: customerCount,
-      customer_satisfaction: satisfaction,
-      headchef_skill: headchefSkill,
-      croissant: productsSoldForRound.croissant,
-      cookie: productsSoldForRound.cookie,
-      bagel: productsSoldForRound.bagel,
-      sandwich: productsSoldForRound.sandwich,
-      latte: productsSoldForRound.latte,
-      matcha_latte: productsSoldForRound.matchaLatte,
-      ad_type: adTypeWon || "none",
-    };
-
-    results.push({
-      playerId: input.playerId,
-      displayName: player.displayName,
-      cumulativeRevenue:
-        numberOrDefault(player.cumulativeRevenue, 0) + revenue,
-      csvRow,
-      result: {
-        round: roundNumber,
-        revenue,
-        customerCount,
-        customerSatisfaction: satisfaction,
-        headchefSkill,
-        adTypeWon,
-        adBonus,
-        chefBonus,
-        productsSold: productsSoldForRound,
-        avgPrice: input.avgPrice,
-        productPrices: objectOrDefault(decision.productPrices, {}),
-        menu: objectOrDefault(decision.menu, {}),
-        quantitySubmitted: objectOrDefault(decision.quantities, {}),
-        staffCount,
-        adSpend,
-        numProducts: input.numProducts,
-        revenueGross: revenue,
-        staffingCost,
-        stockCost,
-        creditCost,
-        creditBalanceBefore,
-        creditBalanceAfter: creditBalanceBefore,
-        totalCosts,
-        budgetDelta,
-        budgetBefore,
-        budgetAfter,
-        computedAt: FieldValue.serverTimestamp(),
-      },
-    });
+  // Flatten into the format resolveChefAuction expects:
+  // Array<{ playerId, chefId, amount, submittedAt }>
+  const allBids = [];
+  for (let i = 0; i < playersSnap.docs.length; i++) {
+    const pd = playersSnap.docs[i];
+    const bSnap = bidSnaps[i];
+    if (!bSnap.exists) continue;
+    const bData = bSnap.data() || {};
+    const chefBids = Array.isArray(bData.chef) ? bData.chef : [];
+    const submittedAt = bData.chefSubmittedAt || null;
+    for (const cb of chefBids) {
+      if (cb && cb.chefId && numberOrDefault(cb.amount, 0) > 0) {
+        allBids.push({
+          playerId: pd.id,
+          chefId: cb.chefId,
+          amount: numberOrDefault(cb.amount, 0),
+          submittedAt,
+        });
+      }
+    }
   }
 
-  const rankings = results
-    .slice()
-    .sort((a, b) => b.cumulativeRevenue - a.cumulativeRevenue)
-    .map((result, index) => ({
-      rank: index + 1,
-      playerId: result.playerId,
-      displayName: result.displayName,
-      cumulativeRevenue: result.cumulativeRevenue,
-      lastRoundRevenue: result.result.revenue,
-      rankChange: 0,
-    }));
+  if (allBids.length === 0) {
+    logger.info('No chef bids submitted; skipping auction resolution.', {
+      gameId: gameRef.id, round,
+    });
+    return;
+  }
 
-  const revenues = results.map((result) => result.result.revenue);
-  const customerCountsList = results.map((result) => result.result.customerCount);
-  const totalRounds = numberOrDefault(gameSnap.get("totalRounds"), 5);
-  const isLastRound = roundNumber >= totalRounds;
+  // Resolve auction using pure function.
+  const { winners, payments } = resolveChefAuction(chefPool, allBids);
 
-  // Only build email docs if this is NOT the last round — there is no
-  // round N+1 to deliver the email to, so writing round_6_data when
-  // totalRounds=5 would create orphaned documents.
-  const emailDocs = isLastRound
-    ? []
-    : await Promise.all(
-        results.map((result) =>
-          buildPlayerCsvEmail({
-            gameRef,
-            playerId: result.playerId,
-            displayName: result.displayName,
-            completedRound: roundNumber,
-            currentRow: result.csvRow,
-          })
-        )
-      );
+  // Write auction results to round doc.
+  const chefAuctionResults = {};
+  for (const [playerId, chefs] of winners) {
+    chefAuctionResults[playerId] = {
+      chefs,
+      totalPaid: payments.get(playerId) || 0,
+    };
+  }
+  await roundRef.set({
+    chefAuctionResults,
+    chefAuctionResolvedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  // Write winning chefs to each player's specialtyChefs and set
+  // pendingRosterAction if they exceed the cap.
+  // Uses FieldValue.arrayUnion so the write is atomic and idempotent —
+  // safe on retry without duplicating chefs (addresses PR #19 review).
+  const specialtyChefCap = numberOrDefault(config.specialtyChefCap, 3);
+  const batch = db.batch();
+  let opsCount = 0;
+
+  for (const [playerId, wonChefs] of winners) {
+    const playerRef = gameRef.collection('players').doc(playerId);
+    const pSnap = playersSnap.docs.find((d) => d.id === playerId);
+    const existingCount = pSnap
+      ? (Array.isArray((pSnap.data() || {}).specialtyChefs)
+          ? pSnap.data().specialtyChefs.length
+          : 0)
+      : 0;
+
+    batch.update(playerRef, {
+      specialtyChefs: FieldValue.arrayUnion(...wonChefs),
+      pendingRosterAction: (existingCount + wonChefs.length) > specialtyChefCap,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    opsCount++;
+  }
+
+  if (opsCount > 0) {
+    await batch.commit();
+  }
+
+  logger.info('Chef auction resolved and applied.', {
+    gameId: gameRef.id,
+    round,
+    winnersCount: winners.size,
+    totalBids: allBids.length,
+  });
+}
+
+// ===========================================================================
+// createGame
+// ===========================================================================
+
+exports.createGame = onCall(async (request) => {
+  const auth = requireAuth(request, 'Sign in before creating a game.');
+  const data = request.data || {};
+
+  const totalRounds = numberOrDefault(data.totalRounds, DEFAULT_GAME_CONFIG.totalRounds);
+  if (!Number.isInteger(totalRounds) || totalRounds < 1 || totalRounds > 10) {
+    throw new HttpsError('invalid-argument', 'totalRounds must be an integer between 1 and 10.');
+  }
+
+  const config = mergeConfig(objectOrDefault(data.config, {}));
+  const joinCode = await generateUniqueJoinCode();
+
+  // Generate preference profiles for every round up front so the game is
+  // fully configured before lobby opens.
+  const roundPreferences = roundPreferencesModule.generateRoundPreferences(totalRounds, config);
+
+  const gameRef = db.collection('games').doc();
+
+  // Use a single batch for the initial doc set. Small enough not to need
+  // chunking (one game doc + 1 config + totalRounds preference docs).
   const batch = db.batch();
 
-  for (const [index, result] of results.entries()) {
-    const playerRef = gameRef.collection("players").doc(result.playerId);
-    const playerRoundRef = playerRef.collection("rounds").doc(roundId);
-    const csvRowRef = gameRef
-      .collection("csvRows")
-      .doc(result.playerId)
-      .collection("rounds")
-      .doc(roundId);
-    const emailRef = playerRef
-      .collection("emails")
-      .doc(`round_${roundNumber + 1}_data`);
-
-    batch.set(playerRoundRef, result.result);
-    batch.update(playerRef, {
-      budgetCurrent: FieldValue.increment(result.result.budgetDelta),
-      cumulativeRevenue: FieldValue.increment(result.result.revenue),
-      lastRoundResult: {
-        round: roundNumber,
-        revenue: result.result.revenue,
-        customerCount: result.result.customerCount,
-        customerSatisfaction: result.result.customerSatisfaction,
-        headchefSkill: result.result.headchefSkill,
-        adTypeWon: result.result.adTypeWon,
-        productsSold: result.result.productsSold,
-      },
-    });
-    batch.set(csvRowRef, {
-      playerId: result.playerId,
-      round: roundNumber,
-      row: result.csvRow,
-    });
-    // Only write the email doc if we built one (skipped on last round)
-    if (!isLastRound && emailDocs[index]) {
-      batch.set(emailRef, emailDocs[index]);
-    }
-  }
-
-  batch.set(
-    roundRef,
-    {
-      round: roundNumber,
-      auctionResults: auctions,
-      classStats: {
-        avgRevenue: revenues.length
-          ? revenues.reduce((total, revenue) => total + revenue, 0) /
-            revenues.length
-          : 0,
-        maxRevenue: revenues.length ? Math.max(...revenues) : 0,
-        minRevenue: revenues.length ? Math.min(...revenues) : 0,
-        avgCustomerCount: customerCountsList.length
-          ? customerCountsList.reduce((total, count) => total + count, 0) /
-            customerCountsList.length
-          : 0,
-        totalCustomerPool: totalCustomers,
-      },
-      simulationStatus: "complete",
-      completedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
-  batch.set(gameRef.collection("leaderboard").doc("current"), {
-    rankings,
+  batch.set(gameRef, {
+    joinCode,
+    phase: 'lobby',
+    round: 0,
+    currentRound: 0,                      // legacy alias for readers
+    totalRounds,
+    professorUid: auth.uid,
+    professorId: auth.uid,                // legacy alias
+    paused: false,
+    totalPlayers: 0,
+    submittedCount: 0,
+    createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
-    round: roundNumber,
-  });
-  batch.update(gameRef, {
-    phase: "results",
-    phaseEndTime: phaseEndTimeFromNow(config, "results"),
     phaseStartedAt: FieldValue.serverTimestamp(),
+    phaseEndsAt: null,
+  });
+
+  batch.set(gameRef.collection('config').doc('params'), {
+    ...config,
     updatedAt: FieldValue.serverTimestamp(),
   });
+
+  for (let i = 0; i < roundPreferences.length; i++) {
+    const round = i + 1;
+    const prefs = roundPreferences[i] || { modifiers: {} };
+    batch.set(gameRef.collection('preferences').doc(`round_${round}`), {
+      round,
+      modifiers: prefs.modifiers || {},
+      trending: prefs.trending || [],
+      warm: prefs.warm || [],
+      neutral: prefs.neutral || [],
+      cold: prefs.cold || [],
+    });
+  }
 
   await batch.commit();
-}
 
-exports.onDecisionSubmitted = onDocumentCreated(
-  "games/{gameId}/players/{playerId}/decisions/{roundId}",
-  async (event) => {
-    const { gameId, roundId } = event.params;
-    const roundNumber = roundNumberFromId(roundId);
+  logger.info('Game created.', { gameId: gameRef.id, joinCode, totalRounds });
 
-    if (!Number.isInteger(roundNumber)) {
-      logger.warn("Ignoring decision with invalid round id.", {
-        gameId,
-        roundId,
-      });
-      return;
-    }
-
-    try {
-      const shouldRun = await claimSimulationRun(gameId, roundId);
-
-      if (!shouldRun) {
-        return;
-      }
-
-      await runRoundSimulation(gameId, roundId);
-      logger.info("Revenue simulation complete.", { gameId, roundId });
-    } catch (error) {
-      logger.error("Revenue simulation failed.", { gameId, roundId, error });
-      await markSimulationFailed(gameId, roundId, error);
-      throw error;
-    }
-  }
-);
-
-exports.startGame = onCall(async (request) => {
-  const gameId = cleanGameId(request.data?.gameId);
-  const gameRef = db.collection("games").doc(gameId);
-  const gameSnap = await assertProfessor(request, gameRef);
-
-  if (gameSnap.get("phase") !== "lobby") {
-    throw new HttpsError(
-      "failed-precondition",
-      "Only lobby games can be started."
-    );
-  }
-
-  const totalPlayers = numberOrDefault(gameSnap.get("totalPlayers"), 0);
-
-  if (totalPlayers < 1) {
-    throw new HttpsError(
-      "failed-precondition",
-      "At least one player must join before starting the game."
-    );
-  }
-
-  const configSnap = await gameRef.collection("config").doc("params").get();
-  const config = mergeConfig(configSnap.exists ? configSnap.data() : {});
-  const phaseEndTime = phaseEndTimeFromNow(config, "closing_hours");
-
-  await gameRef.update({
-    phase: "closing_hours",
-    currentRound: 1,
-    submittedCount: 0,
-    phaseStartedAt: FieldValue.serverTimestamp(),
-    phaseEndTime,
-    startedAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-
-  return {
-    gameId,
-    phase: "closing_hours",
-    currentRound: 1,
-    phaseEndTime: phaseEndTime.toMillis(),
-  };
+  return { gameId: gameRef.id, joinCode };
 });
 
-exports.advanceGamePhase = onCall(async (request) => {
-  const gameId = cleanGameId(request.data?.gameId);
-  const gameRef = db.collection("games").doc(gameId);
-  await assertProfessor(request, gameRef);
-
-  let nextPhase;
-  let currentRound;
-  let shouldClaimSimulation = false;
-
-  await db.runTransaction(async (transaction) => {
-    const gameSnap = await transaction.get(gameRef);
-    const configSnap = await transaction.get(gameRef.collection("config").doc("params"));
-    const game = gameSnap.data();
-    const config = mergeConfig(configSnap.exists ? configSnap.data() : {});
-    const next = nextPhaseFor(game);
-
-    // Guard: if advancing from open_for_business to results, the simulation
-    // must have completed first.  This prevents a professor double-click from
-    // pushing past the simulation before it finishes.
-    if (next.phase === "results") {
-      const roundRef = gameRef.collection("rounds").doc(`round_${game.currentRound}`);
-      const roundSnap = await transaction.get(roundRef);
-      const simStatus = roundSnap.exists ? roundSnap.get("simulationStatus") : null;
-
-      if (simStatus !== "complete") {
-        throw new HttpsError(
-          "failed-precondition",
-          `Cannot advance to results — simulation is ${simStatus || "not started"}.`
-        );
-      }
-    }
-
-    const update = {
-      phase: next.phase,
-      currentRound: next.round,
-      phaseStartedAt: FieldValue.serverTimestamp(),
-      phaseEndTime:
-        next.phase === "game_over"
-          ? null
-          : phaseEndTimeFromNow(config, next.phase),
-      updatedAt: FieldValue.serverTimestamp(),
-    };
-
-    if (next.phase === "closing_hours") {
-      update.submittedCount = 0;
-    }
-
-    if (next.phase === "game_over") {
-      update.endedAt = FieldValue.serverTimestamp();
-    }
-
-    nextPhase = next.phase;
-    currentRound = next.round;
-
-    transaction.update(gameRef, update);
-
-    if (next.phase === "open_for_business") {
-      shouldClaimSimulation = true;
-    }
-  });
-
-  if (shouldClaimSimulation) {
-    const roundId = `round_${currentRound}`;
-    const shouldRunSimulation = await claimSimulationRun(gameId, roundId);
-
-    if (shouldRunSimulation) {
-      try {
-        await runRoundSimulation(gameId, roundId);
-        logger.info("Revenue simulation complete.", { gameId, roundId });
-      } catch (error) {
-        logger.error("Revenue simulation failed.", { gameId, roundId, error });
-        await markSimulationFailed(gameId, roundId, error);
-        throw error;
-      }
-    }
-  }
-
-  const updatedGameSnap = await gameRef.get();
-  const phaseEndTime = updatedGameSnap.get("phaseEndTime");
-
-  return {
-    gameId,
-    phase: updatedGameSnap.get("phase"),
-    requestedPhase: nextPhase,
-    currentRound: updatedGameSnap.get("currentRound"),
-    phaseEndTime:
-      phaseEndTime instanceof Timestamp ? phaseEndTime.toMillis() : null,
-  };
-});
-
-exports.submitDecision = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError(
-      "unauthenticated",
-      "Sign in before submitting decisions."
-    );
-  }
-
-  const data = request.data || {};
-  const gameId = cleanGameId(data.gameId);
-  const uid = request.auth.uid;
-  const gameRef = db.collection("games").doc(gameId);
-  const playerRef = gameRef.collection("players").doc(uid);
-  const decision = validateDecisionInput(data);
-  let roundId;
-
-  await db.runTransaction(async (transaction) => {
-    const [gameSnap, playerSnap, configSnap] = await Promise.all([
-      transaction.get(gameRef),
-      transaction.get(playerRef),
-      transaction.get(gameRef.collection("config").doc("params")),
-    ]);
-
-    if (!gameSnap.exists) {
-      throw new HttpsError("not-found", "Game not found.");
-    }
-
-    if (!playerSnap.exists) {
-      throw new HttpsError(
-        "failed-precondition",
-        "Join this game before submitting decisions."
-      );
-    }
-
-    const game = gameSnap.data();
-
-    if (game.phase !== "closing_hours" && game.phase !== "decide") {
-      throw new HttpsError(
-        "failed-precondition",
-        "Decisions can only be submitted during Closing Hours."
-      );
-    }
-
-    const currentRound = numberOrDefault(game.currentRound, 1);
-    const requestedRound =
-      data.round === undefined || data.round === null
-        ? currentRound
-        : integerInRange(data.round, "round", { min: 1, max: 100 });
-
-    if (requestedRound !== currentRound) {
-      throw new HttpsError(
-        "failed-precondition",
-        `This game is currently on round ${currentRound}.`
-      );
-    }
-
-    roundId = `round_${currentRound}`;
-    const decisionRef = playerRef.collection("decisions").doc(roundId);
-    const decisionSnap = await transaction.get(decisionRef);
-
-    if (decisionSnap.exists) {
-      throw new HttpsError(
-        "already-exists",
-        "Decisions have already been submitted for this round."
-      );
-    }
-
-    const config = mergeConfig(configSnap.exists ? configSnap.data() : {});
-    const budgetCurrent = numberOrDefault(playerSnap.get("budgetCurrent"), 0);
-
-    // Compute individual cost components.
-    // Budget check uses the MAXIMUM possible cost (assumes player wins all
-    // bids).  This is a sealed-bid reserve: funds are held at submit time
-    // and released after the auction if the player loses.  The simulation
-    // only charges actual winners.
-    const staffingCost = decision.staffCount * config.costPerStaffPerRound;
-    const creditCost = 0; // Pending Game Design sign-off (Open Q #6)
-    const stockCost = totalQuantityCost(
-      objectOrDefault(decision.quantities, {}),
-      config.unitCostPerProduct
-    );
-    const adBidAmount = decision.adBid.adType
-      ? Math.max(0, numberOrDefault(decision.adBid.amount, 0))
-      : 0;
-    const chefBidAmount = Math.max(0, numberOrDefault(decision.chefBid.amount, 0));
-    // guaranteedCosts = costs that are always charged regardless of auction outcome
-    const guaranteedCosts = staffingCost + stockCost + creditCost;
-    // maxBidReserve = total held if player wins every bid (worst-case budget hit)
-    const maxBidReserve = adBidAmount + chefBidAmount;
-    const totalCostsMax = guaranteedCosts + maxBidReserve;
-
-    if (totalCostsMax > budgetCurrent) {
-      throw new HttpsError(
-        "failed-precondition",
-        `This decision costs up to $${totalCostsMax.toFixed(2)} (including bids), but your current budget is $${budgetCurrent.toFixed(2)}.`
-      );
-    }
-
-    const decisionDoc = {
-      round: currentRound,
-      submittedAt: FieldValue.serverTimestamp(),
-      staffCount: decision.staffCount,
-      adSpend: decision.adSpend,
-      menu: decision.menu,
-      productPrices: decision.productPrices,
-      quantities: decision.quantities,
-      adBid: decision.adBid,
-      chefBid: decision.chefBid,
-      numProducts: decision.numProducts,
-      budgetBefore: budgetCurrent,
-      staffingCost,
-      creditCost,
-      stockCost,
-      adBidAmount,
-      chefBidAmount,
-      // guaranteedCosts excludes bids; totalCostsMax includes all bids.
-      // Actual post-auction cost may be lower if player loses bids.
-      guaranteedCosts,
-      totalCostsMax,
-    };
-
-    transaction.set(decisionRef, decisionDoc);
-    transaction.update(playerRef, {
-      pendingDecision: {
-        submitted: true,
-        submittedAt: FieldValue.serverTimestamp(),
-        staffCount: decision.staffCount,
-        adSpend: decision.adSpend,
-        menu: decision.menu,
-        productPrices: decision.productPrices,
-        quantities: decision.quantities,
-      },
-      pendingBids: {
-        adBid: decision.adBid,
-        chefBid: decision.chefBid,
-      },
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-  });
-
-  return {
-    gameId,
-    playerId: uid,
-    roundId,
-    submitted: true,
-  };
-});
-
-function validateJoinInput(data) {
-  const joinCode = cleanString(data.joinCode).toUpperCase();
-  const displayName = cleanString(data.displayName);
-
-  if (!/^[A-Z0-9]{6}$/.test(joinCode)) {
-    throw new HttpsError(
-      "invalid-argument",
-      "joinCode must be a 6-character game code."
-    );
-  }
-
-  if (displayName.length < 2 || displayName.length > 40) {
-    throw new HttpsError(
-      "invalid-argument",
-      "displayName must be between 2 and 40 characters."
-    );
-  }
-
-  return { joinCode, displayName };
-}
-
-async function findLobbyByJoinCode(joinCode) {
-  const snapshot = await db
-    .collection("games")
-    .where("joinCode", "==", joinCode)
-    .limit(1)
-    .get();
-
-  if (snapshot.empty) {
-    throw new HttpsError("not-found", "No game exists for that join code.");
-  }
-
-  return snapshot.docs[0].ref;
-}
-
-async function readStartingBudget(transaction, gameRef) {
-  const configRef = gameRef.collection("config").doc("params");
-  const configSnap = await transaction.get(configRef);
-
-  if (!configSnap.exists) {
-    return 2000;
-  }
-
-  const startingBudget = configSnap.get("startingBudget");
-  return typeof startingBudget === "number" ? startingBudget : 2000;
-}
+// ===========================================================================
+// joinGame
+// ===========================================================================
 
 exports.joinGame = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError(
-      "unauthenticated",
-      "Sign in anonymously before joining a game."
-    );
+  const auth = requireAuth(request, 'Sign in before joining a game.');
+  const data = request.data || {};
+
+  const joinCode = cleanString(data.joinCode).toUpperCase();
+  const displayName = cleanString(data.displayName);
+  const bakeryName = cleanString(data.bakeryName) || `${displayName}'s Bakery`;
+
+  if (!/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/.test(joinCode)) {
+    throw new HttpsError('invalid-argument', 'joinCode must be a 6-character game code (letters A-Z excluding I/O, digits 2-9).');
+  }
+  if (displayName.length < 2 || displayName.length > 40) {
+    throw new HttpsError('invalid-argument', 'displayName must be 2–40 characters.');
+  }
+  if (bakeryName.length > 60) {
+    throw new HttpsError('invalid-argument', 'bakeryName must be 60 characters or fewer.');
   }
 
-  const uid = request.auth.uid;
-  const { joinCode, displayName } = validateJoinInput(request.data || {});
-  const gameRef = await findLobbyByJoinCode(joinCode);
-  const playerRef = gameRef.collection("players").doc(uid);
+  const gameSnap = await db
+    .collection('games')
+    .where('joinCode', '==', joinCode)
+    .limit(1)
+    .get();
+  if (gameSnap.empty) {
+    throw new HttpsError('not-found', 'No game exists for that join code.');
+  }
+  const gameRef = gameSnap.docs[0].ref;
+  const playerRef = gameRef.collection('players').doc(auth.uid);
+
+  let playerId = auth.uid;
 
   await db.runTransaction(async (transaction) => {
-    const gameSnap = await transaction.get(gameRef);
-    const playerSnap = await transaction.get(playerRef);
-    const startingBudget = await readStartingBudget(transaction, gameRef);
+    const [gSnap, pSnap, cfgSnap] = await Promise.all([
+      transaction.get(gameRef),
+      transaction.get(playerRef),
+      transaction.get(gameRef.collection('config').doc('params')),
+    ]);
 
-    if (!gameSnap.exists) {
-      throw new HttpsError("not-found", "No game exists for that join code.");
+    if (!gSnap.exists) {
+      throw new HttpsError('not-found', 'No game exists for that join code.');
+    }
+    if (gSnap.get('phase') !== 'lobby') {
+      throw new HttpsError('failed-precondition', 'This game is no longer accepting players.');
     }
 
-    if (gameSnap.get("phase") !== "lobby") {
-      throw new HttpsError(
-        "failed-precondition",
-        "This game is no longer accepting players."
-      );
-    }
+    const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
 
-    if (playerSnap.exists) {
+    if (pSnap.exists) {
+      // Rejoin: refresh display name / bakery name but do not reset progress.
       transaction.update(playerRef, {
         displayName,
+        bakeryName,
         updatedAt: FieldValue.serverTimestamp(),
       });
       return;
     }
 
     transaction.set(playerRef, {
-      uid,
+      uid: auth.uid,
+      playerId: auth.uid,
       displayName,
+      bakeryName,
       joinedAt: FieldValue.serverTimestamp(),
-      budgetCurrent: startingBudget,
-      creditBalance: 0,
+      budgetCurrent: config.startingBudget,
       cumulativeRevenue: 0,
-      pendingDecision: DEFAULT_PENDING_DECISION,
-      pendingBids: DEFAULT_PENDING_BIDS,
-      lastRoundResult: {
-        round: 0,
-        revenue: 0,
-        customerCount: 0,
-        customerSatisfaction: 0,
-        headchefSkill: 0,
-        adTypeWon: null,
-        productsSold: {
-          croissant: 0,
-          cookie: 0,
-          bagel: 0,
-          sandwich: 0,
-          latte: 0,
-          matchaLatte: 0,
-        },
-      },
+      specialtyChefs: [],
+      sousChefCount: 0,
+      returningCustomersPending: 0,
+      pendingDecision: { submitted: false },
+      pendingBids: { ad: null, chef: null },
+      pendingRosterAction: false,
+      lastRoundResult: null,
+      updatedAt: FieldValue.serverTimestamp(),
     });
 
     transaction.update(gameRef, {
@@ -1765,17 +522,1068 @@ exports.joinGame = onCall(async (request) => {
     });
   });
 
-  const playerSnap = await playerRef.get();
-  const player = playerSnap.data();
+  return { gameId: gameRef.id, playerId };
+});
 
+// ===========================================================================
+// startGame
+// ===========================================================================
+
+exports.startGame = onCall(async (request) => {
+  const auth = requireAuth(request, 'Sign in before starting a game.');
+  const gameId = cleanGameId((request.data || {}).gameId);
+  const gameRef = gameDoc(gameId);
+
+  // HIGH-10 fix: wrap in a transaction to prevent double-start from
+  // concurrent professor clicks (both would read phase='lobby' and commit).
+  let config = null;
+  await db.runTransaction(async (transaction) => {
+    const [gSnap, cfgSnap] = await Promise.all([
+      transaction.get(gameRef),
+      transaction.get(gameRef.collection('config').doc('params')),
+    ]);
+    if (!gSnap.exists) {
+      throw new HttpsError('not-found', 'Game not found.');
+    }
+    if (gSnap.get('professorUid') !== auth.uid && gSnap.get('professorId') !== auth.uid) {
+      throw new HttpsError('permission-denied', 'Only the professor can start this game.');
+    }
+    if (gSnap.get('phase') !== 'lobby') {
+      throw new HttpsError('failed-precondition', 'Only lobby games can be started.');
+    }
+    if (numberOrDefault(gSnap.get('totalPlayers'), 0) < 1) {
+      throw new HttpsError('failed-precondition', 'At least one player must join first.');
+    }
+
+    config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
+
+    transaction.update(gameRef, {
+      phase: 'round_1_email',
+      round: 1,
+      currentRound: 1,
+      phaseStartedAt: FieldValue.serverTimestamp(),
+      phaseEndsAt: phaseEndsAtFromNow('email', config),
+      startedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      submittedCount: 0,
+    });
+  });
+
+  // Side-effect after transaction: write market insight email for round 1.
+  const prefs = await loadRoundPreferences(gameRef, 1);
+  const insight = marketInsightModule.buildMarketInsightEmail({
+    round: 1,
+    preferences: prefs,
+    config,
+  });
+  await gameRef.collection('marketInsights').doc('round_1').set({
+    round: 1,
+    ...insight,
+    createdAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  return { gameId, phase: 'round_1_email', round: 1 };
+});
+
+// ===========================================================================
+// advanceGamePhase
+// ===========================================================================
+
+exports.advanceGamePhase = onCall(async (request) => {
+  const auth = requireAuth(request, 'Sign in before advancing phases.');
+  const gameId = cleanGameId((request.data || {}).gameId);
+  const gameRef = gameDoc(gameId);
+
+  // ----------------------------------------------------------------
+  // Step 1: transactional phase transition — decide next phase,
+  // capture context. Side-effect work (simulation, chef-pool gen,
+  // email gen) is queued for AFTER the transaction commits to keep
+  // transaction duration bounded.
+  // ----------------------------------------------------------------
+  let transitionContext = null;
+
+  // CRIT-02 fix: accept expectedFromPhase to prevent double-advance on
+  // concurrent admin clicks (Firestore transaction retry would otherwise
+  // read the already-advanced phase and advance it a second time).
+  const expectedFromPhase = (request.data || {}).expectedFromPhase || null;
+
+  await db.runTransaction(async (transaction) => {
+    const [gSnap, cfgSnap] = await Promise.all([
+      transaction.get(gameRef),
+      transaction.get(gameRef.collection('config').doc('params')),
+    ]);
+    if (!gSnap.exists) {
+      throw new HttpsError('not-found', 'Game not found.');
+    }
+    if (gSnap.get('professorUid') !== auth.uid && gSnap.get('professorId') !== auth.uid) {
+      throw new HttpsError('permission-denied', 'Only the professor can advance phases.');
+    }
+
+    const game = gSnap.data();
+    const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
+    const currentPhaseString = game.phase;
+    const currentRound = numberOrDefault(game.currentRound || game.round, 0);
+
+    // Guard against double-advance: if the caller specified which phase they
+    // expect us to advance FROM, verify it still matches. On a Firestore
+    // transaction retry the phase may have already moved.
+    if (expectedFromPhase && currentPhaseString !== expectedFromPhase) {
+      throw new HttpsError(
+        'failed-precondition',
+        `Phase has already advanced. Current: ${currentPhaseString}, expected: ${expectedFromPhase}`
+      );
+    }
+
+    const next = getNextPhase(currentPhaseString, currentRound, game.totalRounds);
+
+    // Parse next.phase for templates like 'round_N_x' to know the base name.
+    const parsed = parsePhase(next.phase, next.round);
+    const basePhaseName = parsed.phase;
+
+    const update = {
+      phase: next.phase,
+      round: next.round,
+      currentRound: next.round,
+      phaseStartedAt: FieldValue.serverTimestamp(),
+      phaseEndsAt:
+        next.phase === 'game_over'
+          ? null
+          : phaseEndsAtFromNow(basePhaseName, config),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (basePhaseName === 'decide') {
+      update.submittedCount = 0;
+    }
+    if (next.phase === 'game_over') {
+      update.endedAt = FieldValue.serverTimestamp();
+    }
+
+    transaction.update(gameRef, update);
+
+    transitionContext = {
+      config,
+      fromPhase: currentPhaseString,
+      toPhase: next.phase,
+      basePhaseName,
+      round: next.round,
+      totalRounds: game.totalRounds,
+    };
+  });
+
+  if (!transitionContext) {
+    return { gameId, status: 'no-op' };
+  }
+
+  const { config, toPhase, basePhaseName, round, totalRounds } = transitionContext;
+
+  // ----------------------------------------------------------------
+  // Step 2: phase-specific side-effects AFTER the transaction commit
+  // ----------------------------------------------------------------
+
+  try {
+    if (basePhaseName === 'email' && round >= 1) {
+      // Write the market-insight email for the entering round.
+      const prefs = await loadRoundPreferences(gameRef, round);
+      const insight = marketInsightModule.buildMarketInsightEmail({ round, preferences: prefs, config });
+      await gameRef.collection('marketInsights').doc(`round_${round}`).set({
+        round,
+        ...insight,
+        createdAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+
+    if (basePhaseName === 'bid_chef') {
+      // Generate chef pool for this round.
+      const pool = generateChefPool(round, config);
+      await gameRef.collection('rounds').doc(`round_${round}`).set({
+        round,
+        chefPool: pool,
+        chefPoolGeneratedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+
+    if (basePhaseName === 'roster') {
+      // MED-11 / HIGH-04 fix: resolve chef auction, write results to round doc,
+      // write winning chefs to each player's specialtyChefs array, and set
+      // pendingRosterAction for players who exceed the chef cap.
+      await resolveAndApplyChefAuction(gameRef, round, config);
+    }
+
+    if (toPhase === 'simulating') {
+      // Run simulation and persist results; then transition to results_ready.
+      await runSimulationAndPersist(gameRef, round, config);
+
+      // RACE-2 fix: wrap the simulating→results_ready transition in a
+      // transaction that verifies phase is still 'simulating'. This prevents
+      // a concurrent advanceGamePhase from corrupting the state, and makes
+      // the transition retryable if the process crashes mid-way.
+      await db.runTransaction(async (tx) => {
+        const gSnap = await tx.get(gameRef);
+        if (!gSnap.exists || gSnap.get('phase') !== 'simulating') {
+          logger.warn('simulating→results_ready aborted: phase changed.', {
+            gameId, currentPhase: gSnap.exists ? gSnap.get('phase') : 'deleted',
+          });
+          return;
+        }
+        tx.update(gameRef, {
+          phase: 'results_ready',
+          phaseStartedAt: FieldValue.serverTimestamp(),
+          phaseEndsAt: phaseEndsAtFromNow('results_ready', config),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      });
+    }
+
+    if (toPhase === 'game_over') {
+      // Compute and cache final conclusion.
+      await persistConclusion(gameRef, totalRounds, config);
+    }
+  } catch (err) {
+    logger.error('advanceGamePhase side-effect failed.', {
+      gameId,
+      toPhase,
+      error: err && err.message,
+    });
+    // Surface the error so the professor UI knows to retry.
+    throw new HttpsError('internal', `Phase side-effects failed: ${err.message || err}`);
+  }
+
+  const finalSnap = await gameRef.get();
   return {
-    uid,
-    gameId: gameRef.id,
-    playerId: uid,
-    displayName: player.displayName,
-    joinedAt:
-      player.joinedAt instanceof Timestamp
-        ? player.joinedAt.toMillis()
-        : null,
+    gameId,
+    phase: finalSnap.get('phase'),
+    round: numberOrDefault(finalSnap.get('round'), 0),
   };
 });
+
+// ---------------------------------------------------------------------------
+// Simulation orchestration (reads → pure sim → chunked batched writes)
+// ---------------------------------------------------------------------------
+
+/**
+ * Read all data needed for simulation, invoke the pure simulation engine,
+ * and persist results with batch chunking for 150+ player games.
+ */
+async function runSimulationAndPersist(gameRef, round, config) {
+  const roundId = `round_${round}`;
+  const roundRef = gameRef.collection('rounds').doc(roundId);
+
+  // -----------------------------------------------------------------------
+  // Read phase
+  // -----------------------------------------------------------------------
+  const [playersSnap, prefs, auctionByPlayer] = await Promise.all([
+    gameRef.collection('players').get(),
+    loadRoundPreferences(gameRef, round),
+    loadAuctionResultsByPlayer(gameRef, round),
+  ]);
+
+  const playerDocs = playersSnap.docs;
+  if (playerDocs.length === 0) {
+    logger.warn('Simulation skipped — no players.', { gameId: gameRef.id, round });
+    await roundRef.set({
+      round,
+      simulationStatus: 'complete',
+      completedAt: FieldValue.serverTimestamp(),
+      note: 'no players',
+    }, { merge: true });
+    return;
+  }
+
+  const decisionSnaps = await Promise.all(
+    playerDocs.map((pd) =>
+      pd.ref.collection('decisions').doc(roundId).get()
+    )
+  );
+
+  // Assemble per-player input for the pure simulation engine.
+  const players = playerDocs.map((pd, i) => {
+    const p = pd.data() || {};
+    const dSnap = decisionSnaps[i];
+    const decision = dSnap.exists ? dSnap.data() : (p.pendingDecision || {});
+    const ar = auctionByPlayer.get(pd.id) || {
+      adWon: null, adBidPaid: 0, chefsWon: [], chefBidPaid: 0,
+    };
+    return {
+      playerId: pd.id,
+      displayName: p.displayName || 'Player',
+      bakeryName: p.bakeryName || '',
+      decision: {
+        menu: (decision && decision.menu) || {},
+        quantities: (decision && decision.quantities) || {},
+        sousChefCount: numberOrDefault(decision && decision.sousChefCount, p.sousChefCount || 0),
+        sousChefAssignments: (decision && decision.sousChefAssignments) || {},
+      },
+      specialtyChefs: Array.isArray(p.specialtyChefs) ? p.specialtyChefs : [],
+      budgetCurrent: numberOrDefault(p.budgetCurrent, 0),
+      returningCustomersPending: numberOrDefault(p.returningCustomersPending, 0),
+      auctionResults: ar,
+    };
+  });
+
+  // -----------------------------------------------------------------------
+  // Mark sim as running
+  // -----------------------------------------------------------------------
+  await roundRef.set({
+    round,
+    simulationStatus: 'running',
+    simulationStartedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  // -----------------------------------------------------------------------
+  // Pure sim
+  // -----------------------------------------------------------------------
+  const results = runSimulation(players, prefs, config, { gameId: gameRef.id, round });
+
+  // -----------------------------------------------------------------------
+  // Write phase — chunked batches
+  // -----------------------------------------------------------------------
+  // Each player writes 3 ops:
+  //   1. update players/{uid}
+  //   2. set  players/{uid}/rounds/{round}
+  //   3. set  csvRows/{uid}/rounds/{round}
+  const OPS_PER_PLAYER = 3;
+
+  let batch = db.batch();
+  let opsInBatch = 0;
+  const batches = [];
+
+  for (const r of results) {
+    const playerRef = gameRef.collection('players').doc(r.playerId);
+    const playerRoundRef = playerRef.collection('rounds').doc(roundId);
+    const csvRowRef = gameRef
+      .collection('csvRows')
+      .doc(r.playerId)
+      .collection('rounds')
+      .doc(roundId);
+
+    if (opsInBatch + OPS_PER_PLAYER > BATCH_OP_LIMIT) {
+      batches.push(batch);
+      batch = db.batch();
+      opsInBatch = 0;
+    }
+
+    batch.update(playerRef, {
+      budgetCurrent: r.budgetAfter,
+      cumulativeRevenue: FieldValue.increment(r.revenueNet),
+      returningCustomersPending: r.returningCustomersEarned,
+      sousChefCount: numberOrDefault(
+        (r.csvRow && r.csvRow.sous_chef_count),
+        0
+      ),
+      lastRoundResult: {
+        round,
+        revenueGross: r.revenueGross,
+        revenueNet: r.revenueNet,
+        customerCount: r.customerCount,
+        aggregateSatisfactionPct: r.aggregateSatisfactionPct,
+        chefSatisfactionScore: r.chefSatisfactionScore,
+        amountBorrowed: r.amountBorrowed,
+        interestCharged: r.interestCharged,
+        selloutAnywhere: r.selloutAnywhere || false,
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    // Extract perProductSold and selloutFlags as flat objects for easy
+    // frontend consumption (avoids nested digging into perProductSatisfaction).
+    const perProductSold = {};
+    const selloutFlags = {};
+    for (const [product, pps] of Object.entries(r.perProductSatisfaction || {})) {
+      perProductSold[product] = (pps && pps.qtySold) || 0;
+      selloutFlags[product] = !!(pps && pps.sellout);
+    }
+
+    batch.set(playerRoundRef, {
+      round,
+      playerId: r.playerId,
+      displayName: r.displayName,
+      bakeryName: r.bakeryName,
+      revenueGross: r.revenueGross,
+      revenueNet: r.revenueNet,
+      amountBorrowed: r.amountBorrowed,
+      interestCharged: r.interestCharged,
+      totalSpent: r.totalSpent,
+      budgetAfter: r.budgetAfter,
+      customerCount: r.customerCount,
+      perProductCustomers: r.perProductCustomers,
+      aggregateSatisfactionPct: r.aggregateSatisfactionPct,
+      chefSatisfactionScore: r.chefSatisfactionScore,
+      perProductSatisfaction: r.perProductSatisfaction,
+      perProductSold,
+      selloutFlags,
+      returningCustomersEarned: r.returningCustomersEarned,
+      computedAt: FieldValue.serverTimestamp(),
+    });
+
+    batch.set(csvRowRef, {
+      round,
+      playerId: r.playerId,
+      row: r.csvRow,
+      writtenAt: FieldValue.serverTimestamp(),
+    });
+
+    opsInBatch += OPS_PER_PLAYER;
+  }
+
+  // Aggregate writes (leaderboard + round doc completion) appended to the
+  // FINAL batch so that simulationStatus='complete' only after all per-player
+  // writes land.
+  const rankings = results
+    .slice()
+    .sort((a, b) => b.revenueNet - a.revenueNet || b.budgetAfter - a.budgetAfter)
+    .map((r, i) => ({
+      rank: i + 1,
+      playerId: r.playerId,
+      displayName: r.displayName,
+      bakeryName: r.bakeryName,
+      revenueNet: r.revenueNet,
+      revenueGross: r.revenueGross,
+      customerCount: r.customerCount,
+      budgetAfter: r.budgetAfter,
+    }));
+
+  const revenues = results.map((r) => r.revenueNet);
+  const customers = results.map((r) => r.customerCount);
+  const avg = (arr) => (arr.length ? arr.reduce((s, n) => s + n, 0) / arr.length : 0);
+
+  batch.set(roundRef, {
+    round,
+    simulationStatus: 'complete',
+    completedAt: FieldValue.serverTimestamp(),
+    classStats: {
+      avgRevenueNet: avg(revenues),
+      maxRevenueNet: revenues.length ? Math.max(...revenues) : 0,
+      minRevenueNet: revenues.length ? Math.min(...revenues) : 0,
+      avgCustomerCount: avg(customers),
+      playerCount: results.length,
+    },
+  }, { merge: true });
+
+  batch.set(gameRef.collection('leaderboard').doc('latest'), {
+    round,
+    rankings,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  batches.push(batch);
+
+  for (const b of batches) {
+    // eslint-disable-next-line no-await-in-loop
+    await b.commit();
+  }
+
+  logger.info('Simulation persisted.', {
+    gameId: gameRef.id,
+    round,
+    playerCount: results.length,
+    batchCount: batches.length,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Conclusion persistence (game_over)
+// ---------------------------------------------------------------------------
+
+async function persistConclusion(gameRef, totalRounds, config) {
+  const playersSnap = await gameRef.collection('players').get();
+
+  // CRIT-05 fix: parallelize all per-player round reads instead of serial.
+  // Chunk into groups of 20 to avoid overwhelming Firestore.
+  const CHUNK_SIZE = 20;
+  const playerDocs = playersSnap.docs;
+  const perPlayer = [];
+
+  for (let start = 0; start < playerDocs.length; start += CHUNK_SIZE) {
+    const chunk = playerDocs.slice(start, start + CHUNK_SIZE);
+    const chunkResults = await Promise.all(
+      chunk.map(async (pd) => {
+        const p = pd.data() || {};
+        const roundsSnap = await pd.ref.collection('rounds').get();
+        // LOGIC-2 fix: sum revenueNet (already post-loan-shark) to be
+        // consistent with per-round leaderboard. Keep gross/borrowed/interest
+        // for the conclusion breakdown display.
+        let totalRevenueNet = 0;
+        let totalRevenueGross = 0;
+        let totalBorrowed = 0;
+        let totalInterest = 0;
+        for (const rd of roundsSnap.docs) {
+          const rr = rd.data() || {};
+          totalRevenueNet += numberOrDefault(rr.revenueNet, 0);
+          totalRevenueGross += numberOrDefault(rr.revenueGross, 0);
+          totalBorrowed += numberOrDefault(rr.amountBorrowed, 0);
+          totalInterest += numberOrDefault(rr.interestCharged, 0);
+        }
+        const netRevenue = totalRevenueNet;
+        return {
+          playerId: pd.id,
+          displayName: p.displayName || 'Player',
+          bakeryName: p.bakeryName || '',
+          totalRevenue: totalRevenueGross,
+          totalBorrowed,
+          totalInterest,
+          netRevenue,
+          budgetRemaining: numberOrDefault(p.budgetCurrent, 0),
+          specialtyChefs: Array.isArray(p.specialtyChefs) ? p.specialtyChefs : [],
+        };
+      })
+    );
+    perPlayer.push(...chunkResults);
+  }
+
+  // Rank: netRevenue desc, tiebreak budgetRemaining desc.
+  perPlayer.sort((a, b) =>
+    b.netRevenue - a.netRevenue || b.budgetRemaining - a.budgetRemaining
+  );
+  const rankings = perPlayer.map((entry, i) => ({ rank: i + 1, ...entry }));
+
+  const conclusion = conclusionModule.computeConclusion
+    ? conclusionModule.computeConclusion(rankings, { totalRounds, config })
+    : { rankings };
+
+  await gameRef.collection('conclusion').doc('final').set({
+    rankings,
+    totalRounds,
+    ...conclusion,
+    computedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+}
+
+// ===========================================================================
+// submitDecision
+// ===========================================================================
+
+exports.submitDecision = onCall(async (request) => {
+  const auth = requireAuth(request, 'Sign in before submitting decisions.');
+  const data = request.data || {};
+  const gameId = cleanGameId(data.gameId);
+  const uid = auth.uid;
+  const gameRef = gameDoc(gameId);
+  const playerRef = gameRef.collection('players').doc(uid);
+
+  let roundId = null;
+
+  await db.runTransaction(async (transaction) => {
+    const [gSnap, pSnap, cfgSnap] = await Promise.all([
+      transaction.get(gameRef),
+      transaction.get(playerRef),
+      transaction.get(gameRef.collection('config').doc('params')),
+    ]);
+
+    if (!gSnap.exists) throw new HttpsError('not-found', 'Game not found.');
+    if (!pSnap.exists) throw new HttpsError('failed-precondition', 'Join the game before submitting.');
+
+    const game = gSnap.data();
+    if (!canSubmitDecision(game.phase)) {
+      throw new HttpsError('failed-precondition', 'Decisions can only be submitted during the decide phase.');
+    }
+
+    const currentRound = numberOrDefault(game.currentRound || game.round, 1);
+    const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
+
+    // Validate using the decision-validation module (pure).
+    const validated = decisionValidation.validateDecision(data, currentRound, config);
+
+    roundId = `round_${currentRound}`;
+    const decisionRef = playerRef.collection('decisions').doc(roundId);
+    const dSnap = await transaction.get(decisionRef);
+    if (dSnap.exists) {
+      throw new HttpsError('already-exists', 'Decision already submitted for this round.');
+    }
+
+    transaction.set(decisionRef, {
+      round: currentRound,
+      submittedAt: FieldValue.serverTimestamp(),
+      ...validated,
+    });
+
+    // BUG-1 fix: FieldValue.serverTimestamp() is invalid inside a nested
+    // map — Firestore only allows sentinels at top-level fields. Use
+    // Timestamp.now() for the nested submittedAt.
+    transaction.update(playerRef, {
+      pendingDecision: {
+        submitted: true,
+        submittedAt: Timestamp.now(),
+        round: currentRound,
+        menu: validated.menu || {},
+        quantities: validated.quantities || {},
+        sousChefCount: validated.sousChefCount || 0,
+        sousChefAssignments: validated.sousChefAssignments || {},
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    transaction.update(gameRef, {
+      submittedCount: FieldValue.increment(1),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  return { gameId, playerId: uid, roundId, submitted: true };
+});
+
+// ===========================================================================
+// submitBids
+// ===========================================================================
+
+exports.submitBids = onCall(async (request) => {
+  const auth = requireAuth(request, 'Sign in before bidding.');
+  const data = request.data || {};
+  const gameId = cleanGameId(data.gameId);
+  const bidType = cleanString(data.bidType); // 'ad' or 'chef'
+  if (bidType !== 'ad' && bidType !== 'chef') {
+    throw new HttpsError('invalid-argument', 'bidType must be "ad" or "chef".');
+  }
+
+  const uid = auth.uid;
+  const gameRef = gameDoc(gameId);
+  const playerRef = gameRef.collection('players').doc(uid);
+
+  await db.runTransaction(async (transaction) => {
+    const [gSnap, pSnap, cfgSnap] = await Promise.all([
+      transaction.get(gameRef),
+      transaction.get(playerRef),
+      transaction.get(gameRef.collection('config').doc('params')),
+    ]);
+    if (!gSnap.exists) throw new HttpsError('not-found', 'Game not found.');
+    if (!pSnap.exists) throw new HttpsError('failed-precondition', 'Join the game before bidding.');
+
+    const game = gSnap.data();
+    if (!canSubmitBids(game.phase, bidType)) {
+      throw new HttpsError('failed-precondition', `Current phase ${game.phase} does not accept ${bidType} bids.`);
+    }
+
+    const round = numberOrDefault(game.currentRound || game.round, 1);
+    const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
+
+    let validated;
+    if (bidType === 'ad') {
+      validated = decisionValidation.validateAdBids(data);
+    } else {
+      // CRIT-07 fix: chefPool lives on rounds/{round} doc, NOT on game root.
+      const roundSnap = await transaction.get(
+        gameRef.collection('rounds').doc(`round_${round}`)
+      );
+      const chefPool = (roundSnap.exists && roundSnap.data().chefPool) || [];
+      validated = decisionValidation.validateChefBids(data, chefPool);
+    }
+
+    const bidsRef = playerRef.collection('bids').doc(`round_${round}`);
+    const existing = await transaction.get(bidsRef);
+    const merged = existing.exists ? existing.data() : { round };
+
+    if (bidType === 'ad') merged.ad = validated;
+    else merged.chef = validated;
+
+    merged.round = round;
+    merged[`${bidType}SubmittedAt`] = FieldValue.serverTimestamp();
+
+    transaction.set(bidsRef, merged, { merge: true });
+    transaction.update(playerRef, {
+      [`pendingBids.${bidType}`]: validated,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  return { gameId, playerId: uid, bidType, submitted: true };
+});
+
+// ===========================================================================
+// layoffChef
+// ===========================================================================
+
+exports.layoffChef = onCall(async (request) => {
+  const auth = requireAuth(request);
+  const data = request.data || {};
+  const gameId = cleanGameId(data.gameId);
+  const chefId = cleanString(data.chefId);
+  if (!chefId) throw new HttpsError('invalid-argument', 'chefId is required.');
+
+  const uid = auth.uid;
+  const gameRef = gameDoc(gameId);
+  const playerRef = gameRef.collection('players').doc(uid);
+
+  await db.runTransaction(async (transaction) => {
+    // LOGIC-1 fix: read config to get specialtyChefCap instead of hardcoding 3.
+    const [gSnap, pSnap, cfgSnap] = await Promise.all([
+      transaction.get(gameRef),
+      transaction.get(playerRef),
+      transaction.get(gameRef.collection('config').doc('params')),
+    ]);
+    if (!gSnap.exists) throw new HttpsError('not-found', 'Game not found.');
+    if (!pSnap.exists) throw new HttpsError('failed-precondition', 'Player not in this game.');
+
+    const game = gSnap.data();
+    const { phase } = parsePhase(game.phase, game.currentRound || game.round);
+    if (phase !== 'roster') {
+      throw new HttpsError('failed-precondition', 'Chefs can only be laid off during the roster phase.');
+    }
+
+    const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
+    const specialtyChefCap = numberOrDefault(config.specialtyChefCap, 3);
+
+    const player = pSnap.data();
+    const specialtyChefs = Array.isArray(player.specialtyChefs) ? player.specialtyChefs : [];
+    const idx = specialtyChefs.findIndex((c) => c && c.id === chefId);
+    if (idx === -1) {
+      throw new HttpsError('not-found', 'Chef not on your roster.');
+    }
+
+    const removed = specialtyChefs[idx];
+    const remaining = specialtyChefs.slice(0, idx).concat(specialtyChefs.slice(idx + 1));
+
+    const round = numberOrDefault(game.currentRound || game.round, 1);
+    const returnPoolRef = gameRef
+      .collection('rounds')
+      .doc(`round_${round}`)
+      .collection('chefReturnPool')
+      .doc(chefId);
+
+    transaction.set(returnPoolRef, {
+      ...removed,
+      returnedByPlayerId: uid,
+      returnedAt: FieldValue.serverTimestamp(),
+    });
+
+    transaction.update(playerRef, {
+      specialtyChefs: remaining,
+      pendingRosterAction: remaining.length > specialtyChefCap,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  return { gameId, chefId, laidOff: true };
+});
+
+// ===========================================================================
+// continueFromRoster
+// ===========================================================================
+
+exports.continueFromRoster = onCall(async (request) => {
+  const auth = requireAuth(request);
+  const data = request.data || {};
+  const gameId = cleanGameId(data.gameId);
+  const uid = auth.uid;
+
+  const gameRef = gameDoc(gameId);
+  const playerRef = gameRef.collection('players').doc(uid);
+
+  await db.runTransaction(async (transaction) => {
+    // MED-05 fix: read game doc to validate phase is 'roster'.
+    // LOGIC-1 fix: read config for specialtyChefCap instead of hardcoding 3.
+    const [gSnap, pSnap, cfgSnap] = await Promise.all([
+      transaction.get(gameRef),
+      transaction.get(playerRef),
+      transaction.get(gameRef.collection('config').doc('params')),
+    ]);
+    if (!gSnap.exists) throw new HttpsError('not-found', 'Game not found.');
+    if (!pSnap.exists) throw new HttpsError('failed-precondition', 'Player not in this game.');
+
+    const game = gSnap.data();
+    const { phase } = parsePhase(game.phase, game.currentRound || game.round);
+    if (phase !== 'roster') {
+      throw new HttpsError('failed-precondition', 'Roster actions are only allowed during the roster phase.');
+    }
+
+    const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
+    const specialtyChefCap = numberOrDefault(config.specialtyChefCap, 3);
+
+    const player = pSnap.data();
+    const count = Array.isArray(player.specialtyChefs) ? player.specialtyChefs.length : 0;
+    if (count > specialtyChefCap) {
+      throw new HttpsError('failed-precondition',
+        `Lay off chefs until you have at most ${specialtyChefCap}.`);
+    }
+
+    transaction.update(playerRef, {
+      pendingRosterAction: false,
+      rosterCompleted: true,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  return { gameId, playerId: uid, rosterCompleted: true };
+});
+
+// ===========================================================================
+// pauseGame / resumeGame
+// ===========================================================================
+
+async function setPausedFlag(request, paused) {
+  const auth = requireAuth(request);
+  const gameId = cleanGameId((request.data || {}).gameId);
+  const gameRef = gameDoc(gameId);
+
+  // CRIT-06 fix: wrap read + permission check + write in a Firestore
+  // transaction to eliminate the stale-read race between get() and update().
+  await db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(gameRef);
+    if (!snap.exists) throw new HttpsError('not-found', 'Game not found.');
+    if (snap.get('professorUid') !== auth.uid && snap.get('professorId') !== auth.uid) {
+      throw new HttpsError('permission-denied', 'Only the professor can pause/resume.');
+    }
+
+    transaction.update(gameRef, {
+      paused,
+      pausedAt: paused ? FieldValue.serverTimestamp() : null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  return { gameId, paused };
+}
+
+exports.pauseGame  = onCall(async (request) => setPausedFlag(request, true));
+exports.resumeGame = onCall(async (request) => setPausedFlag(request, false));
+
+// ===========================================================================
+// endGame — force transition to game_over
+// ===========================================================================
+
+exports.endGame = onCall(async (request) => {
+  const auth = requireAuth(request);
+  const gameId = cleanGameId((request.data || {}).gameId);
+  const gameRef = gameDoc(gameId);
+
+  // RACE-1 fix: wrap permission check + phase guard + phase write in a
+  // transaction to prevent double-end from concurrent professor clicks.
+  let config = null;
+  let totalRounds = 5;
+  let alreadyEnded = false;
+
+  await db.runTransaction(async (transaction) => {
+    const [gSnap, cfgSnap] = await Promise.all([
+      transaction.get(gameRef),
+      transaction.get(gameRef.collection('config').doc('params')),
+    ]);
+    if (!gSnap.exists) throw new HttpsError('not-found', 'Game not found.');
+    if (gSnap.get('professorUid') !== auth.uid && gSnap.get('professorId') !== auth.uid) {
+      throw new HttpsError('permission-denied', 'Only the professor can end this game.');
+    }
+
+    config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
+    totalRounds = numberOrDefault(gSnap.get('totalRounds'), config.totalRounds);
+
+    if (gSnap.get('phase') === 'game_over') {
+      alreadyEnded = true;
+      return; // skip write; handle conclusion check outside transaction
+    }
+
+    transaction.update(gameRef, {
+      phase: 'game_over',
+      phaseEndsAt: null,
+      endedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  // If game was already game_over, check if conclusion exists.
+  if (alreadyEnded) {
+    const conclusionSnap = await gameRef.collection('conclusion').doc('final').get();
+    if (conclusionSnap.exists) {
+      return { gameId, phase: 'game_over', alreadyEnded: true };
+    }
+    logger.warn('endGame: game_over but no conclusion — recomputing.', { gameId });
+    await persistConclusion(gameRef, totalRounds, config);
+    return { gameId, phase: 'game_over', conclusionRecomputed: true };
+  }
+
+  // Compute conclusion after transaction (expensive, side-effect).
+  await persistConclusion(gameRef, totalRounds, config);
+
+  return { gameId, phase: 'game_over' };
+});
+
+// ===========================================================================
+// getConclusion — return cached conclusion
+// ===========================================================================
+
+exports.getConclusion = onCall(async (request) => {
+  const auth = requireAuth(request, 'Sign in to view game results.');
+  const gameId = cleanGameId((request.data || {}).gameId);
+  const gameRef = gameDoc(gameId);
+
+  // HIGH-02 fix: verify caller is either the professor or a player in this game.
+  const [gameSnap, playerSnap] = await Promise.all([
+    gameRef.get(),
+    gameRef.collection('players').doc(auth.uid).get(),
+  ]);
+  if (!gameSnap.exists) throw new HttpsError('not-found', 'Game not found.');
+  const isProfessor =
+    gameSnap.get('professorUid') === auth.uid ||
+    gameSnap.get('professorId') === auth.uid;
+  if (!isProfessor && !playerSnap.exists) {
+    throw new HttpsError('permission-denied', 'You are not a participant in this game.');
+  }
+
+  const snap = await gameRef.collection('conclusion').doc('final').get();
+  if (!snap.exists) {
+    throw new HttpsError('failed-precondition', 'Conclusion not yet available.');
+  }
+  return { gameId, conclusion: snap.data() };
+});
+
+// ===========================================================================
+// exportPlayerCsv — player downloads their own round-by-round CSV
+// ===========================================================================
+
+exports.exportPlayerCsv = onCall(async (request) => {
+  const auth = requireAuth(request, 'Sign in to export your data.');
+  const gameId = cleanGameId((request.data || {}).gameId);
+  const gameRef = gameDoc(gameId);
+
+  // Verify player belongs to this game.
+  const playerSnap = await gameRef.collection('players').doc(auth.uid).get();
+  if (!playerSnap.exists) {
+    throw new HttpsError('not-found', 'Player not found in this game.');
+  }
+
+  // Read all CSV row documents for this player, sorted by round.
+  const csvSnap = await gameRef
+    .collection('csvRows')
+    .doc(auth.uid)
+    .collection('rounds')
+    .orderBy('round', 'asc')
+    .get();
+
+  if (csvSnap.empty) {
+    throw new HttpsError('failed-precondition', 'No round data available yet.');
+  }
+
+  const rows = csvSnap.docs.map((doc) => doc.data().row).filter(Boolean);
+  const csvString = buildCsvString(rows, false);
+
+  return {
+    gameId,
+    playerId: auth.uid,
+    csv: csvString,
+    roundCount: rows.length,
+  };
+});
+
+// ===========================================================================
+// exportProfessorCsv — professor downloads class-wide CSV with player names
+// ===========================================================================
+
+exports.exportProfessorCsv = onCall(async (request) => {
+  const auth = requireAuth(request, 'Sign in to export class data.');
+  const gameId = cleanGameId((request.data || {}).gameId);
+  const gameRef = gameDoc(gameId);
+
+  // Verify caller is the professor.
+  const gameSnap = await gameRef.get();
+  if (!gameSnap.exists) throw new HttpsError('not-found', 'Game not found.');
+  if (gameSnap.get('professorUid') !== auth.uid && gameSnap.get('professorId') !== auth.uid) {
+    throw new HttpsError('permission-denied', 'Only the professor can export class data.');
+  }
+
+  // Read all players.
+  const playersSnap = await gameRef.collection('players').get();
+  const allRows = [];
+
+  // HIGH-03 fix: parallelize CSV row reads instead of serial O(N) loop.
+  const csvSnapResults = await Promise.all(
+    playersSnap.docs.map((pd) =>
+      gameRef
+        .collection('csvRows')
+        .doc(pd.id)
+        .collection('rounds')
+        .orderBy('round', 'asc')
+        .get()
+    )
+  );
+
+  playersSnap.docs.forEach((playerDoc, i) => {
+    const p = playerDoc.data() || {};
+    const csvSnap = csvSnapResults[i];
+    for (const rowDoc of csvSnap.docs) {
+      const row = rowDoc.data().row;
+      if (row) {
+        row.player_id = playerDoc.id;
+        row.bakery_name = p.bakeryName || '';
+        row.display_name = p.displayName || '';
+        allRows.push(row);
+      }
+    }
+  });
+
+  if (allRows.length === 0) {
+    throw new HttpsError('failed-precondition', 'No round data available yet.');
+  }
+
+  // Sort by player then round for clean output.
+  allRows.sort((a, b) => {
+    if (a.player_id < b.player_id) return -1;
+    if (a.player_id > b.player_id) return 1;
+    return (a.round || 0) - (b.round || 0);
+  });
+
+  const csvString = buildCsvString(allRows, true);
+
+  return {
+    gameId,
+    csv: csvString,
+    playerCount: playersSnap.size,
+    rowCount: allRows.length,
+  };
+});
+
+// ===========================================================================
+// onDecisionSubmitted — Firestore trigger
+// ===========================================================================
+
+/**
+ * Observational trigger: when a player's decision is written, log whether
+ * every player has now submitted. The actual simulation is triggered by the
+ * professor advancing through the phase state machine.
+ *
+ * CRIT-01 / MED-12 / HIGH-08 fix: this trigger no longer writes
+ * submittedCount to the game doc. `submitDecision`'s transactional
+ * `FieldValue.increment(1)` is the sole authoritative writer, which is
+ * race-safe for concurrent submissions. The trigger is purely observational.
+ */
+exports.onDecisionSubmitted = onDocumentCreated(
+  'games/{gameId}/players/{playerId}/decisions/{roundId}',
+  async (event) => {
+    const { gameId, playerId, roundId } = event.params;
+    const match = /^round_(\d+)$/.exec(roundId);
+    if (!match) {
+      logger.warn('Decision with invalid roundId ignored.', { gameId, roundId });
+      return;
+    }
+    const round = Number(match[1]);
+    const gameRef = gameDoc(gameId);
+
+    try {
+      const [gSnap, playersSnap] = await Promise.all([
+        gameRef.get(),
+        gameRef.collection('players').get(),
+      ]);
+      if (!gSnap.exists) return;
+
+      const game = gSnap.data();
+      const currentRound = numberOrDefault(game.currentRound || game.round, 0);
+      if (currentRound !== round) {
+        logger.info('Decision for non-current round; ignoring.', {
+          gameId, playerId, round, currentRound,
+        });
+        return;
+      }
+
+      // Read the game doc's submittedCount (set by submitDecision's increment).
+      const submittedCount = numberOrDefault(game.submittedCount, 0);
+
+      logger.info('Decision submitted.', {
+        gameId,
+        playerId,
+        round,
+        submittedCount,
+        totalPlayers: playersSnap.size,
+        allSubmitted: submittedCount >= playersSnap.size,
+      });
+    } catch (err) {
+      logger.error('onDecisionSubmitted failure.', {
+        gameId, playerId, round, error: err && err.message,
+      });
+    }
+  }
+);
