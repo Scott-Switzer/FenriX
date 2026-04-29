@@ -185,7 +185,7 @@ if (current >= 3) {
 
 ---
 
-## [ ] M-07 [P0, S] — Auto-advance dies if the prof tab is backgrounded (round 2 didn't advance)
+## [x] M-07 [P0, S] — Auto-advance dies if the prof tab is backgrounded (round 2 didn't advance)
 
 **Problem.** `ProfessorPage.tsx:506-531` is a single `setTimeout`. Browsers throttle setTimeout in backgrounded tabs (Chrome ≥ 1 s, can stretch to 1 min+). If the prof tabs over to look at something, round 2 never auto-advances.
 
@@ -346,7 +346,7 @@ Scott consumes this from the FE — see S-05. **Massaro lands first.**
 
 ---
 
-## [ ] M-19 [P1, S] — Prof checkmarks always show ✓ for completed phases (Q10 confirmed)
+## [x] M-19 [P1, S] — Prof checkmarks always show ✓ for completed phases (Q10 confirmed)
 
 **Problem (confirmed Q10).** When the round advances past a phase, missing teams' checkmarks stay ⏳ in `ProfessorPage.tsx`. User wants them to flip to ✓ regardless of whether the team actually submitted — the round moved on, so visually it's "done."
 
