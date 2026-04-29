@@ -422,7 +422,7 @@ The first four are already computed — pure passthrough. `priceCompetitivenessP
 
 ---
 
-## [ ] M-22 [P0, M] — Player-leaves-mid-game graceful handling
+## [x] M-22 [P0, M] — Player-leaves-mid-game graceful handling
 
 **Problem.** Original playtest note: *"Need error handling for when a teammate leaves, their role is just gone."* M-10 + S-06 cover the **manual** role-reclaim path (a teammate clicks "Take over"). But there's no broader story for "a player closed their tab and isn't coming back" — and a non-trivial number of students will abandon mid-round in a 70-player class. Today the team is effectively stuck waiting for them:
 - Their `presence` heartbeat goes stale ~60 s after last ping (already detected)

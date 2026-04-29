@@ -3725,6 +3725,159 @@ exports.reclaimTeammateRole = onCall(CALLABLE_OPTS, async (request) => {
 });
 
 // ===========================================================================
+// markStalePlayersDisconnected (M-22)
+// ===========================================================================
+//
+// M-10's `reclaimTeammateRole` is the manual single-uid path (Scott's S-06
+// "Take over" button). M-22 is the automatic, team-wide layer above it:
+// any teammate's tab can call this every ~60s, and the server scans every
+// presence doc in the game, flips `players/{uid}.disconnected = true` on
+// stale uids, and clears their role claim if they hold one. After the
+// clear, FE-I15's vacant-role fallback lets remaining teammates submit on
+// the disconnected player's behalf without prof intervention.
+//
+// Callable rather than scheduled because:
+//   • adding Cloud Scheduler infra mid-week before the playtest is risky
+//   • the prof tab + every active player tab can fan out the work
+//     naturally — at least one tab will hit the staleness window
+//   • makes the work scoped to `gameId` (no global cron per-project)
+//
+// Defensive: requires the caller to be in the game (player or prof). The
+// state changes (set disconnected, clear roleAssignments[uid]) are
+// idempotent so multiple concurrent tabs firing the same tick converge.
+
+const M22_STALE_MS = 90_000; // 90s per spec
+const M22_OWNED_PHASES = new Set(['bid_ad', 'bid_chef', 'roster', 'decide']);
+
+exports.markStalePlayersDisconnected = onCall(CALLABLE_OPTS, async (request) => {
+  if (isWarmupRequest(request)) return { ok: true, warm: true };
+  const auth = requireAuth(request, 'Sign in before scanning presence.');
+  const data = request.data || {};
+  const gameId = cleanGameId(data.gameId);
+  const uid = auth.uid;
+  const gameRef = gameDoc(gameId);
+
+  // Authorize: caller must be a player in this game OR the professor.
+  // Defensive — without this any signed-in user could mass-disconnect
+  // players in any game.
+  const [gameSnap, callerSnap] = await Promise.all([
+    gameRef.get(),
+    gameRef.collection('players').doc(uid).get(),
+  ]);
+  if (!gameSnap.exists) throw new HttpsError('not-found', 'Game not found.');
+  const isPlayer = callerSnap.exists;
+  const isProf = !!(request.auth && request.auth.token && request.auth.token.professor === true);
+  if (!isPlayer && !isProf) {
+    throw new HttpsError('permission-denied', 'Not a player or professor in this game.');
+  }
+
+  // Read presence + players + teams collections OUTSIDE the txn (collection
+  // queries can't run inside Firestore transactions). The subsequent
+  // per-uid update writes are safe under merge — concurrent ticks across
+  // multiple tabs converge to the same end-state.
+  const [presenceSnap, playersSnap, teamsSnap] = await Promise.all([
+    gameRef.collection('presence').get(),
+    gameRef.collection('players').get(),
+    gameRef.collection('teams').get(),
+  ]);
+
+  const nowMs = Timestamp.now().toMillis();
+  const presenceByUid = new Map();
+  for (const d of presenceSnap.docs) {
+    const lastSeenAt = d.get('lastSeenAt');
+    const ms = lastSeenAt && typeof lastSeenAt.toMillis === 'function'
+      ? lastSeenAt.toMillis()
+      : 0;
+    presenceByUid.set(d.id, ms);
+  }
+
+  // Compute the per-team role-assignment map so we can look up "what role
+  // does this stale uid currently hold?" without re-reading.
+  const teamRolesByTeamId = new Map();
+  for (const td of teamsSnap.docs) {
+    teamRolesByTeamId.set(td.id, (td.data() || {}).roleAssignments || {});
+  }
+
+  // The current phase determines whether we should clear role claims.
+  // Per the spec, only auto-clear during phases the role would own —
+  // outside of those (e.g. simulating, results_ready), staleness still
+  // marks `disconnected: true` but leaves the role claim alone so the
+  // team's role assignments stay intact through the simulation phase
+  // (no FE submit gate to unblock there).
+  const { phase: currentBasePhase } = parsePhase(gameSnap.get('phase'), gameSnap.get('currentRound') || gameSnap.get('round'));
+  const shouldClearRoles = M22_OWNED_PHASES.has(currentBasePhase);
+
+  let staleCount = 0;
+  let rolesCleared = 0;
+  // Use a single WriteBatch so the role-clear pair (team-doc null + player-
+  // doc 'solo') commits atomically per-call. PR #144 fixed exactly this
+  // dual-role race in `reclaimTeammateRole` by wrapping its two writes in a
+  // transaction; if we issued them as separate `Promise.all` updates here,
+  // a partial failure (transient 503, function timeout mid-flight) could
+  // commit the team-doc clear without the player-doc 'solo' — leaving
+  // `playerDoc.role` stale and letting `assertRoleAllowedWithTeam`'s
+  // short-circuit keep passing the disconnected player through role gates.
+  // The `disconnected: true` writes ride along in the same batch — also
+  // idempotent, no harm in atomicity. Batch limit is 500 ops; for our class
+  // sizes (≤80 players) we're nowhere near that ceiling.
+  const batch = db.batch();
+  let opCount = 0;
+
+  for (const playerDoc of playersSnap.docs) {
+    const targetUid = playerDoc.id;
+    const playerData = playerDoc.data() || {};
+    const lastSeenMs = presenceByUid.get(targetUid) || 0;
+    // No presence doc OR last seen > 90s ago → considered stale.
+    const isStale = lastSeenMs === 0
+      ? false // skip uids with no presence record (joined but never pinged — pre-game)
+      : (nowMs - lastSeenMs) > M22_STALE_MS;
+    if (!isStale) continue;
+    staleCount += 1;
+
+    // Mark disconnected on the player doc. Idempotent under merge.
+    if (playerData.disconnected !== true) {
+      batch.update(playerDoc.ref, {
+        disconnected: true,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      opCount += 1;
+    }
+
+    // Clear role claim if the team has one for this uid AND we're in a
+    // submission phase. Outside submission phases the claim is harmless.
+    if (!shouldClearRoles) continue;
+    const teamId = getPlayerTeamId(playerData);
+    if (!teamId) continue;
+    const roleMap = teamRolesByTeamId.get(teamId) || {};
+    const targetRole = roleMap[targetUid];
+    if (targetRole == null) continue;
+    rolesCleared += 1;
+    batch.update(gameRef.collection('teams').doc(teamId), {
+      [`roleAssignments.${targetUid}`]: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    // Reset the player doc's role to 'solo' so assertRoleAllowedWithTeam's
+    // short-circuit (which doesn't consult the team doc) can't keep passing
+    // them through after the team-doc clear. Mirrors M-10/PR #144's
+    // defensive write — and now lands atomically with the team-doc clear.
+    batch.update(playerDoc.ref, { role: 'solo' });
+    opCount += 2;
+  }
+
+  if (opCount > 0) {
+    await batch.commit();
+  }
+
+  return {
+    gameId,
+    staleCount,
+    rolesCleared,
+    scannedAt: nowMs,
+    phase: currentBasePhase,
+  };
+});
+
+// ===========================================================================
 // continueFromRoster
 // ===========================================================================
 
