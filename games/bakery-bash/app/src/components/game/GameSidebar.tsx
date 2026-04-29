@@ -148,8 +148,14 @@ export function GameSidebar({ readOnly = false }: GameSidebarProps) {
     }
   };
 
-  const isFinance = role === "finance" || role === "solo";
-  const canPurchase = isFinance && !readOnly && !!gameId;
+  // S-03 (2026-04-29): data purchases (competitor intel + chef data) move
+  // from Finance to the renamed Analyst role (backend role string is still
+  // `advertising` for compatibility — only the label changed). The Solo
+  // role keeps everything as the catch-all for ≤2-member teams.
+  // NB: B-05 will lift this whole section into ResultsPhase; the gate
+  // moves with it.
+  const isAnalyst = role === "advertising" || role === "solo";
+  const canPurchase = isAnalyst && !readOnly && !!gameId;
   const prevRound = (currentRound ?? 1) - 1;
   // Intel is round-scoped; "already bought" means specifically for the round
   // the button would purchase, so navigating to a new round re-enables it.

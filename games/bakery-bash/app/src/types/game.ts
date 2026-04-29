@@ -508,9 +508,16 @@ export interface RoundEvent {
  */
 export type PlayerRole = "operations" | "advertising" | "finance" | "solo";
 
+/**
+ * S-03 (2026-04-29): the role formerly called "Bidder" / "Advertising"
+ * is now "Analyst" — owns ad bids, chef bids (M-18), data purchases (B-05),
+ * and the monthly CSV download (S-07). The backend role string stays
+ * `advertising` for compatibility (changing it would invalidate every
+ * in-flight game doc). Only the player-facing label moves.
+ */
 export const PLAYER_ROLE_LABELS: Record<PlayerRole, string> = {
   operations: "Operations",
-  advertising: "Bidder",
+  advertising: "Analyst",
   finance: "Finance",
   solo: "Solo (all roles)",
 };
@@ -609,7 +616,7 @@ export function roleOwnsRoster(
 /**
  * Human-readable owner copy used in the disabled-button tooltip.
  * Always delegates to `PLAYER_ROLE_LABELS` so the copy here stays in lockstep
- * with the role-picker and the How-to-Play page (e.g. `advertising → "Bidder"`).
+ * with the role-picker and the How-to-Play page (post S-03: `advertising → "Analyst"`).
  */
 export function ownerOfDecide(): string {
   return PLAYER_ROLE_LABELS.operations;

@@ -60,18 +60,21 @@ const TEAM_NAME_MIN = 2;
 const PICKABLE_ROLES: PlayerRole[] = ["operations", "advertising", "finance"];
 
 /**
- * What each role owns, per GAME_DESIGN_PROPOSAL.md (DEC-21) /
- * FRONTEND.md (Hard UI Rule #6). Everyone sees every screen; only the
- * role-owner can press the corresponding Submit button.
+ * What each role owns, per the post-playtest role split (Q6, 2026-04-28):
+ * quantities → Finance (M-17), chef bids → Analyst (M-18), data
+ * purchases + CSV download → Analyst (S-07/B-05). Backend role strings
+ * stay (`advertising` is still the Analyst id) for game-doc compatibility.
+ * Everyone sees every screen; only the role-owner can press the
+ * corresponding Submit button.
  */
 const ROLE_DESCRIPTIONS: Record<PlayerRole, string> = {
   operations:
-    "Submits the Decide screen — menu, quantities, sous chef hires, maintenance.",
+    "Submits sous chefs, maintenance, and equipment upgrades in Decide. Manages the chef roster (lay-offs).",
   advertising:
-    "The Bidder places ad-auction bids — TV, billboard, radio, newspaper.",
+    "Submits ad bids and chef bids in the auctions. Buys data sets in Results. Downloads the team's monthly data.",
   finance:
-    "Submits the Chef Bid screen + roster decisions — specialty chef hires & layoffs.",
-  solo: "All three buttons enabled — used automatically when you're playing alone.",
+    "Submits prices and quantities in Decide. Owns the team's pricing strategy.",
+  solo: "All three roles' buttons enabled — used automatically when you're playing alone.",
 };
 
 export function TeamPage() {

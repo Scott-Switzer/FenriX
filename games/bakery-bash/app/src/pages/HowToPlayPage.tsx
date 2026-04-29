@@ -13,34 +13,37 @@ import { PageShell } from "../components/ui/PageShell";
  *      Simulate → Results (+ standing CSV Inbox reminder).
  *   4. Chef Tiers table — kept unchanged, ties into purchasable chef CSV.
  */
+// S-03 (2026-04-29): role copy reflects the post-playtest role split (Q6).
+// Quantities live with Finance now (M-17). Chef bids live with the renamed
+// Analyst now (M-18, B-05, S-07). Backend role strings unchanged.
 const HOW_TO_PLAY_ROLES = [
   {
     key: "operations",
     label: "Operations",
     tagline: "Runs the kitchen.",
     body:
-      "Submits the round's Decide screen: product quantities, menu, sous-chef hires, maintenance. Also hits Continue on the kitchen roster. The last call on what your bakery will actually produce.",
+      "Submits the team's staffing decisions in Decide: sous-chef hires, maintenance, equipment upgrades. Manages the chef roster — including lay-offs.",
   },
   {
     key: "advertising",
-    label: "Advertising",
-    tagline: "Wins the crowd.",
+    label: "Analyst",
+    tagline: "Reads the market.",
     body:
-      "Submits ad bids in the Ad Auction. Wins advertising slots that pay a flat bonus and pull extra foot traffic to the bakery.",
+      "Submits ad bids in the Ad Auction and chef bids in the Chef Auction. Buys data sets on the Results screen and downloads the team's monthly CSV. The team's intel and procurement role.",
   },
   {
     key: "finance",
     label: "Finance",
-    tagline: "Staffs the team.",
+    tagline: "Sets the prices.",
     body:
-      "Submits chef bids in the Chef Auction. Keeps the team's balance sheet alive by picking the right specialty chefs at the right price.",
+      "Submits prices and quantities in Decide. Owns the team's pricing strategy: how much you sell and what you charge for it.",
   },
   {
     key: "solo",
     label: "Solo",
     tagline: "Default with <3 people.",
     body:
-      "When your team has 1 or 2 people, everyone runs as Solo — any teammate can submit anything. Once a third teammate joins, roles auto-assign to Operations / Advertising / Finance.",
+      "When your team has 1 or 2 people, everyone runs as Solo — any teammate can submit anything. Once a third teammate joins, roles auto-assign to Operations / Analyst / Finance.",
   },
 ] as const;
 
@@ -53,12 +56,12 @@ const HOW_TO_PLAY_STAGES = [
   {
     label: "Ad Auction",
     tagline: "The loudest bakery wins the crowd.",
-    body: "Your Advertising teammate submits ad bids. Teams compete for four slots — TV, Radio, Newspaper, Billboard — and the highest bidder locks that slot for the whole round. Each ad type gives a different foot-traffic bump; figure out which is worth what from your data model.",
+    body: "Your Analyst submits ad bids. Teams compete for four slots — TV, Radio, Newspaper, Billboard — and the highest bidder locks that slot for the whole round. Each ad type gives a different foot-traffic bump; figure out which is worth what from your data model.",
   },
   {
     label: "Chef Auction",
     tagline: "Great chefs don't come cheap.",
-    body: "Your Advertising teammate submits chef bids. A fresh pool of specialty chefs goes up for auction each round. Specialty chefs don't have station assignments — they boost the whole bakery's output. Sous chefs still live on stations. Nationality + tier hints at who's great at what.",
+    body: "Your Analyst submits chef bids. A fresh pool of specialty chefs goes up for auction each round. Specialty chefs don't have station assignments — they boost the whole bakery's output. Sous chefs still live on stations. Nationality + tier hints at who's great at what.",
   },
   {
     label: "Kitchen Roster",

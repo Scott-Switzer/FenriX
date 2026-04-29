@@ -787,7 +787,7 @@ Color red when <30s (RoundHeader already has the CSS; reuse).
 
 ---
 
-## [ ] S-03 [P0, S] — Rename "Bidder" → "Analyst" + update role helper labels and copy
+## [x] S-03 [P0, S] — Rename "Bidder" → "Analyst" + update role helper labels and copy (✅ DONE 2026-04-29 by Claude/Scott)
 
 **Problem.** Per Q6, Analyst (renamed from Advertising / "Bidder") owns ad bids + chef bids + data purchases + CSV download. Backend role string stays `advertising` for compatibility — only the labels and gating change.
 
