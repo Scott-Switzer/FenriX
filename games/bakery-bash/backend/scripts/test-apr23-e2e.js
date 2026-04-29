@@ -119,12 +119,16 @@ async function signAs(auth, adminAuth, uid) {
   await signInWithCustomToken(auth, token);
 }
 
+// Apr 28 2026 — only croissant, bagel, coffee are in BASE_MENU; cookie /
+// sandwich / matcha must be unlocked via purchaseProduct before they can
+// go on the menu. Tests that don't drive purchaseProduct must use just
+// the starter set.
 function validDecision(roundOverride) {
   return {
     gameId: GAME_ID,
     round: roundOverride || 1,
-    menu: { croissant: true, cookie: true, bagel: true, sandwich: false, coffee: true, matcha: false },
-    quantities: { croissant: 50, cookie: 50, bagel: 50, coffee: 50 },
+    menu: { croissant: true, bagel: true, coffee: true, cookie: false, sandwich: false, matcha: false },
+    quantities: { croissant: 50, bagel: 50, coffee: 50 },
     sousChefCount: 2,
     sousChefAssignments: { croissant: 1, coffee: 1 },
   };
@@ -380,8 +384,8 @@ async function main() {
   const financeSubmitPrices = httpsCallable(financeClient.functions, "submitPrices");
   await financeSubmitPrices({
     gameId: GAME_ID,
-    productPrices: { croissant: 5, cookie: 3, bagel: 4, coffee: 4 },
-    menu: { croissant: true, cookie: true, bagel: true, sandwich: false, coffee: true, matcha: false },
+    productPrices: { croissant: 5, bagel: 4, coffee: 4 },
+    menu: { croissant: true, bagel: true, coffee: true, cookie: false, sandwich: false, matcha: false },
   });
 
   const opsResult = await opsSubmit(validDecision(2));
