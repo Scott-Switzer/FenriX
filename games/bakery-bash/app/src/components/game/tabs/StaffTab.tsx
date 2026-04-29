@@ -313,7 +313,7 @@ export function StaffTab({ readOnly = false }: StaffTabProps) {
                   aria-pressed={purchased}
                   title={
                     upgradeButtonDisabled && available !== null
-                      ? `Need $${upgradeCost.toLocaleString()} but only $${Math.round(available).toLocaleString()} available after other costs`
+                      ? "Not enough budget for this upgrade after your other costs."
                       : undefined
                   }
                 >

@@ -33,7 +33,7 @@ These rules apply globally to every screen. Violating them breaks the game's cor
 
 1. **Budget is hidden during play.** No screen — except `/game/conclusion` and the professor leaderboard (`/professor/leaderboard`) — may display the player's remaining budget. Do not show "Budget Remaining", "Cash Left", "$X available", or any equivalent on any other surface. Players otherwise track their own finances externally.
 
-   > **P1 override rescinded (2026-04-19):** The earlier `<BudgetSummary>` decide-phase panel was reverted per the April 19 MVP spec ("Decide phase rework … no budget"). The component file at `components/game/BudgetSummary.tsx` is retained but no longer mounted; `budgetCurrent` still flows through `GameContext` because Conclusion + the professor leaderboard read it, but it must not render on any in-game surface.
+   > **P1 override rescinded (2026-04-19):** The earlier `<BudgetSummary>` decide-phase panel was reverted per the April 19 MVP spec ("Decide phase rework … no budget"). The component file `components/game/BudgetSummary.tsx` was subsequently deleted in PR #78's dead-code cleanup; `budgetCurrent` still flows through `GameContext` because Conclusion + the professor leaderboard read it, but it must not render on any in-game surface.
 
    > **B-06 carve-out (2026-04-29):** The Decide phase BakeryView shows a yellow chip ("⚠ This decision will trigger the loan shark — 10% interest on the overspend.") when `totalCommitted > budgetCurrent`. The chip is a boolean signal only — it does **not** display the actual budget number, the overspend amount, or the available cash. The user explicitly authorized this carve-out (Q4) so the loan shark stops being a Results-screen surprise. See `BakeryView.tsx`.
 2. **Pricing is fixed for MVP.** No price input fields anywhere. Prices are read-only labels next to product inputs (Coffee $4.00, Croissant $4.75, Bagel $3.00, Cookie $2.50, Sandwich $8.75, Matcha $6.25).
@@ -298,10 +298,11 @@ Add a CI check (lint rule or grep test) that fails if `budgetCurrent`, `budgetRe
 - `pages/ConclusionPage.tsx`
 - `pages/ProfessorPage.tsx`
 - `pages/ProfessorLeaderboardPage.tsx`
-- `components/game/BudgetSummary.tsx` (unmounted reference component — retained in case the spec flips; not rendered today)
 - `pages/GamePage.tsx` (only for the player-doc listener that dispatches `SET_BUDGET` into context so Conclusion + professor views can render it later)
 - `contexts/GameContext.tsx` (only for the `budgetCurrent` field on `GameState` and the `SET_BUDGET` action)
 - `lib/cost.ts` (cost-only helpers; never reads or renders `budgetCurrent` itself)
+- `components/game/BakeryView.tsx` (B-06 carve-out: yellow loan-shark warning chip when `totalCommitted > budgetCurrent`, plus the `cannotAfford` boolean used to disable product-unlock buttons. Reads `budgetCurrent` for boolean comparison only — never renders the dollar amount.)
+- `components/game/tabs/StaffTab.tsx` (K-01: equipment-upgrade affordability gate. Reads `budgetCurrent` to compute `available` for the upgrade button's `disabled` state — never renders the value.)
 
 This catches accidental budget leaks in PRs. Implemented in `scripts/audit-ui-rules.sh` (FE-01) and wired to a pre-push hook via `scripts/install-git-hooks.sh`.
 

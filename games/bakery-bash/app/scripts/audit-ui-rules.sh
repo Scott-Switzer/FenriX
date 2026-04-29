@@ -36,6 +36,14 @@ BUDGET_ALLOWLIST=(
   "src/pages/GamePage.tsx"
   "src/contexts/GameContext.tsx"
   "src/lib/cost.ts"
+  # B-06 carve-out (2026-04-29) — yellow loan-shark warning chip + the
+  # affordability gate on the product-unlock buttons. Both read budgetCurrent
+  # for boolean comparisons only; neither renders the dollar amount.
+  "src/components/game/BakeryView.tsx"
+  # K-01 (2026-04-29) — equipment-upgrade affordability gate on the staff tab.
+  # Reads budgetCurrent to compute "available" for the upgrade button's
+  # disabled state; never renders the value.
+  "src/components/game/tabs/StaffTab.tsx"
 )
 
 # Build a grep exclude-file list.
