@@ -548,6 +548,19 @@ export function roleOwnsPricing(
   return teamRoleIsVacant(teamRoleAssignments ?? null, ["finance"]);
 }
 /**
+ * M-17 (2026-04-28): quantities ownership moved from Operations to Finance.
+ * Mirror semantics to `roleOwnsPricing` since the same role submits both
+ * fields via the unified `submitPrices` callable. K-10/K-01 use this helper
+ * to gate the quantity steppers in BakeryView per the new role split.
+ */
+export function roleOwnsQuantities(
+  role: PlayerRole,
+  teamRoleAssignments?: Record<string, PlayerRole | null> | null,
+): boolean {
+  if (role === "finance" || role === "solo") return true;
+  return teamRoleIsVacant(teamRoleAssignments ?? null, ["finance"]);
+}
+/**
  * Roster (lay-off + continue) is owned by Operations per the backend
  * contract. `backend/functions/index.js::layoffChef` and `continueFromRoster`
  * both call `assertRoleAllowed(role, ['operations'])`. The April 19 design

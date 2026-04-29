@@ -315,7 +315,7 @@ Scott consumes this from the FE — see S-05. **Massaro lands first.**
 
 ---
 
-## [ ] M-17 [P0, M] — Move quantity ownership from Operations to Finance
+## [x] M-17 [P0, M] — Move quantity ownership from Operations to Finance
 
 **Problem (confirmed Q6).** Today Operations owns the entire decide submit (menu + quantities + sous chefs + maintenance + equipment) via `submitDecision`, while Finance owns only prices via `submitPrices`. Per the new role split, Finance should also own quantities.
 

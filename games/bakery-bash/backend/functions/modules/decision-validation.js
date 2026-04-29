@@ -405,6 +405,45 @@ function validateProductPrices(raw) {
 }
 
 // ---------------------------------------------------------------------------
+// validateQuantitiesPayload (M-17)
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate a quantities payload submitted by Finance via `submitPrices`.
+ * Independent of menu state: Finance may submit quantities before Operations
+ * sets the menu, so we only check that each value is a non-negative integer.
+ * The simulator naturally produces 0 customers / 0 revenue for products not
+ * on the menu, so a stocked-but-disabled product just wastes the cost — a
+ * UX concern (handled by the unified Decide screen post-K-10), not a
+ * validation error.
+ *
+ * Returns a canonical map keyed by every PRODUCT_KEY, defaulting missing
+ * fields to 0. Unknown product keys are rejected.
+ *
+ * @param {unknown} raw - { [product]: number | string } | null | undefined
+ * @returns {object} canonical { [product]: number } with every PRODUCT_KEY present
+ * @throws {ValidationError} on unknown keys or non-int / negative values
+ */
+function validateQuantitiesPayload(raw) {
+  const input = (raw && typeof raw === 'object') ? raw : {};
+  for (const key of Object.keys(input)) {
+    if (!PRODUCT_KEYS.includes(key)) {
+      fail('invalid-argument', `quantities has unknown product "${key}"`);
+    }
+  }
+  const out = {};
+  for (const p of PRODUCT_KEYS) {
+    const v = input[p];
+    if (v == null || v === '') {
+      out[p] = 0;
+    } else {
+      out[p] = requireNonNegInt(v, `quantities.${p}`);
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // buildDefaultDecision / buildDefaultBids
 // ---------------------------------------------------------------------------
 
@@ -460,6 +499,7 @@ module.exports = {
   validateAdBids,
   validateChefBids,
   validateProductPrices,
+  validateQuantitiesPayload,
   buildDefaultDecision,
   buildDefaultBids,
   // Exposed for tests
