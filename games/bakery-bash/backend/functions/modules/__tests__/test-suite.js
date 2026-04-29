@@ -193,39 +193,44 @@ describe('pricing.js — classifyZone', () => {
 
 describe('pricing.js — calculatePriceDemandMultiplier', () => {
   const { PRICE_ZONES } = require('../config');
-  const coffee = PRICE_ZONES.coffee;   // high elasticity (e=1.5), competitiveMid = (3+4.5)/2 = 3.75
-  const matcha = PRICE_ZONES.matcha;   // high elasticity (e=1.5), competitiveMid = (3.5+5.5)/2 = 4.5 (pass 6 rescale)
+  // M-14 (2026-04-28): high-tier elasticity coefficient softened 1.5 → 1.2.
+  // Off-mid expected values recomputed; mid-of-competitive cases (delta=0)
+  // are unaffected. Coffee at ceiling no longer hits MULTIPLIER_FLOOR
+  // (formerly `floored at 0.05` because 1 - 1.5 * 0.7333 = -0.10 < 0.05;
+  // now 1 - 1.2 * 0.7333 = 0.12, well above floor).
+  const coffee = PRICE_ZONES.coffee;   // high elasticity (e=1.2), competitiveMid = (3+4.5)/2 = 3.75
+  const matcha = PRICE_ZONES.matcha;   // high elasticity (e=1.2), competitiveMid = (3.5+5.5)/2 = 4.5 (pass 6 rescale)
   const croissant = PRICE_ZONES.croissant; // medium elasticity (e=1.0)
 
-  it('coffee at floor $2.00 → 1.85 (floor bonus + elasticity bump)', () => {
-    near(pricing.calculatePriceDemandMultiplier(2.00, coffee), 1.85, 0.01);
+  it('coffee at floor $2.00 → 1.71 (floor bonus + elasticity bump)', () => {
+    near(pricing.calculatePriceDemandMultiplier(2.00, coffee), 1.71, 0.01);
   });
-  it('coffee at $2.75 still in floor zone → 1.55', () => {
-    near(pricing.calculatePriceDemandMultiplier(2.75, coffee), 1.55, 0.01);
+  it('coffee at $2.75 still in floor zone → 1.47', () => {
+    near(pricing.calculatePriceDemandMultiplier(2.75, coffee), 1.47, 0.01);
   });
-  it('coffee at $3.00 (competitive) → 1.30 (step-down, no floor bonus)', () => {
-    near(pricing.calculatePriceDemandMultiplier(3.00, coffee), 1.30, 0.01);
+  it('coffee at $3.00 (competitive) → 1.24 (step-down, no floor bonus)', () => {
+    near(pricing.calculatePriceDemandMultiplier(3.00, coffee), 1.24, 0.01);
   });
   it('coffee at competitiveMid $3.75 → 1.00', () => {
     near(pricing.calculatePriceDemandMultiplier(3.75, coffee), 1.00, 0.01);
   });
-  it('coffee at $4.50 → 0.70', () => {
-    near(pricing.calculatePriceDemandMultiplier(4.50, coffee), 0.70, 0.01);
+  it('coffee at $4.50 → 0.76', () => {
+    near(pricing.calculatePriceDemandMultiplier(4.50, coffee), 0.76, 0.01);
   });
-  it('coffee at $5.00 (premium) → 0.50', () => {
-    near(pricing.calculatePriceDemandMultiplier(5.00, coffee), 0.50, 0.01);
+  it('coffee at $5.00 (premium) → 0.60', () => {
+    near(pricing.calculatePriceDemandMultiplier(5.00, coffee), 0.60, 0.01);
   });
-  it('coffee at ceiling $6.50 → floored at 0.05', () => {
-    near(pricing.calculatePriceDemandMultiplier(6.50, coffee), 0.05, 0.01);
+  it('coffee at ceiling $6.50 → 0.12 (high elasticity premium penalty, above floor under e=1.2)', () => {
+    near(pricing.calculatePriceDemandMultiplier(6.50, coffee), 0.12, 0.01);
   });
-  it('matcha at floor $2.50 → ~1.82 (high elasticity bump after pass 6 rescale)', () => {
-    near(pricing.calculatePriceDemandMultiplier(2.50, matcha), 1.82, 0.01);
+  it('matcha at floor $2.50 → ~1.68 (high elasticity bump after pass 6 rescale)', () => {
+    near(pricing.calculatePriceDemandMultiplier(2.50, matcha), 1.68, 0.01);
   });
   it('matcha at competitiveMid $4.50 → 1.00', () => {
     near(pricing.calculatePriceDemandMultiplier(4.50, matcha), 1.00, 0.01);
   });
-  it('matcha at ceiling $7.00 → ~0.17 (high elasticity premium penalty)', () => {
-    near(pricing.calculatePriceDemandMultiplier(7.00, matcha), 0.17, 0.01);
+  it('matcha at ceiling $7.00 → ~0.33 (high elasticity premium penalty)', () => {
+    near(pricing.calculatePriceDemandMultiplier(7.00, matcha), 0.33, 0.01);
   });
   it('croissant at competitiveMid $4.75 → 1.00', () => {
     near(pricing.calculatePriceDemandMultiplier(4.75, croissant), 1.00, 0.01);

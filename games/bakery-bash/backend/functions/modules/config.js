@@ -166,7 +166,14 @@ const PRICE_ZONES = {
 };
 
 /** Point-elasticity coefficient by product tier. */
-const ELASTICITY_COEFFICIENTS = { high: 1.5, medium: 1.0, low: 0.6 };
+// M-14 (2026-04-28): softened `high` from 1.5 → 1.2 so a $1-over-mid step
+// is multiplier 0.7 instead of 0.625. Combined with M-02's customer floor,
+// high-elasticity teams (cookies / coffee / bagel / sandwich / matcha all
+// sit at "high" today) still get foot traffic at premium prices instead
+// of being routed to the cheaper team in 100% of the demand. Conservative
+// move; tune downward further if Wed playtest shows premium is still
+// disqualifying. See M-14 in tasks-april-28.md.
+const ELASTICITY_COEFFICIENTS = { high: 1.2, medium: 1.0, low: 0.6 };
 
 /** Grid size for player-submitted prices. */
 const PRICE_STEP = 0.25;

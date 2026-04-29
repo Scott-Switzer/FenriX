@@ -239,7 +239,7 @@ Massaro does the backend. Scott wires the "Take over" button into RoundHeader (s
 
 ---
 
-## [ ] M-11 [P1, M] — Sealed bid: no more live "Top Bid" reveal during the auction
+## [x] M-11 [P1, M] — Sealed bid: no more live "Top Bid" reveal during the auction (Massaro verified — no backend/non-AuctionPage leak; awaits B-01 FE change)
 
 **Problem.** Currently `AuctionPage.tsx:854-861` (ads) and `:962-968` (chefs) render `topBidsAd[ad.id]` / `topBidsChef[chef.id]` live. User wants this hidden until the phase ends — true sealed-bid mechanic.
 
@@ -273,7 +273,7 @@ Scott consumes this from the FE — see S-05. **Massaro lands first.**
 
 ---
 
-## [ ] M-14 [P1, S] — Customers should still walk in even at high prices (price elasticity tuning)
+## [x] M-14 [P1, S] — Customers should still walk in even at high prices (price elasticity tuning)
 
 **Problem.** `pricing.js:43-52` uses a per-product elasticity coefficient; cookies/coffee/bagel/sandwich/matcha are all `high=1.5` (`config.js:169`). Combined with M-02's no-floor bug, a $1 difference can route 0 customers to the higher-priced team.
 
@@ -371,7 +371,7 @@ if (phaseAlreadyPassed) {
 
 ---
 
-## [ ] M-20 [P1, S] — Budget doesn't grow with revenue (Q13) — likely a downstream symptom of M-02
+## [x] M-20 [P1, S] — Budget doesn't grow with revenue (Q13) — likely a downstream symptom of M-02 (verified — no code change needed per investigation; transitively fixed by M-02 PR #137; final 2-round playtest confirmation Wed 4 PM)
 
 **Investigation result (2026-04-28).** The math IS correct in the code:
 - `loan-shark.js:77-79` `updateBudget(budgetCurrent, revenueNet, totalSpent) → budgetCurrent + revenueNet - totalSpent`. Correct formula.

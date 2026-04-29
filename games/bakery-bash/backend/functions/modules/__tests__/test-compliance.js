@@ -230,8 +230,11 @@ section('A2b. Pricing Zones (POST-01)');
     assert(['high', 'medium', 'low'].includes(tier), `${p}: tier ${tier}`);
   }
 
-  // ELASTICITY_COEFFICIENTS covers each referenced tier
-  assertClose(ELASTICITY_COEFFICIENTS.high, 1.5, 'high');
+  // ELASTICITY_COEFFICIENTS covers each referenced tier.
+  // M-14 (2026-04-28): `high` softened 1.5 → 1.2 so premium-priced
+  // teams still pull traffic instead of losing 100% of customers on a
+  // $1 price step. See config.js comment + tasks-april-28.md M-14.
+  assertClose(ELASTICITY_COEFFICIENTS.high, 1.2, 'high');
   assertClose(ELASTICITY_COEFFICIENTS.medium, 1.0, 'medium');
   assertClose(ELASTICITY_COEFFICIENTS.low, 0.6, 'low');
 
