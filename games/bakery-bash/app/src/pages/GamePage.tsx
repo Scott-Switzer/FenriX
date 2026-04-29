@@ -128,7 +128,6 @@ export function GamePage() {
   const navigate = useNavigate();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [submittingPrices, setSubmittingPrices] = useState(false);
 
   // FE-11 — previous round's ad winners, rendered at the top of Decide.
   // The aggregate `rounds/round_{N}` doc writes
@@ -595,7 +594,18 @@ export function GamePage() {
     }
   }, [basePhase, navigate]);
 
-  const handleSubmit = useCallback(async () => {
+  // K-10 / K-11 (2026-04-29) — single role-aware Decide submit. Replaces
+  // the previous two-button "Submit Prices" + "Submit Decisions" pattern:
+  //   • Finance / Solo: `submitPrices` carries prices + menu + quantities
+  //     (M-17 widened the backend callable to accept quantities).
+  //   • Operations / Solo / vacant-ops fallback: `submitDecision` carries
+  //     staff + sous-chef + equipment.
+  //   • Solo runs both, sequentially, so a single click finalizes the
+  //     round end-to-end.
+  // The "Update Prices" friction button is gone — once a role's responsi-
+  // bility is committed it stays committed, matching every other submit
+  // in the game (chef bids, ad bids).
+  const handleSubmitDecide = useCallback(async () => {
     if (!gameId) {
       setSubmitError("Not connected to a game yet.");
       return;
@@ -604,56 +614,80 @@ export function GamePage() {
       setSubmitError("Decisions can only be submitted during the decide phase.");
       return;
     }
+    const ownsPricing = roleOwnsPricing(role, teamRoleAssignments);
+    const ownsDecide = roleOwnsDecide(role, teamRoleAssignments);
+    if (!ownsPricing && !ownsDecide) return;
 
     setSubmitError(null);
     setSubmitting(true);
     try {
-      // `miscSpent` is a UI-only running tally for the receipt — never sent
-      // to the backend (server-authoritative budget owns the actual ledger).
-      type SubmitPayload = { gameId: string } & Omit<
-        PendingDecisionDraft,
-        "miscSpent"
-      >;
-      const submitDecision = httpsCallable<SubmitPayload, SubmitDecisionResponse>(
-        functions,
-        "submitDecision",
-      );
-
-      // Derive the legacy shape from the station-based counts so the current
-      // backend validator accepts our submission. Sous-chef totals sum across
-      // the 3 stations (maintenance guys are their own role, not sous chefs).
-      const sousChefCount = totalSousChefs(pendingDecision.staffCounts);
-      const sanitizedAssignments = deriveSousChefAssignments(
-        pendingDecision.staffCounts,
-        pendingDecision.menu,
-      );
-      const assignedSum = Object.values(sanitizedAssignments).reduce(
-        (s, n) => s + n,
-        0,
-      );
-      if (sousChefCount > 0 && assignedSum !== sousChefCount) {
-        // Safety net — shouldn't happen, but `deriveSousChefAssignments`
-        // preserves the total so the validator's equality check passes.
-        console.warn(
-          "Derived sousChefAssignments sum (%d) ≠ sousChefCount (%d); falling back to croissant.",
-          assignedSum,
-          sousChefCount,
-        );
-        sanitizedAssignments.croissant =
-          (sanitizedAssignments.croissant ?? 0) + (sousChefCount - assignedSum);
+      // Finance side first — Operations gates on `pricesSubmitted`, so for
+      // a solo player running both sides, do prices before decision so the
+      // server's wait-for-finance check passes by the time submitDecision
+      // hits the validator.
+      if (ownsPricing && !pricesSubmitted) {
+        const submitPrices = httpsCallable<
+          {
+            gameId: string;
+            productPrices: Record<ProductKey, number>;
+            menu: Record<ProductKey, boolean>;
+            quantities: Record<ProductKey, number>;
+          },
+          { submitted: boolean }
+        >(functions, "submitPrices");
+        await submitPrices({
+          gameId,
+          productPrices: pendingDecision.productPrices,
+          menu: pendingDecision.menu,
+          quantities: pendingDecision.quantities,
+        });
+        dispatch({ type: "SET_PRICES_SUBMITTED", payload: true });
       }
 
-      await submitDecision({
-        gameId,
-        menu: pendingDecision.menu,
-        quantities: pendingDecision.quantities,
-        sousChefCount,
-        sousChefAssignments:
-          sanitizedAssignments as PendingDecisionDraft["sousChefAssignments"],
-        staffCounts: pendingDecision.staffCounts,
-        productPrices: pendingDecision.productPrices,
-      });
-      dispatch({ type: "SET_DECISION_SUBMITTED", payload: true });
+      if (ownsDecide && !decisionSubmitted) {
+        // `miscSpent` is a UI-only running tally for the receipt — never
+        // sent to the backend (server-authoritative budget owns the
+        // ledger). `quantities` rides on submitPrices now (K-10).
+        type SubmitPayload = { gameId: string } & Omit<
+          PendingDecisionDraft,
+          "miscSpent" | "quantities"
+        >;
+        const submitDecision = httpsCallable<
+          SubmitPayload,
+          SubmitDecisionResponse
+        >(functions, "submitDecision");
+
+        const sousChefCount = totalSousChefs(pendingDecision.staffCounts);
+        const sanitizedAssignments = deriveSousChefAssignments(
+          pendingDecision.staffCounts,
+          pendingDecision.menu,
+        );
+        const assignedSum = Object.values(sanitizedAssignments).reduce(
+          (s, n) => s + n,
+          0,
+        );
+        if (sousChefCount > 0 && assignedSum !== sousChefCount) {
+          console.warn(
+            "Derived sousChefAssignments sum (%d) ≠ sousChefCount (%d); falling back to croissant.",
+            assignedSum,
+            sousChefCount,
+          );
+          sanitizedAssignments.croissant =
+            (sanitizedAssignments.croissant ?? 0) +
+            (sousChefCount - assignedSum);
+        }
+
+        await submitDecision({
+          gameId,
+          menu: pendingDecision.menu,
+          sousChefCount,
+          sousChefAssignments:
+            sanitizedAssignments as PendingDecisionDraft["sousChefAssignments"],
+          staffCounts: pendingDecision.staffCounts,
+          productPrices: pendingDecision.productPrices,
+        });
+        dispatch({ type: "SET_DECISION_SUBMITTED", payload: true });
+      }
       // Do NOT dispatch SET_PHASE — the backend phase listener owns transitions.
     } catch (err) {
       setSubmitError(
@@ -665,34 +699,16 @@ export function GamePage() {
     } finally {
       setSubmitting(false);
     }
-  }, [gameId, basePhase, pendingDecision, dispatch]);
-
-  const handleSubmitPrices = useCallback(async () => {
-    if (!gameId) {
-      setSubmitError("Not connected to a game yet.");
-      return;
-    }
-    if (basePhase !== "decide") {
-      setSubmitError("Prices can only be submitted during the decide phase.");
-      return;
-    }
-    setSubmitError(null);
-    setSubmittingPrices(true);
-    try {
-      const callable = httpsCallable<
-        { gameId: string; productPrices: Record<ProductKey, number>; menu: Record<ProductKey, boolean> },
-        { submitted: boolean }
-      >(functions, "submitPrices");
-      await callable({ gameId, productPrices: pendingDecision.productPrices, menu: pendingDecision.menu });
-      dispatch({ type: "SET_PRICES_SUBMITTED", payload: true });
-    } catch (err) {
-      setSubmitError(
-        humanizeFunctionError(err, "Could not submit prices. Please try again."),
-      );
-    } finally {
-      setSubmittingPrices(false);
-    }
-  }, [gameId, basePhase, pendingDecision.productPrices, dispatch]);
+  }, [
+    gameId,
+    basePhase,
+    role,
+    teamRoleAssignments,
+    pricesSubmitted,
+    decisionSubmitted,
+    pendingDecision,
+    dispatch,
+  ]);
 
   const isDecisionPhase = basePhase === "decide";
   const isSimulating = basePhase === "simulating";
@@ -755,24 +771,36 @@ export function GamePage() {
     );
   }
 
-  // DEC-21 / FE-I15: only the Operations role (or solo) may submit
-  // Decide — unless the team has nobody on operations, in which case
-  // any teammate can submit.
-  const canSubmit = roleOwnsDecide(role, teamRoleAssignments);
+  // K-10 / K-11 (2026-04-29) — single submit per role. Finance owns the
+  // pricing+quantity submission, Operations owns staff+sous-chef, Solo
+  // runs both. The submit button gates / labels reflect whichever side(s)
+  // the current player still owes.
+  const ownsPricing = roleOwnsPricing(role, teamRoleAssignments);
+  const ownsDecide = roleOwnsDecide(role, teamRoleAssignments);
+  const canSubmit = ownsPricing || ownsDecide;
   const ownerLabel = ownerOfDecide();
-  // Gate operations on finance price submission. Only applies when someone
-  // on the team actually holds the finance role (solo players self-submit).
+  // Operations-only (NOT solo, NOT finance-also) waits for Finance to
+  // commit prices first — keeps the server's submit-order invariant
+  // (`submitDecision` checks `pricesSubmitted` before accepting).
   const teamHasFinance = Object.values(teamRoleAssignments).includes("finance");
-  const waitingForPrices = canSubmit && role !== "solo" && teamHasFinance && !pricesSubmitted;
+  const operationsWaitingForFinance =
+    ownsDecide && !ownsPricing && teamHasFinance && !pricesSubmitted;
+  const allSubmitted =
+    (ownsPricing ? pricesSubmitted : true) &&
+    (ownsDecide ? decisionSubmitted : true);
   const submitDisabled =
-    submitting || decisionSubmitted || !gameId || !canSubmit || waitingForPrices;
+    submitting ||
+    allSubmitted ||
+    !gameId ||
+    !canSubmit ||
+    operationsWaitingForFinance;
   const submitLabel = !canSubmit
     ? `Your ${ownerLabel} teammate submits`
-    : waitingForPrices
+    : operationsWaitingForFinance
       ? "Waiting for Finance prices…"
       : submitting
         ? "Submitting…"
-        : decisionSubmitted
+        : allSubmitted
           ? "✓ Submitted"
           : "Submit Decisions";
 
@@ -837,45 +865,32 @@ export function GamePage() {
       )}
 
       {/* FE-17 — timer + live submission counter + role-gated submit. */}
+      {/* K-11 (2026-04-29): collapsed to a single button. Finance / Operations
+          / Solo all click the same control; `handleSubmitDecide` runs the
+          right callable(s). The "Update Prices" friction button is gone. */}
       <SubmissionLock
         phase="decide"
-        submitted={decisionSubmitted}
+        submitted={allSubmitted}
         hint={
           !canSubmit
             ? `Your ${ownerLabel} teammate submits this decision.`
-            : waitingForPrices
+            : operationsWaitingForFinance
               ? "Waiting for your Finance teammate to submit prices first."
               : undefined
         }
         action={
-          <>
-            {roleOwnsPricing(role, teamRoleAssignments) && (
-              <button
-                className="btn btn--secondary game-page__submit"
-                type="button"
-                onClick={handleSubmitPrices}
-                disabled={submittingPrices || !gameId}
-              >
-                {submittingPrices
-                  ? "Submitting…"
-                  : pricesSubmitted
-                    ? "✓ Update Prices"
-                    : "Submit Prices"}
-              </button>
-            )}
-            <button
-              className="btn btn--primary game-page__submit"
-              onClick={handleSubmit}
-              disabled={submitDisabled}
-              title={
-                !canSubmit
-                  ? `Your ${ownerLabel} teammate submits this decision.`
-                  : undefined
-              }
-            >
-              {submitLabel}
-            </button>
-          </>
+          <button
+            className="btn btn--primary game-page__submit"
+            onClick={handleSubmitDecide}
+            disabled={submitDisabled}
+            title={
+              !canSubmit
+                ? `Your ${ownerLabel} teammate submits this decision.`
+                : undefined
+            }
+          >
+            {submitLabel}
+          </button>
         }
       />
     </PageShell>
