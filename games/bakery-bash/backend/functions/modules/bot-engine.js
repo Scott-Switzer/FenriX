@@ -973,11 +973,10 @@ function generateBotDecisions(
   const diffCfg = DIFFICULTIES[diffKey];
   const rng = makeRng(seed);
 
-  // Forget phase entirely?
-  if (maybeForgetPhase(diffCfg.forgetPhaseChance, rng)) {
+  // Forget phase entirely? (Never skip roster — must respect chef cap)
+  if (phase !== 'roster' && maybeForgetPhase(diffCfg.forgetPhaseChance, rng)) {
     if (phase === 'bid_ad') return { adBids: {} };
     if (phase === 'bid_chef') return { chefBids: [] };
-    if (phase === 'roster') return { layoffs: [] };
     if (phase === 'decide') {
       return {
         menu: {},
