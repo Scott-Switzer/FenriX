@@ -322,6 +322,21 @@ h3 { font-size: 0.7rem; }
   cursor: not-allowed;
 }
 
+/* S-04 — full-team card. Backend (M-05) caps team size at 3; the FE
+   greys out cards that have hit the cap so students don't try to join
+   them. The `Full` label replaces the member count via the JSX. */
+.team-select__card--full {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.team-select__card--full .team-select__count {
+  color: var(--berry, #ef4444);
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .team-select__logo {
   width: 60px;
   height: 60px;

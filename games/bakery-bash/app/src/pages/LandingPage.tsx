@@ -11,6 +11,15 @@ import { useAuth } from "../contexts/AuthContext";
 import { PageShell } from "../components/ui/PageShell";
 import { db, functions } from "../lib/firebase";
 
+/**
+ * S-04 (2026-04-29): max members per team. Mirrors the backend `TEAM_CAP`
+ * in `backend/functions/index.js` (M-05). Even if a student bypasses the
+ * disabled card, `joinGame` re-checks this inside its transaction and
+ * throws `resource-exhausted` — the FE gate is for affordance only, not
+ * enforcement.
+ */
+const TEAM_MEMBER_CAP = 3;
+
 interface JoinGameResponse {
   gameId: string;
   playerId: string;
@@ -448,27 +457,39 @@ export function LandingPage() {
                 )}
                 {!lobbyLoading && lobbyTeams && lobbyTeams.length > 0 && (
                   <div className="team-select__grid" role="listbox">
-                    {lobbyTeams.map((t) => (
-                      <button
-                        key={t.teamId}
-                        type="button"
-                        role="option"
-                        aria-selected={selectedTeamId === t.teamId}
-                        className={`team-select__card${
-                          selectedTeamId === t.teamId ? " team-select__card--selected" : ""
-                        }`}
-                        onClick={() => setSelectedTeamId(t.teamId)}
-                        disabled={disabled}
-                      >
-                        <div className="team-select__logo team-select__logo--placeholder" aria-hidden>
-                          {t.emoji ?? "🥐"}
-                        </div>
-                        <span className="team-select__name">{t.name}</span>
-                        <span className="team-select__count">
-                          {t.memberCount} {t.memberCount === 1 ? "member" : "members"}
-                        </span>
-                      </button>
-                    ))}
+                    {lobbyTeams.map((t) => {
+                      // S-04: greys out the card and swaps the count line
+                      // for "Full" once a team hits TEAM_MEMBER_CAP. The
+                      // backend `joinGame` callable enforces the cap inside
+                      // its transaction (M-05) — this is just the affordance
+                      // so students don't waste a click.
+                      const isFull = t.memberCount >= TEAM_MEMBER_CAP;
+                      return (
+                        <button
+                          key={t.teamId}
+                          type="button"
+                          role="option"
+                          aria-selected={selectedTeamId === t.teamId}
+                          className={`team-select__card${
+                            selectedTeamId === t.teamId ? " team-select__card--selected" : ""
+                          }${isFull ? " team-select__card--full" : ""}`}
+                          onClick={() => setSelectedTeamId(t.teamId)}
+                          disabled={disabled || isFull}
+                          title={isFull ? `That team is full (${TEAM_MEMBER_CAP} max).` : undefined}
+                          aria-label={isFull ? `${t.name} — full` : t.name}
+                        >
+                          <div className="team-select__logo team-select__logo--placeholder" aria-hidden>
+                            {t.emoji ?? "🥐"}
+                          </div>
+                          <span className="team-select__name">{t.name}</span>
+                          <span className="team-select__count">
+                            {isFull
+                              ? "Full"
+                              : `${t.memberCount} ${t.memberCount === 1 ? "member" : "members"}`}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>

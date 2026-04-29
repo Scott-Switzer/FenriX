@@ -807,7 +807,7 @@ Color red when <30s (RoundHeader already has the CSS; reuse).
 
 ---
 
-## [ ] S-04 [P0, XS] — FE side of the team-size cap (mirror M-05)
+## [x] S-04 [P0, XS] — FE side of the team-size cap (mirror M-05) (✅ DONE 2026-04-29 by Claude/Scott)
 
 **Problem.** Even after Massaro lands the backend cap, the FE still lets students click into a 3-member team card.
 
