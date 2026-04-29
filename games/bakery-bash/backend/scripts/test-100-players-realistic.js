@@ -379,6 +379,24 @@ async function main() {
     console.log(`  ⏱️  Roster: ${Date.now() - rosterStart}ms`);
     assert(report("Roster", rosterResults), "Roster failures");
 
+    // Wait for bot triggers to finish layoffs before advancing
+    console.log(`  ⏳ Waiting for bot roster triggers...`);
+    const cap = 3;
+    let attempts = 0;
+    while (attempts < 30) {
+      const snap = await gameRef.collection("players").get();
+      const overCap = snap.docs.filter((d) => {
+        const chefs = d.get("specialtyChefs");
+        return Array.isArray(chefs) && chefs.length > cap;
+      });
+      if (overCap.length === 0) break;
+      await sleep(500);
+      attempts++;
+    }
+    if (attempts >= 30) {
+      console.log(`  ⚠️  Bots still over cap after 15s — proceeding anyway`);
+    }
+
     // roster → decide
     await timed("Advance roster → decide", () => advancePhase(`round_${round}_decide`));
 
