@@ -3725,6 +3725,256 @@ exports.reclaimTeammateRole = onCall(CALLABLE_OPTS, async (request) => {
 });
 
 // ===========================================================================
+// saveDecisionDraft (K-02 / K-03)
+// ===========================================================================
+//
+// Lightweight team-shared draft sync. Fired by the FE on a debounced timer
+// (~500ms) whenever `pendingDecision` changes locally. Writes a merge to
+// `teams/{teamId}/state/pending.decisionDraft` so the team-pending listener
+// picks it up on every other teammate's tab and hydrates their context.
+//
+// This is the "draft" side of the same doc that `submitDecision` and
+// `submitPrices` write to — the canonical validation lives there. Here we
+// only need to:
+//   • Verify the caller is on the team they claim (auth scope).
+//   • Coerce/clamp the incoming draft fields to defensive shapes so a
+//     buggy client can't poison the team doc.
+//   • Skip when the player is solo (no team).
+//
+// Returns `{ ok: true }` on success, or `{ ok: true, skipped: true }` for
+// solo players where there's no team doc to write to.
+//
+// Pairs with K-02 (decisionDraft fields) and K-03 (miscSpent on the draft).
+// Submission flags (`submitted`, `pricesSubmitted`) are NOT touched here —
+// only the actual submit callables can flip those.
+
+const DRAFT_NUMERIC_KEYS = ['miscSpent'];
+const DRAFT_PRODUCT_NUMERIC_MAPS = ['quantities', 'sousChefAssignments', 'productPrices'];
+const DRAFT_PRODUCT_BOOL_MAPS = ['menu'];
+
+function sanitizeProductNumberMap(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof k !== 'string' || k.length === 0) continue;
+    if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+    // Cap defensively at 1e7 to keep a runaway client from writing a
+    // huge integer (the actual ceilings are enforced at submit time).
+    out[k] = Math.max(0, Math.min(v, 10_000_000));
+  }
+  return out;
+}
+
+function sanitizeProductBoolMap(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof k !== 'string' || k.length === 0) continue;
+    if (typeof v !== 'boolean') continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+function sanitizeStaffCounts(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof k !== 'string' || k.length === 0) continue;
+    if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+    out[k] = Math.max(0, Math.min(Math.round(v), 999));
+  }
+  return out;
+}
+
+exports.saveDecisionDraft = onCall(CALLABLE_OPTS, async (request) => {
+  if (isWarmupRequest(request)) return { ok: true, warm: true };
+  const auth = requireAuth(request, 'Sign in before continuing.');
+  const data = request.data || {};
+  const gameId = cleanGameId(data.gameId);
+  const draft = data.draft;
+  if (!draft || typeof draft !== 'object' || Array.isArray(draft)) {
+    throw new HttpsError('invalid-argument', 'draft must be an object.');
+  }
+
+  const uid = auth.uid;
+  const gameRef = gameDoc(gameId);
+  const playerRef = gameRef.collection('players').doc(uid);
+
+  // Read the player doc once (no transaction — this is a high-frequency
+  // hot path and the worst-case race is "draft from a teammate writes
+  // 500ms before mine"; canonical validation happens at submit).
+  const pSnap = await playerRef.get();
+  if (!pSnap.exists) {
+    throw new HttpsError('failed-precondition', 'Join the game before saving a draft.');
+  }
+  const teamId = getPlayerTeamId(pSnap.data());
+  if (!teamId) {
+    // Solo players: their player doc IS the source of truth, no team
+    // doc to mirror to. Return a skipped success so the FE doesn't
+    // surface an error chip.
+    return { ok: true, skipped: true, reason: 'solo' };
+  }
+
+  // Build the sanitized patch — only include fields the caller actually
+  // sent so we don't blow away other teammates' more recent merges
+  // (e.g. Operations' staffCounts that landed 200ms ago) by writing
+  // empty/default scaffolds for keys the caller didn't touch.
+  const patch = {};
+  for (const k of DRAFT_PRODUCT_BOOL_MAPS) {
+    if (k in draft) {
+      const v = sanitizeProductBoolMap(draft[k]);
+      if (v) patch[k] = v;
+    }
+  }
+  for (const k of DRAFT_PRODUCT_NUMERIC_MAPS) {
+    if (k in draft) {
+      const v = sanitizeProductNumberMap(draft[k]);
+      if (v) patch[k] = v;
+    }
+  }
+  if ('staffCounts' in draft) {
+    const v = sanitizeStaffCounts(draft.staffCounts);
+    if (v) patch.staffCounts = v;
+  }
+  for (const k of DRAFT_NUMERIC_KEYS) {
+    if (k in draft) {
+      const v = draft[k];
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        patch[k] = Math.max(0, Math.min(v, 10_000_000));
+      }
+    }
+  }
+  if ('equipmentUpgradePurchased' in draft) {
+    if (typeof draft.equipmentUpgradePurchased === 'boolean') {
+      patch.equipmentUpgradePurchased = draft.equipmentUpgradePurchased;
+    }
+  }
+
+  if (Object.keys(patch).length === 0) {
+    // No actionable fields — refuse rather than no-op-write so a bug
+    // in the caller (e.g. sending all-undefined keys) surfaces clearly
+    // rather than churning empty writes.
+    throw new HttpsError('invalid-argument', 'draft has no recognized fields.');
+  }
+
+  await teamPendingDocRef(gameRef, teamId).set({
+    decisionDraft: patch,
+    updatedByUid: uid,
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  return { ok: true, gameId, teamId };
+});
+
+// ===========================================================================
+// rehireChef (S-05)
+// ===========================================================================
+//
+// Counterpart to layoffChef. Pulls a chef back out of the current round's
+// chefReturnPool and re-adds them to the player's specialtyChefs IF:
+//   1. The chef's pool entry exists for the CURRENT round (you can only
+//      rehire someone YOU just laid off, not historical departures).
+//   2. The player's roster has space (specialtyChefs.length < cap).
+//   3. We're still in the roster phase (commit happens on phase advance).
+//
+// Same auth rules as layoffChef — operations / solo or any teammate when
+// nobody on the team holds operations.
+//
+// Pairs with S-05's "Lay offs" panel UX: instant lay-off via layoffChef,
+// re-hire button next to each laid-off chef calls back into here.
+
+exports.rehireChef = onCall(CALLABLE_OPTS, async (request) => {
+  if (isWarmupRequest(request)) return { ok: true, warm: true };
+  const auth = requireAuth(request);
+  const data = request.data || {};
+  const gameId = cleanGameId(data.gameId);
+  const chefId = cleanString(data.chefId);
+  if (!chefId) throw new HttpsError('invalid-argument', 'chefId is required.');
+
+  const uid = auth.uid;
+  const gameRef = gameDoc(gameId);
+  const playerRef = gameRef.collection('players').doc(uid);
+
+  await db.runTransaction(async (transaction) => {
+    const [gSnap, pSnap, cfgSnap] = await Promise.all([
+      transaction.get(gameRef),
+      transaction.get(playerRef),
+      transaction.get(gameRef.collection('config').doc('params')),
+    ]);
+    if (!gSnap.exists) throw new HttpsError('not-found', 'Game not found.');
+    if (!pSnap.exists) throw new HttpsError('failed-precondition', 'Player not in this game.');
+
+    // Mirror layoffChef's role gate so the same Operations / Solo /
+    // vacant-role fallback applies.
+    await assertRoleAllowedWithTeam(transaction, gameRef, pSnap, ['operations']);
+
+    const game = gSnap.data();
+    const { phase } = parsePhase(game.phase, game.currentRound || game.round);
+    if (phase !== 'roster') {
+      throw new HttpsError(
+        'failed-precondition',
+        'Chefs can only be re-hired during the roster phase.',
+      );
+    }
+
+    const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
+    const specialtyChefCap = numberOrDefault(config.specialtyChefCap, 3);
+    const player = pSnap.data();
+    const teamId = getPlayerTeamId(player);
+    const teamPlayerDocs = teamId
+      ? (await transaction.get(gameRef.collection('players').where('teamId', '==', teamId))).docs
+      : [pSnap];
+
+    const round = numberOrDefault(game.currentRound || game.round, 1);
+    const returnPoolRef = gameRef
+      .collection('rounds')
+      .doc(`round_${round}`)
+      .collection('chefReturnPool')
+      .doc(chefId);
+    const poolSnap = await transaction.get(returnPoolRef);
+    if (!poolSnap.exists) {
+      // Chef wasn't laid off this round (or was already rehired). Idempotent
+      // success: the FE renders re-hire only for chefs in the panel, but a
+      // racing teammate could have rehired the same chef in another tab.
+      throw new HttpsError(
+        'failed-precondition',
+        'That chef is no longer in the lay-off pool.',
+      );
+    }
+
+    const specialtyChefs = Array.isArray(player.specialtyChefs) ? player.specialtyChefs : [];
+    if (specialtyChefs.length >= specialtyChefCap) {
+      throw new HttpsError(
+        'failed-precondition',
+        `Roster is full (${specialtyChefCap} max). Lay off another chef first.`,
+      );
+    }
+
+    // Reconstruct the chef object from the pool entry. The lay-off path
+    // wrote the original chef shape plus return-tracking metadata; strip
+    // those before adding back to the roster.
+    const poolData = poolSnap.data() || {};
+    const { returnedByPlayerId, returnedAt, ...chefFields } = poolData;
+    void returnedByPlayerId;
+    void returnedAt;
+    const restoredChef = { ...chefFields, id: chefId };
+    const nextRoster = [...specialtyChefs, restoredChef];
+
+    transaction.delete(returnPoolRef);
+    for (const teamPlayerDoc of teamPlayerDocs) {
+      transaction.update(teamPlayerDoc.ref, {
+        specialtyChefs: nextRoster,
+        pendingRosterAction: nextRoster.length > specialtyChefCap,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+  });
+
+  return { ok: true, gameId, chefId, rehired: true };
+});
+
+// ===========================================================================
 // markStalePlayersDisconnected (M-22)
 // ===========================================================================
 //

@@ -484,7 +484,7 @@ Pass `disabled={!roleOwnsX(role, teamRoleAssignments)}` on each input. Add a too
 
 ---
 
-## [ ] K-02 [P0, S] — Decision drafts don't sync across teammates fast enough
+## [x] K-02 [P0, S] — Decision drafts don't sync across teammates fast enough (✅ DONE 2026-04-29 by Claude/Kavin-Sofia)
 
 **Problem.** User report: "one person tries to sell 10 and it doesn't update fast enough across the team." `GamePage.tsx:380-472` already subscribes to the team-pending doc, but **draft writes only happen on submit** — local edits don't propagate until the role-owner clicks Submit.
 
@@ -498,7 +498,7 @@ Pass `disabled={!roleOwnsX(role, teamRoleAssignments)}` on each input. Add a too
 
 ---
 
-## [ ] K-03 [P0, S] — "Miscellaneous" spend doesn't show on teammates' screens
+## [x] K-03 [P0, S] — "Miscellaneous" spend doesn't show on teammates' screens (✅ DONE 2026-04-29 by Claude/Kavin-Sofia)
 
 **Problem.** `GameContext.tsx:430-442` `ADD_MISC_SPEND` updates **local state only**. When Finance buys competitor intel, only Finance's tab sees the deduction line.
 
