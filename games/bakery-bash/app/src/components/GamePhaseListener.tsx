@@ -151,7 +151,22 @@ export function GamePhaseListener() {
     if (!gameId) return;
     const gameRef = doc(db, "games", gameId);
     const unsubscribe = onSnapshot(gameRef, (snap) => {
-      if (!snap.exists()) return;
+      if (!snap.exists()) {
+        // Game was deleted (or the persisted gameId is stale). Without
+        // this bounce, the player stays on whatever route they were on —
+        // /game, /auction, etc. — staring at a frozen UI with no error.
+        // The orphan check above only catches `!gameId`; this catches the
+        // "gameId set but doc gone" case. Skip when the user is on the
+        // professor's route — they may have just deleted the game and
+        // should remain on their dashboard.
+        const path = pathnameRef.current;
+        const onProfessor = path.startsWith("/professor");
+        const onLanding = path === "/" || path.startsWith("/how-to-play");
+        if (!onProfessor && !onLanding) {
+          navigate("/", { replace: true });
+        }
+        return;
+      }
       const data = snap.data() as DocumentData;
       const phase = data.phase;
       const round =
