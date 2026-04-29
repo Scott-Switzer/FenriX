@@ -171,11 +171,16 @@ section('A2. Products & Pricing');
   // product sales the dominant income source; satisfactionWeight equalized to 1.0;
   // bagel/cookie prices raised to close the per-customer revenue gap; sandwich/matcha
   // prices lowered so premium tier ≈ 1.6× cheap (was 3.5×).
+  // Balance pass 11 (Apr 28 2026): cookie moved from BASE → OPTIONAL and
+  // coffee moved from OPTIONAL → BASE so American's specialty pair (bagel +
+  // cookie = $8.50) approximately matches French's (croissant + coffee =
+  // $8.75). Update isBaseMenu + BASE_MENU/OPTIONAL_MENU expectations to
+  // match the new starter set.
   const expected = {
-    coffee:    { fixedPrice: 4.00,  baseDemand: 240, satisfactionWeight: 1.0, isBaseMenu: false },
+    coffee:    { fixedPrice: 4.00,  baseDemand: 240, satisfactionWeight: 1.0, isBaseMenu: true  },
     croissant: { fixedPrice: 4.75,  baseDemand: 240, satisfactionWeight: 1.0, isBaseMenu: true  },
     bagel:     { fixedPrice: 4.50,  baseDemand: 240, satisfactionWeight: 1.0, isBaseMenu: true  },
-    cookie:    { fixedPrice: 4.00,  baseDemand: 240, satisfactionWeight: 1.0, isBaseMenu: true  },
+    cookie:    { fixedPrice: 4.00,  baseDemand: 240, satisfactionWeight: 1.0, isBaseMenu: false },
     sandwich:  { fixedPrice: 5.50,  baseDemand: 200, satisfactionWeight: 1.0, isBaseMenu: false },
     matcha:    { fixedPrice: 4.50,  baseDemand: 200, satisfactionWeight: 1.0, isBaseMenu: false },
   };
@@ -189,14 +194,14 @@ section('A2. Products & Pricing');
     assert(cat.isBaseMenu === vals.isBaseMenu,             `${product} isBaseMenu = ${vals.isBaseMenu}`, `got ${cat.isBaseMenu}`);
   }
 
-  // Base menu: croissant, cookie, bagel
-  assert(BASE_MENU.includes('croissant') && BASE_MENU.includes('cookie') && BASE_MENU.includes('bagel'),
-    'Base menu = croissant, cookie, bagel');
+  // Base menu: croissant, bagel, coffee (post balance pass 11)
+  assert(BASE_MENU.includes('croissant') && BASE_MENU.includes('bagel') && BASE_MENU.includes('coffee'),
+    'Base menu = croissant, bagel, coffee');
   assert(BASE_MENU.length === 3, 'Base menu has exactly 3 items');
 
-  // Optional: sandwich, coffee, matcha
-  assert(OPTIONAL_MENU.includes('sandwich') && OPTIONAL_MENU.includes('coffee') && OPTIONAL_MENU.includes('matcha'),
-    'Optional menu = sandwich, coffee, matcha');
+  // Optional: cookie, sandwich, matcha
+  assert(OPTIONAL_MENU.includes('cookie') && OPTIONAL_MENU.includes('sandwich') && OPTIONAL_MENU.includes('matcha'),
+    'Optional menu = cookie, sandwich, matcha');
 }
 
 section('A2b. Pricing Zones (POST-01)');
@@ -347,10 +352,14 @@ section('A3. Chef System');
   // Specialty chef cap = 3
   assert(DEFAULT_GAME_CONFIG.specialtyChefCap === 3, 'Specialty chef cap = 3');
 
-  // Chef pool generation matches the configured pool size.
-  const pool = generateChefPool(1, cfg);
-  assert(pool.length === cfg.chefPoolSize,
-    `Chef pool size = cfg.chefPoolSize (${cfg.chefPoolSize}, got ${pool.length})`);
+  // Chef pool generation matches the configured pool size. Reuse
+  // `cfgWith50` (set up earlier in this section via mergeConfig) — the
+  // earlier rename from `cfg` to `cfgWith50` left this call site
+  // referencing the old name, crashing the script with `cfg is not
+  // defined` before later sections could run.
+  const pool = generateChefPool(1, cfgWith50);
+  assert(pool.length === cfgWith50.chefPoolSize,
+    `Chef pool size = cfg.chefPoolSize (${cfgWith50.chefPoolSize}, got ${pool.length})`);
   assert(pool.every(c => ['novel','intermediate','advanced'].includes(c.skillTier)),
     'All chefs have valid skill tiers');
   assert(pool.every(c => ['french','japanese','italian','american'].includes(c.nationality)),
@@ -1018,22 +1027,27 @@ section('C2. CSV Export Integrity');
 section('C3. Decision Validation');
 {
   const cfg = mergeConfig({});
+  // Balance pass 11 (Apr 28 2026): cookie moved BASE → OPTIONAL and
+  // coffee moved OPTIONAL → BASE. Tests that put cookie on the menu
+  // must pass `opts.unlockedProducts` so the locked-product gate
+  // doesn't fire before the test's actual assertion.
+  const allUnlocked = { unlockedProducts: ['cookie', 'sandwich', 'matcha'] };
 
   // Valid decision
   const validDecision = validateDecision({
-    menu: { croissant: true, cookie: true, bagel: true, sandwich: false, coffee: false, matcha: false },
-    quantities: { croissant: 50, cookie: 40, bagel: 30, sandwich: 0, coffee: 0, matcha: 0 },
+    menu: { croissant: true, cookie: true, bagel: true, sandwich: false, coffee: true, matcha: false },
+    quantities: { croissant: 50, cookie: 40, bagel: 30, sandwich: 0, coffee: 10, matcha: 0 },
     sousChefCount: 2,
     sousChefAssignments: { croissant: 2 },
-  }, 1, cfg);
-  assert(validDecision.numProducts === 3, 'Valid decision: numProducts = 3');
+  }, 1, cfg, allUnlocked);
+  assert(validDecision.numProducts === 4, 'Valid decision: numProducts = 4');
   assert(validDecision.sousChefCount === 2, 'Valid decision: sousChefCount = 2');
 
   // Base menu cannot be disabled
   let baseMenuError = false;
   try {
     validateDecision({
-      menu: { croissant: false, cookie: true, bagel: true },
+      menu: { croissant: false, bagel: true, coffee: true },
       quantities: { croissant: 0 },
       sousChefCount: 0, sousChefAssignments: {},
     }, 1, cfg);
@@ -1048,15 +1062,17 @@ section('C3. Decision Validation');
       quantities: { croissant: 30, cookie: 30, bagel: 30 },
       sousChefCount: 3,
       sousChefAssignments: { croissant: 1 }, // sum=1 ≠ 3
-    }, 1, cfg);
+    }, 1, cfg, allUnlocked);
   } catch (e) { assignError = true; }
   assert(assignError, 'Assignment sum ≠ sousChefCount throws error');
 
-  // Default decision has base menu products = true
+  // Default decision has base menu products = true (balance pass 11:
+  // base set is now croissant + bagel + coffee; cookie is optional).
   const def = buildDefaultDecision(cfg);
   assert(def.menu.croissant === true, 'Default decision has croissant = true');
-  assert(def.menu.cookie === true,    'Default decision has cookie = true');
+  assert(def.menu.coffee === true,    'Default decision has coffee = true');
   assert(def.menu.bagel === true,     'Default decision has bagel = true');
+  assert(def.menu.cookie === false,   'Default decision has cookie = false (optional)');
   assert(def.menu.sandwich === false, 'Default decision has sandwich = false');
   assert(def.sousChefCount === 0,     'Default decision: sousChefCount = 0');
 }

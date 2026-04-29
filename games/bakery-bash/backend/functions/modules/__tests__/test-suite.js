@@ -1231,21 +1231,26 @@ describe('conclusion.js', () => {
 // ============================================================================
 describe('decision-validation.js', () => {
   const cfg = config.mergeConfig({});
+  // Balance pass 11 (Apr 28 2026): cookie moved BASE → OPTIONAL and
+  // coffee moved OPTIONAL → BASE. Tests that put cookie or sandwich on
+  // the menu must now pass `opts.unlockedProducts` so the locked-product
+  // gate doesn't fire before the test's actual assertion.
+  const allUnlocked = { unlockedProducts: ['cookie', 'sandwich', 'matcha'] };
 
   it('validateDecision — valid input', () => {
     const result = validation.validateDecision({
-      menu: { croissant: true, cookie: true, bagel: true, sandwich: true, coffee: false, matcha: false },
-      quantities: { croissant: 30, cookie: 20, bagel: 15, sandwich: 10 },
+      menu: { croissant: true, cookie: true, bagel: true, sandwich: true, coffee: true, matcha: false },
+      quantities: { croissant: 30, cookie: 20, bagel: 15, sandwich: 10, coffee: 5 },
       sousChefCount: 3,
       sousChefAssignments: { croissant: 2, sandwich: 1 },
-    }, 2, cfg);
-    eq(result.numProducts, 4);
+    }, 2, cfg, allUnlocked);
+    eq(result.numProducts, 5);
     eq(result.sousChefCount, 3);
   });
 
   it('validateDecision — base product can\'t be disabled', () => {
     throws(() => validation.validateDecision({
-      menu: { croissant: false, cookie: true, bagel: true },
+      menu: { croissant: false, bagel: true, coffee: true },
     }, 1, cfg), /Base product/);
   });
 
@@ -1255,7 +1260,7 @@ describe('decision-validation.js', () => {
       quantities: { croissant: 10, cookie: 10, bagel: 10 },
       sousChefCount: 3,
       sousChefAssignments: { croissant: 1 },
-    }, 1, cfg), /sousChefAssignments sum/);
+    }, 1, cfg, allUnlocked), /sousChefAssignments sum/);
   });
 
   it('validateDecision — can\'t assign sous to off-menu product', () => {
@@ -1264,7 +1269,7 @@ describe('decision-validation.js', () => {
       quantities: {},
       sousChefCount: 1,
       sousChefAssignments: { sandwich: 1 },
-    }, 1, cfg), /not on the menu/);
+    }, 1, cfg, allUnlocked), /not on the menu/);
   });
 
   it('validateAdBids — fills missing with 0', () => {
