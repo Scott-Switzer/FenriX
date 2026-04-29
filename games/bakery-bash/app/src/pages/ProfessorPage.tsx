@@ -193,8 +193,12 @@ export function ProfessorPage() {
   const [manualDifficulty, setManualDifficulty] = useState<string>("medium");
   const [manualPersonality, setManualPersonality] = useState<string>("balanced");
 
-  // Create-game form.
+  // Create-game form. Defaults match the SCALING_PLAN target of a 70-student
+  // session with a 10-player buffer; older default of 20 silently capped any
+  // class with more than 20 joiners (the 21st student got "This game is full"
+  // with no in-product workaround).
   const [totalRounds, setTotalRounds] = useState<number>(5);
+  const [playerCap, setPlayerCap] = useState<number>(80);
   const [createdGame, setCreatedGame] = useState<CreateGameResult | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
 
@@ -872,10 +876,10 @@ export function ProfessorPage() {
     setPendingAction("create");
     try {
       const createGame = httpsCallable<
-        { totalRounds?: number },
+        { totalRounds?: number; config?: { playerCap?: number } },
         CreateGameResult
       >(functions, "createGame");
-      const res = await createGame({ totalRounds });
+      const res = await createGame({ totalRounds, config: { playerCap } });
       setCreatedGame(res.data);
       dispatch({
         type: "JOIN_GAME",
@@ -946,6 +950,19 @@ export function ProfessorPage() {
               onChange={(e) =>
                 setTotalRounds(Math.max(1, Math.min(10, Number(e.target.value) || 1)))
               }
+            />
+          </label>
+          <label className="professor-page__field">
+            <span>Player cap</span>
+            <input
+              type="number"
+              min={1}
+              max={200}
+              value={playerCap}
+              onChange={(e) =>
+                setPlayerCap(Math.max(1, Math.min(200, Number(e.target.value) || 1)))
+              }
+              title="Maximum students who can join this game. Default 80 covers a 70-student class with a buffer."
             />
           </label>
           <button
