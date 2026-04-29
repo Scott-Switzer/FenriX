@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { GameProvider } from "./contexts/GameContext";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DevNav } from "./components/ui/DevNav";
 import { GamePhaseListener } from "./components/GamePhaseListener";
 import { LandingPage } from "./pages/LandingPage";
@@ -19,6 +20,7 @@ import { BakeryScenePreviewPage } from "./pages/BakeryScenePreviewPage";
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <AuthProvider>
       <GameProvider>
         <BrowserRouter>
@@ -46,5 +48,6 @@ export default function App() {
         </BrowserRouter>
       </GameProvider>
     </AuthProvider>
+    </ErrorBoundary>
   );
 }
