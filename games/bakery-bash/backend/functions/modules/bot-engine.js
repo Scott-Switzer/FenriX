@@ -963,19 +963,29 @@ function generateBotDecisions(
   const rng = makeRng(seed);
 
   // Forget phase entirely?
+  //
+  // Bidding/roster forgets are cheap mistakes — skip the bid, lose the
+  // ad/chef contest. The decide-phase forget used to return an empty
+  // menu/quantities object, which then tripped the "no menu OR no stock"
+  // kill-switch in simulation.js (`offeredProducts.length === 0 || !stockedAnything`),
+  // zeroing the bot's revenue for the entire round. That is far harsher than
+  // the "novice makes a small mistake" feel the difficulty system is going
+  // for. Now: fall back to the personality baseline so a forgetful bot still
+  // bakes the obvious thing instead of vanishing for the round.
   if (maybeForgetPhase(diffCfg.forgetPhaseChance, rng)) {
     if (phase === 'bid_ad') return { adBids: {} };
     if (phase === 'bid_chef') return { chefBids: [] };
     if (phase === 'roster') return { layoffs: [] };
     if (phase === 'decide') {
-      return {
-        menu: {},
-        quantities: {},
-        productPrices: {},
-        sousChefCount: 0,
-        sousChefAssignments: {},
-        staffCounts: {},
-      };
+      // PERSONALITIES.random is intentionally an empty config — its decisions
+      // come from randomBotDecisions, not the strategy fields decideOperations
+      // reads. Falling through to decideOperations with personKey='random' would
+      // produce NaN quantities/sousChef (undefined * number) and re-trigger the
+      // zero-revenue path this fix is meant to close.
+      if (personKey === 'random') {
+        return randomBotDecisions(botState, 'decide', config, rng);
+      }
+      return decideOperations(botState, config, personKey, diffKey, rng, opponents, historicalBids);
     }
     return {};
   }
