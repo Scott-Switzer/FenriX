@@ -899,8 +899,13 @@ function randomBotDecisions(botState, phase, config, rng) {
 
   if (phase === 'roster') {
     const chefs = Array.isArray(botState.specialtyChefs) ? botState.specialtyChefs : [];
-    // Randomly lay off 0 to all chefs
-    const toLayoff = chefs.filter(() => rng() < 0.3);
+    const cap = 3;
+    let toLayoff = [];
+    if (chefs.length > cap) {
+      // Must lay off down to cap — pick the lowest-rated extras
+      const sorted = [...chefs].sort((a, b) => (a.rating || 0) - (b.rating || 0));
+      toLayoff = sorted.slice(0, chefs.length - cap);
+    }
     return { layoffs: toLayoff.map((c) => c.id) };
   }
 

@@ -44,6 +44,7 @@ jobs:
       - name: Run stress test
         working-directory: games/bakery-bash/backend
         run: |
+          set -o pipefail
           export PLAYER_COUNT=${{ github.event.inputs.playerCount }}
           export BOT_COUNT=${{ github.event.inputs.botCount }}
           export TOTAL_ROUNDS=${{ github.event.inputs.rounds }}
