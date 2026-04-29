@@ -136,6 +136,7 @@ const WARMUP_CALLABLES = [
   "advanceGamePhase",
   "joinGame",
   "createTeam",
+  "createBotPlayer",
 ] as const;
 
 export function ProfessorPage() {
@@ -1120,7 +1121,7 @@ export function ProfessorPage() {
             <button
               type="button"
               className="btn btn--secondary"
-              disabled={busy || !user || (!selectedPreset && !manualDifficulty)}
+              disabled={busy || !user}
               onClick={async () => {
                 if (!gameId) return;
                 setPendingAction("add-bot");
@@ -1132,6 +1133,7 @@ export function ProfessorPage() {
                   const res = await httpsCallable(functions, "createBotPlayer")(payload);
                   const bot = res.data as { botUid: string; displayName: string; difficulty: string; personality: string };
                   setInfo(`Added ${bot.displayName}`);
+                  setSelectedPreset("");
                 } catch (err) {
                   setError(humanizeFunctionError(err));
                 } finally {
