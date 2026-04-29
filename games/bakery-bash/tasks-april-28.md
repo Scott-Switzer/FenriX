@@ -632,7 +632,7 @@ Update the descriptive copy at `AuctionPage.tsx:823-830` and the "How to Play" p
 
 ---
 
-## [ ] B-02 [P0, S] — Max-input caps + red error (dollar 999,999 · qty 9,999 · staff 99) (Q17 confirmed)
+## [x] B-02 [P0, S] — Max-input caps + red error (dollar 999,999 · qty 9,999 · staff 99) (Q17 confirmed) (✅ DONE 2026-04-29 by Claude/Barlava)
 
 **Problem.** No max on bid inputs (`AuctionPage.tsx:872-896, 986-1007`), price inputs (`PriceInput.tsx:48-59` only has per-product ceiling), quantity inputs (`BakeryView.tsx:200-210` only has min), or staff steppers (`StaffTab.tsx:14` `MAX_PER_ROLE = 20` — too low per Q17).
 

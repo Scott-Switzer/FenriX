@@ -83,6 +83,11 @@ const AD_CARDS: readonly AdCard[] = [
 
 const POOL_SIZE = 6;
 
+// B-02 (2026-04-29): typo cap on dollar bid inputs (Q17 confirmed
+// $999,999). Backend has its own bid validators; this is the FE
+// user-error guard that drives the red error chip.
+const BID_DOLLAR_MAX = 999_999;
+
 // Skill-tier roll probabilities for the cosmetic placeholder pool. The roll
 // is a `Math.random()` value in [0, 1); cutoffs determine which tier the
 // chef lands in. Thresholds scale with round so later rounds surface more
@@ -837,6 +842,9 @@ export function AuctionPage() {
                 const adInputVal = parseInt(adBidInputs[ad.id] ?? "", 10);
                 const adBelowMinimum =
                   adMinBid !== null && !isNaN(adInputVal) && adInputVal > 0 && adInputVal < adMinBid;
+                // B-02 (2026-04-29): $999,999 typo cap (Q17). Pure FE
+                // safety — backend has its own bid validators.
+                const adAboveCap = !isNaN(adInputVal) && adInputVal > BID_DOLLAR_MAX;
                 return (
                 <div key={ad.id} className="auction-ad">
                   <img
@@ -870,16 +878,23 @@ export function AuctionPage() {
                       <span className="auction-page__bid-prefix">$</span>
                       <input
                         type="number"
-                        className={`auction-ad__bid-input auction-page__bid-input${adBelowMinimum ? " auction-ad__bid-input--error" : ""}`}
+                        className={`auction-ad__bid-input auction-page__bid-input${
+                          adBelowMinimum || adAboveCap
+                            ? " auction-ad__bid-input--error"
+                            : ""
+                        }`}
                         placeholder="0"
                         min={0}
+                        max={BID_DOLLAR_MAX}
                         value={
                           adBidInputs[ad.id] ??
                           (pendingAdBids[ad.id] ? String(pendingAdBids[ad.id]) : "")
                         }
                         disabled={timerExpired || !isAdPhase || isLockedAdBid(ad.id)}
                         readOnly={!isAdPhase || isLockedAdBid(ad.id)}
-                        aria-invalid={adBelowMinimum ? "true" : undefined}
+                        aria-invalid={
+                          adBelowMinimum || adAboveCap ? "true" : undefined
+                        }
                         onChange={(e) => {
                           const raw = e.target.value;
                           setAdBidInputs((prev) => ({ ...prev, [ad.id]: raw }));
@@ -905,6 +920,11 @@ export function AuctionPage() {
                     {adBelowMinimum && (
                       <p className="auction-ad__bid-error" role="alert">
                         Bid at least ${adMinBid!.toLocaleString()} to qualify.
+                      </p>
+                    )}
+                    {adAboveCap && (
+                      <p className="auction-ad__bid-error" role="alert">
+                        Going way over budget there!
                       </p>
                     )}
                     {/* B-01 (2026-04-29): "Tied — raise your bid to win"
@@ -941,6 +961,8 @@ export function AuctionPage() {
                   minBid !== null &&
                   currentBidAmount > 0 &&
                   currentBidAmount < minBid;
+                // B-02 (2026-04-29): $999,999 typo cap (Q17).
+                const aboveCap = currentBidAmount > BID_DOLLAR_MAX;
                 return (
                   <div
                     key={chef.id}
@@ -1001,14 +1023,19 @@ export function AuctionPage() {
                         <input
                           type="number"
                           className={`auction-chef__bid-input auction-page__bid-input${
-                            belowMinimum ? " auction-chef__bid-input--error" : ""
+                            belowMinimum || aboveCap
+                              ? " auction-chef__bid-input--error"
+                              : ""
                           }`}
                           placeholder="0"
                           min={0}
+                          max={BID_DOLLAR_MAX}
                           value={chefBidInputs[chef.id] ?? ""}
                           disabled={timerExpired || !isChefPhase || isLockedChefBid(chef.id)}
                           readOnly={!isChefPhase || isLockedChefBid(chef.id)}
-                          aria-invalid={belowMinimum ? "true" : undefined}
+                          aria-invalid={
+                            belowMinimum || aboveCap ? "true" : undefined
+                          }
                           onChange={(e) => {
                             const raw = e.target.value;
                             setChefBidInputs(prev => ({ ...prev, [chef.id]: raw }));
@@ -1041,6 +1068,11 @@ export function AuctionPage() {
                       {belowMinimum && minBid !== null && (
                         <p className="auction-chef__bid-error" role="alert">
                           Bid must be at least ${minBid.toLocaleString()}.
+                        </p>
+                      )}
+                      {aboveCap && (
+                        <p className="auction-chef__bid-error" role="alert">
+                          Going way over budget there!
                         </p>
                       )}
                       {/* B-01 (2026-04-29): tied-bid warning removed

@@ -15,6 +15,11 @@ import { PriceInput } from "./PriceInput";
 import { totalStaffCost, totalProductCost } from "../../lib/cost";
 import { tierUpgradeCost } from "../../lib/equipment";
 
+// B-02 (2026-04-29): hard cap on per-product quantity. Q17 confirmed the
+// 9,999-unit ceiling per row. Backend enforces its own server-side
+// production caps separately; this is the FE typo guard.
+const BAKERY_QTY_MAX = 9_999;
+
 /**
  * Product display metadata — prices are fixed per FRONTEND.md rule #2.
  * Mirrors `config.js::PRODUCT_CATALOG` on the backend.
@@ -195,26 +200,42 @@ function ProductTile({
               >
                 −
               </button>
+              {/* B-02 (2026-04-29): cap product quantity at 9,999 per Q17.
+                  Red error class flips on at the cap; the + button still
+                  hard-stops at the max so a typed-in value over-cap is
+                  what triggers the error chip. */}
               <input
                 type="number"
-                className="product-tile__step-value"
+                className={`product-tile__step-value${
+                  qty > BAKERY_QTY_MAX
+                    ? " product-tile__step-value--error"
+                    : ""
+                }`}
                 min={0}
+                max={BAKERY_QTY_MAX}
                 step={1}
                 value={qty}
                 onChange={(e) =>
                   onQtyChange(parseInt(e.target.value, 10) || 0)
                 }
+                aria-invalid={qty > BAKERY_QTY_MAX ? "true" : undefined}
                 aria-label={`${d.name} quantity`}
               />
               <button
                 type="button"
                 className="product-tile__step-btn"
                 onClick={() => onQtyChange(qty + 1)}
+                disabled={qty >= BAKERY_QTY_MAX}
                 aria-label={`Increase ${d.name}`}
               >
                 +
               </button>
             </div>
+          )}
+          {qty > BAKERY_QTY_MAX && (
+            <p className="product-tile__qty-error" role="alert">
+              Max 9,999 units per product.
+            </p>
           )}
           <span className="product-tile__unit-cost">Cost: ${unitCost.toFixed(2)} / unit</span>
           <PriceInput

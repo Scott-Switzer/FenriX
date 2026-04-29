@@ -11,7 +11,10 @@ import {
 } from "../../../lib/cost";
 import { nextEquipmentGrade, tierUpgradeCost } from "../../../lib/equipment";
 
-const MAX_PER_ROLE = 20;
+// B-02 (2026-04-29): bumped from 20 → 99 per Q17. The button-disable
+// gate at MAX_PER_ROLE doubles as the cap; we don't render a separate
+// red error chip on the steppers because the +button just stops working.
+const MAX_PER_ROLE = 99;
 
 interface StepperProps {
   title: string;

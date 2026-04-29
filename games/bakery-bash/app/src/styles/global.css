@@ -828,6 +828,20 @@ h3 { font-size: 0.7rem; }
   outline-offset: -2px;
 }
 
+/* B-02 (2026-04-29): red border + helper text once the per-product
+   quantity exceeds the 9,999 cap. The qty error chip lives below the
+   stepper row inside the same product tile. */
+.product-tile__step-value--error {
+  border-color: var(--berry, #ef4444);
+  outline-color: var(--berry, #ef4444);
+}
+.product-tile__qty-error {
+  margin: 0.25rem 0 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--berry, #ef4444);
+}
+
 /* ─── PriceInput (POST-01) ─────────────────────────────────── */
 
 .price-input {
