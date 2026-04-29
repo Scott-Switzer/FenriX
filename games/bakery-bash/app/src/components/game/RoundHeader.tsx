@@ -1,9 +1,13 @@
 import { useState } from "react";
+import { httpsCallable } from "firebase/functions";
+import { functions } from "../../lib/firebase";
 import { useGame } from "../../contexts/GameContext";
 import { usePhaseCountdownSeconds } from "../../hooks/usePhaseCountdownSeconds";
 import { useGameRoster } from "../../hooks/useGameRoster";
+import { useGamePresence, isStale } from "../../hooks/useGamePresence";
 import { CsvInboxModal } from "./CsvInboxModal";
 import { GameProgressBar } from "./GameProgressBar";
+import { humanizeFunctionError } from "../../lib/errors";
 import {
   PLAYER_ROLE_LABELS,
   parseGamePhase,
@@ -240,6 +244,37 @@ export function RoundHeader() {
   // suffix of the uid when the roster doc hasn't landed yet (e.g. a fresh
   // anon auth) so the pill still renders something legible.
   const rosterByUid = useGameRoster(gameId);
+  // S-06 — presence map so we can flag teammates whose tabs went stale and
+  // surface a "Take over" button next to their pill. The 60s window
+  // matches `PRESENCE_STALE_MS` in `backend/functions/index.js` so we
+  // don't fire `reclaimTeammateRole` while the backend still considers
+  // the teammate connected.
+  const presenceState = useGamePresence(gameId);
+  const [takeoverPending, setTakeoverPending] = useState<string | null>(null);
+  const [takeoverError, setTakeoverError] = useState<string | null>(null);
+  const handleTakeover = async (targetUid: string) => {
+    if (!gameId || !teamId) return;
+    setTakeoverError(null);
+    setTakeoverPending(targetUid);
+    try {
+      const reclaim = httpsCallable<
+        { gameId: string; teamId: string; targetUid: string },
+        { ok: boolean }
+      >(functions, "reclaimTeammateRole");
+      await reclaim({ gameId, teamId, targetUid });
+      // The team-doc listener will re-emit `roleAssignments` without the
+      // cleared role; nothing to do locally.
+    } catch (err) {
+      setTakeoverError(
+        humanizeFunctionError(
+          err,
+          "Could not take over that role. Try again in a moment.",
+        ),
+      );
+    } finally {
+      setTakeoverPending(null);
+    }
+  };
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -354,7 +389,11 @@ export function RoundHeader() {
           )}
           {/* S-01 — per-teammate role pills. Bold "You" pill is highlighted
               when the signed-in player is the active role for the current
-              phase; teammates light up when THEIR role owns the phase. */}
+              phase; teammates light up when THEIR role owns the phase.
+              S-06 — when a teammate's presence has been stale > 60s, a
+              "Take over" button appears next to their pill. Clicking it
+              fires `reclaimTeammateRole` (M-10), clearing their role
+              claim so the active player can submit. */}
           {teamId && teammateEntries.length > 0 && (
             <ul
               className="round-header__roster-pills"
@@ -368,6 +407,11 @@ export function RoundHeader() {
                 const name = isMe
                   ? "You"
                   : rosterEntry?.displayName ?? `Player ${uid.slice(0, 4)}`;
+                // Only label other teammates as stale; "you" is the active
+                // tab and definitionally not stale (and you can't reclaim
+                // your own role — backend rejects with invalid-argument).
+                const teammateStale = !isMe && isStale(uid, presenceState);
+                const pendingThisUid = takeoverPending === uid;
                 return (
                   <li
                     key={uid}
@@ -376,6 +420,10 @@ export function RoundHeader() {
                     }${
                       isPhaseOwner
                         ? " round-header__roster-pill--active"
+                        : ""
+                    }${
+                      teammateStale
+                        ? " round-header__roster-pill--stale"
                         : ""
                     }`}
                   >
@@ -386,10 +434,30 @@ export function RoundHeader() {
                     <span className="round-header__roster-pill-role">
                       {PLAYER_ROLE_LABELS[teammateRole]}
                     </span>
+                    {teammateStale && (
+                      <button
+                        type="button"
+                        className="round-header__roster-pill-takeover"
+                        onClick={() => handleTakeover(uid)}
+                        disabled={!!takeoverPending}
+                        title={`${name} appears disconnected. Clear their role claim so the team can submit on their behalf.`}
+                        aria-label={`Take over ${PLAYER_ROLE_LABELS[teammateRole]} from ${name}`}
+                      >
+                        {pendingThisUid ? "…" : "Take over"}
+                      </button>
+                    )}
                   </li>
                 );
               })}
             </ul>
+          )}
+          {takeoverError && (
+            <div
+              className="round-header__takeover-error"
+              role="alert"
+            >
+              {takeoverError}
+            </div>
           )}
         </div>
       )}

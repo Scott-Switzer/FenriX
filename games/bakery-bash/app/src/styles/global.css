@@ -2430,6 +2430,49 @@ h3 { font-size: 0.7rem; }
   letter-spacing: 0.04em;
 }
 
+/* S-06 — stale teammate pill + inline take-over button. Pill desaturates
+   so the team's eye is drawn to the action button rather than the inert
+   role label. The button is small + low-affordance to discourage
+   accidental clicks; the backend re-checks presence stale status before
+   actually clearing the role. */
+.round-header__roster-pill--stale {
+  opacity: 0.7;
+  background: var(--cream, #fff7e6);
+  border-style: dashed;
+}
+
+.round-header__roster-pill-takeover {
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.4rem;
+  font: inherit;
+  font-size: 0.45rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--berry, #ef4444);
+  color: #fff;
+  border: 1px solid var(--berry, #ef4444);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.round-header__roster-pill-takeover:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.round-header__roster-pill-takeover:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.round-header__takeover-error {
+  flex-basis: 100%;
+  font-size: 0.5rem;
+  font-family: var(--font-pixel);
+  color: var(--berry, #ef4444);
+  margin-top: 0.25rem;
+}
+
 /* ─── Professor monitor (April 19) ───────────────────────── */
 
 .professor-page__monitor {

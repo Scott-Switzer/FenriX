@@ -853,7 +853,7 @@ The lay-off → re-hire is a **transient** state during the roster phase; once t
 
 ---
 
-## [ ] S-06 [P1, S] — "Take over" button next to disconnected teammates (mirror M-10)
+## [x] S-06 [P1, S] — "Take over" button next to disconnected teammates (mirror M-10) (✅ DONE 2026-04-29 by Claude/Scott)
 
 **Problem.** Pairs with Massaro's M-10 backend callable.
 
