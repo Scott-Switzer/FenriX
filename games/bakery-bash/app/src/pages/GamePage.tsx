@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  collection,
   doc,
   onSnapshot,
   type DocumentData,
@@ -12,6 +11,7 @@ import {
   useGameDispatch,
   useGameDraftSync,
 } from "../contexts/GameContext";
+import { useGameRoster } from "../hooks/useGameRoster";
 import { PixelBakeryScene } from "../components/bakery-scene/PixelBakeryScene";
 import { SceneErrorBoundary } from "../components/bakery-scene/SceneErrorBoundary";
 import "../styles/pixel-scene.css";
@@ -133,15 +133,19 @@ export function GamePage() {
   // The aggregate `rounds/round_{N}` doc writes
   // `auctionResults.ads.{TV|Billboard|Radio|Newspaper}.{winnerId, winningBid}`
   // (see firestore-schema.js). We resolve each `winnerId` to a bakery name
-  // via the public roster subcollection so the banner shows "Bakery — $X"
-  // rather than a raw uid. Rendering falls back to the empty state when
-  // any part of the chain is missing.
-  const [adWinners, setAdWinners] = useState<
-    Partial<Record<AdWinnerEntry["adType"], AdWinnerEntry>> | null
+  // via the roster hook so the banner shows "Bakery — $X" rather than a raw
+  // uid. Rendering falls back to the empty state when any part of the chain
+  // is missing.
+  //
+  // Listener-audit fix: the roster data is now read from `useGameRoster`
+  // (shared with RoundHeader) instead of a local onSnapshot — eliminates a
+  // duplicate roster collection listener. Name resolution is a pure useMemo
+  // over the raw auction data + roster, so a roster change no longer tears
+  // down and re-subscribes the rounds-doc listener.
+  const rosterByUid = useGameRoster(gameId);
+  const [rawAdAuction, setRawAdAuction] = useState<
+    Record<string, { winnerId: string; winningBid: number }> | null
   >(null);
-  const [rosterByUid, setRosterByUid] = useState<
-    Record<string, { displayName?: string; bakeryName?: string }>
-  >({});
 
   // --- Listener: /games/{gameId} — drives phase + round + phaseEndsAt. ---
   useEffect(() => {
@@ -525,63 +529,36 @@ export function GamePage() {
   const parsed = parseGamePhase(phase, currentRound);
   const basePhase = parsed.base;
 
-  // Subscribe to the roster so we can map `winnerId` → bakeryName/display.
-  // Rules allow everyone to read the roster subcollection, so this works
-  // without professor custom claims.
-  useEffect(() => {
-    if (!gameId) return;
-    const rosterRef = collection(db, "games", gameId, "roster");
-    const unsubscribe = onSnapshot(
-      rosterRef,
-      (snap) => {
-        const map: Record<
-          string,
-          { displayName?: string; bakeryName?: string }
-        > = {};
-        snap.docs.forEach((d) => {
-          const data = d.data() as DocumentData;
-          map[d.id] = {
-            displayName:
-              typeof data.displayName === "string" ? data.displayName : undefined,
-            bakeryName:
-              typeof data.bakeryName === "string" ? data.bakeryName : undefined,
-          };
-        });
-        setRosterByUid(map);
-      },
-      (err) => {
-        console.error("game roster listener error:", { gameId, err });
-      },
-    );
-    return unsubscribe;
-  }, [gameId]);
-
   // FE-11 — read this round's ad winners for the banner on the decide screen.
   // Ad bidding now happens BEFORE decisions in the same round, so we read
   // `rounds/round_{N}.auctionResults.ads` (not the previous round's doc).
   // `hideWhenEmpty` on the banner hides it gracefully on round 1 before
   // any bids have been placed.
+  //
+  // Listener-audit: the rounds-doc listener stores raw {winnerId, winningBid}
+  // pairs. Name resolution happens in the useMemo below so a roster change
+  // never tears down / re-subscribes this Firestore listener.
   useEffect(() => {
     if (!gameId || !currentRound) {
-      setAdWinners(null);
+      setRawAdAuction(null);
       return;
     }
-    const prevRoundRef = doc(db, "games", gameId, "rounds", `round_${currentRound}`);
+    const roundRef = doc(db, "games", gameId, "rounds", `round_${currentRound}`);
     const unsubscribe = onSnapshot(
-      prevRoundRef,
+      roundRef,
       (snap) => {
         if (!snap.exists()) {
-          setAdWinners(null);
+          setRawAdAuction(null);
           return;
         }
         const data = snap.data() as DocumentData;
         const auction = data.auctionResults as DocumentData | undefined;
         const adsRaw = (auction?.ads ?? null) as DocumentData | null;
         if (!adsRaw || typeof adsRaw !== "object") {
-          setAdWinners(null);
+          setRawAdAuction(null);
           return;
         }
-        const out: Partial<Record<AdWinnerEntry["adType"], AdWinnerEntry>> = {};
+        const out: Record<string, { winnerId: string; winningBid: number }> = {};
         (["TV", "Billboard", "Radio", "Newspaper"] as const).forEach((t) => {
           const entry = adsRaw[t];
           if (!entry || typeof entry !== "object") return;
@@ -589,22 +566,32 @@ export function GamePage() {
             typeof entry.winnerId === "string" ? entry.winnerId : null;
           const winningBid =
             typeof entry.winningBid === "number" ? entry.winningBid : undefined;
-          if (!winnerId || !winningBid) return; // no bids landed for this surface
-          out[t] = {
-            adType: t,
-            amount: winningBid,
-            bakeryName: rosterByUid[winnerId]?.bakeryName,
-            displayName: rosterByUid[winnerId]?.displayName,
-          };
+          if (!winnerId || !winningBid) return;
+          out[t] = { winnerId, winningBid };
         });
-        setAdWinners(Object.keys(out).length > 0 ? out : null);
+        setRawAdAuction(Object.keys(out).length > 0 ? out : null);
       },
       (err) => {
         console.error("game current-round ad-winner listener error:", { gameId, currentRound, err });
       },
     );
     return unsubscribe;
-  }, [gameId, currentRound, rosterByUid]);
+  }, [gameId, currentRound]);
+
+  const adWinners = useMemo(() => {
+    if (!rawAdAuction) return null;
+    const out: Partial<Record<AdWinnerEntry["adType"], AdWinnerEntry>> = {};
+    for (const [t, { winnerId, winningBid }] of Object.entries(rawAdAuction)) {
+      const adType = t as AdWinnerEntry["adType"];
+      out[adType] = {
+        adType,
+        amount: winningBid,
+        bakeryName: rosterByUid[winnerId]?.bakeryName,
+        displayName: rosterByUid[winnerId]?.displayName,
+      };
+    }
+    return Object.keys(out).length > 0 ? out : null;
+  }, [rawAdAuction, rosterByUid]);
 
   // Redirect into the dedicated phase page when backend says so. This is
   // phase-driven (not a manual navigation after submit).
