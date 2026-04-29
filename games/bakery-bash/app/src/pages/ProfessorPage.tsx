@@ -103,6 +103,23 @@ const SUBMISSION_PHASES: Array<{ key: BasePhase; label: string }> = [
 ];
 
 /**
+ * M-19 (2026-04-28): canonical within-round phase order. Used to determine
+ * whether the round has advanced PAST a given submission phase — if so the
+ * grid flips to ✓ regardless of whether the team actually submitted (the
+ * phase has moved on, the window to submit is closed, visually it's "done").
+ * Mirrors the backend `PHASE_ORDER` in modules/phases.js.
+ */
+const ROUND_PHASE_ORDER: BasePhase[] = [
+  "email",
+  "bid_ad",
+  "bid_chef",
+  "roster",
+  "decide",
+  "simulating",
+  "results_ready",
+];
+
+/**
  * T2.1 — hot callables warmed by the "Warm up servers" button. Each is its
  * own Cloud Run service in Gen 2, so we have to invoke each one to pre-spin
  * its instance pool. Keep in sync with `isWarmupRequest` short-circuits in
@@ -503,6 +520,16 @@ export function ProfessorPage() {
   //     not useful here.
   // Passes `expectedFromPhase` so the backend's CRIT-02 guard rejects
   // double-advances when multiple professor tabs each fire their own timer.
+  //
+  // M-07 (2026-04-28): replaced setTimeout with a 1s setInterval polling
+  // Date.now() against an absolute target. setTimeout in a backgrounded
+  // tab is throttled by Chrome (≥ 1s, can stretch to 1+ min), so a prof
+  // who tabbed away during the email phase saw round 2 never advance.
+  // setInterval gets the same throttling but the absolute-time check
+  // means the very next tick after the tab returns to foreground will
+  // fire — bounded by the throttled cadence rather than the original
+  // delay value. The expectedFromPhase guard still de-dupes duplicate
+  // fires across multiple prof tabs.
   useEffect(() => {
     if (!phaseEndsAtMs || !gameId || !phase) return;
     const msUntilExpiry = phaseEndsAtMs - Date.now();
@@ -517,17 +544,23 @@ export function ProfessorPage() {
     // GamePhaseListener — see the matching comment there. 3s feels much
     // tighter than the old 15s "waiting for professor" pause.
     const extraDelay = submissionPhase ? 3_000 : 0;
-    const delay = Math.max(0, msUntilExpiry) + extraDelay;
+    const targetMs = phaseEndsAtMs + extraDelay;
     const expectedFromPhase = phase;
-    const t = setTimeout(() => {
-      void callCallableRef.current(
-        "advanceGamePhase",
-        "auto-advance",
-        "Phase auto-advanced.",
-        { expectedFromPhase },
-      );
-    }, delay);
-    return () => clearTimeout(t);
+    let fired = false;
+    const interval = setInterval(() => {
+      if (fired) return;
+      if (Date.now() >= targetMs) {
+        fired = true;
+        clearInterval(interval);
+        void callCallableRef.current(
+          "advanceGamePhase",
+          "auto-advance",
+          "Phase auto-advanced.",
+          { expectedFromPhase },
+        );
+      }
+    }, 1000);
+    return () => clearInterval(interval);
   }, [phaseEndsAtMs, gameId, phase, currentRound]);
 
   const rosterByUid = useMemo(
@@ -586,6 +619,32 @@ export function ProfessorPage() {
           : phaseKey === "bid_chef"
             ? "finance"
             : "operations";
+
+      // M-19 (2026-04-28): if the round has advanced past `phaseKey`, flip
+      // to ✓ regardless of submission state. Once a phase is gone the team's
+      // window to submit is closed; showing ⏳ next to a moved-on phase
+      // confused profs at the playtest ("did they submit or not?"). The
+      // submitter info (name + timestamp) intentionally returns null here
+      // because no canonical "they submitted" record exists for a missed
+      // phase — the tooltip just reads the phase as done.
+      const currentBasePhase = phase
+        ? parseGamePhase(phase, currentRound).base
+        : null;
+      const currentIdx = currentBasePhase
+        ? ROUND_PHASE_ORDER.indexOf(currentBasePhase)
+        : -1;
+      const phaseIdx = ROUND_PHASE_ORDER.indexOf(phaseKey);
+      const phaseAlreadyPassed =
+        currentIdx >= 0 && phaseIdx >= 0 && currentIdx > phaseIdx;
+      if (phaseAlreadyPassed) {
+        return {
+          submitted: true,
+          submittedBy: null,
+          submittedByUid: null,
+          preferredRole,
+        };
+      }
+
       const phaseSubs = submissions[phaseKey] ?? {};
       // Walk every member uid that exists either on the team's role
       // assignments or its memberUids, and surface the first that has
@@ -627,7 +686,9 @@ export function ProfessorPage() {
         preferredRole,
       };
     },
-    [submissions],
+    // M-19: phase + currentRound are read for the "phase already passed"
+    // check at the top, so they belong in the deps array.
+    [submissions, phase, currentRound],
   );
 
   const onStart = () => callCallable("startGame", "start", "Game started.");

@@ -3349,6 +3349,204 @@ exports.layoffChef = onCall(CALLABLE_OPTS, async (request) => {
 });
 
 // ===========================================================================
+// layoffChefs (M-13)
+// ===========================================================================
+//
+// Batch lay-off variant of layoffChef. Accepts an array of chefIds and writes
+// every chef to the chefReturnPool + the team's specialtyChefs update inside
+// a single transaction so concurrent layoffs by teammates can't drift the
+// roster between reads and writes. Mirrors the auth + phase + cap rules of
+// the single-chef callable. Scott consumes this from the FE for the new
+// "Lay offs" panel UX (S-05).
+
+exports.layoffChefs = onCall(CALLABLE_OPTS, async (request) => {
+  if (isWarmupRequest(request)) return { ok: true, warm: true };
+  const auth = requireAuth(request);
+  const data = request.data || {};
+  const gameId = cleanGameId(data.gameId);
+  const rawChefIds = Array.isArray(data.chefIds) ? data.chefIds : null;
+  if (!rawChefIds || rawChefIds.length === 0) {
+    throw new HttpsError('invalid-argument', 'chefIds must be a non-empty array.');
+  }
+  const chefIds = [];
+  const seen = new Set();
+  for (const c of rawChefIds) {
+    const id = cleanString(c);
+    if (!id) {
+      throw new HttpsError('invalid-argument', 'chefIds entries must be non-empty strings.');
+    }
+    if (!seen.has(id)) {
+      seen.add(id);
+      chefIds.push(id);
+    }
+  }
+
+  const uid = auth.uid;
+  const gameRef = gameDoc(gameId);
+  const playerRef = gameRef.collection('players').doc(uid);
+
+  let _laidOffCount = 0;
+
+  await db.runTransaction(async (transaction) => {
+    const [gSnap, pSnap, cfgSnap] = await Promise.all([
+      transaction.get(gameRef),
+      transaction.get(playerRef),
+      transaction.get(gameRef.collection('config').doc('params')),
+    ]);
+    if (!gSnap.exists) throw new HttpsError('not-found', 'Game not found.');
+    if (!pSnap.exists) throw new HttpsError('failed-precondition', 'Player not in this game.');
+
+    await assertRoleAllowedWithTeam(transaction, gameRef, pSnap, ['operations']);
+
+    const game = gSnap.data();
+    const { phase } = parsePhase(game.phase, game.currentRound || game.round);
+    if (phase !== 'roster') {
+      throw new HttpsError('failed-precondition', 'Chefs can only be laid off during the roster phase.');
+    }
+
+    const config = mergeConfig(cfgSnap.exists ? cfgSnap.data() : {});
+    const specialtyChefCap = numberOrDefault(config.specialtyChefCap, 3);
+    const player = pSnap.data();
+    const teamId = getPlayerTeamId(player);
+    const teamPlayerDocs = teamId
+      ? (await transaction.get(gameRef.collection('players').where('teamId', '==', teamId))).docs
+      : [pSnap];
+    const specialtyChefs = Array.isArray(player.specialtyChefs) ? player.specialtyChefs : [];
+    const round = numberOrDefault(game.currentRound || game.round, 1);
+
+    // All-or-nothing: validate every requested chef before any writes so
+    // partial failures can't leave the roster in an unexpected state.
+    const removed = [];
+    for (const chefId of chefIds) {
+      const chef = specialtyChefs.find((c) => c && c.id === chefId);
+      if (!chef) {
+        throw new HttpsError('not-found', `Chef ${chefId} not on your roster.`);
+      }
+      removed.push(chef);
+    }
+    const removedIds = new Set(chefIds);
+    const remaining = specialtyChefs.filter(
+      (c) => !c || !removedIds.has(c.id),
+    );
+
+    for (const chef of removed) {
+      const returnPoolRef = gameRef
+        .collection('rounds')
+        .doc(`round_${round}`)
+        .collection('chefReturnPool')
+        .doc(chef.id);
+      transaction.set(returnPoolRef, {
+        ...chef,
+        returnedByPlayerId: uid,
+        returnedAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    for (const teamPlayerDoc of teamPlayerDocs) {
+      transaction.update(teamPlayerDoc.ref, {
+        specialtyChefs: remaining,
+        pendingRosterAction: remaining.length > specialtyChefCap,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    _laidOffCount = removed.length;
+  });
+
+  return { gameId, chefIds, laidOffCount: _laidOffCount };
+});
+
+// ===========================================================================
+// reclaimTeammateRole (M-10)
+// ===========================================================================
+//
+// Allows any teammate to clear `roleAssignments[targetUid]` on the team doc
+// when the target's presence has gone stale or their player doc is flagged
+// disconnected. Without this, a closed-tab teammate's specialist role
+// stays locked on the team forever and the remaining teammates can't take
+// over the corresponding submit button.
+
+const PRESENCE_STALE_MS = 60_000;
+
+exports.reclaimTeammateRole = onCall(CALLABLE_OPTS, async (request) => {
+  if (isWarmupRequest(request)) return { ok: true, warm: true };
+  const auth = requireAuth(request, 'Sign in to reclaim a teammate role.');
+  const data = request.data || {};
+  const gameId = cleanGameId(data.gameId);
+  const teamId = cleanString(data.teamId);
+  const targetUid = cleanString(data.targetUid);
+  if (!teamId) throw new HttpsError('invalid-argument', 'teamId is required.');
+  if (!targetUid) throw new HttpsError('invalid-argument', 'targetUid is required.');
+  if (targetUid === auth.uid) {
+    throw new HttpsError('invalid-argument', 'Cannot reclaim your own role — clear it via setTeamRole.');
+  }
+
+  const uid = auth.uid;
+  const gameRef = gameDoc(gameId);
+  const teamRef = gameRef.collection('teams').doc(teamId);
+  const callerRef = gameRef.collection('players').doc(uid);
+  const targetPlayerRef = gameRef.collection('players').doc(targetUid);
+  const targetPresenceRef = gameRef.collection('presence').doc(targetUid);
+
+  await db.runTransaction(async (transaction) => {
+    const [gSnap, callerSnap, teamSnap, targetSnap, presenceSnap] = await Promise.all([
+      transaction.get(gameRef),
+      transaction.get(callerRef),
+      transaction.get(teamRef),
+      transaction.get(targetPlayerRef),
+      transaction.get(targetPresenceRef),
+    ]);
+
+    if (!gSnap.exists) throw new HttpsError('not-found', 'Game not found.');
+    if (!callerSnap.exists) {
+      throw new HttpsError('failed-precondition', 'Join the game before reclaiming a role.');
+    }
+    if (!teamSnap.exists) {
+      throw new HttpsError('not-found', 'Team not found.');
+    }
+    const callerTeamId = getPlayerTeamId(callerSnap.data());
+    if (callerTeamId !== teamId) {
+      throw new HttpsError('permission-denied', 'You can only reclaim a role on your own team.');
+    }
+
+    // Eligibility: presence stale OR disconnected flag set on the target's
+    // player doc. The disconnected flag is set by the simulation when a
+    // player misses two consecutive rounds (BE-19); presence is set when
+    // their tab closes / backgrounds for > 60s.
+    const lastSeenAt = presenceSnap.exists ? presenceSnap.get('lastSeenAt') : null;
+    const lastSeenMs = lastSeenAt && typeof lastSeenAt.toMillis === 'function'
+      ? lastSeenAt.toMillis()
+      : 0;
+    const presenceStale = lastSeenMs > 0
+      ? (Timestamp.now().toMillis() - lastSeenMs) > PRESENCE_STALE_MS
+      : true; // no presence doc → treat as stale (never connected this session)
+    const targetDisconnected = targetSnap.exists
+      && targetSnap.get('disconnected') === true;
+
+    if (!presenceStale && !targetDisconnected) {
+      throw new HttpsError(
+        'failed-precondition',
+        'That teammate is still connected. Wait 60s after they leave before reclaiming.',
+      );
+    }
+
+    const teamData = teamSnap.data() || {};
+    const roleAssignments = teamData.roleAssignments || {};
+    if (roleAssignments[targetUid] === undefined || roleAssignments[targetUid] === null) {
+      // Idempotent — no role to clear, return success rather than error.
+      return;
+    }
+
+    transaction.update(teamRef, {
+      [`roleAssignments.${targetUid}`]: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+
+  return { gameId, teamId, targetUid, reclaimed: true };
+});
+
+// ===========================================================================
 // continueFromRoster
 // ===========================================================================
 

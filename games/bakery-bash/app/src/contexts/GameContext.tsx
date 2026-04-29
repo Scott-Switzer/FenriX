@@ -522,6 +522,10 @@ type PersistedSession = {
   gameCode: string;
   role: PlayerRole;
   teamId: string | null;
+  // M-08: track the round on the session so a refresh during decide
+  // can scope the persisted draft to the correct round before the
+  // Firestore listener catches up.
+  currentRound: number;
 };
 
 function readPersistedSession(): PersistedSession | null {
@@ -551,6 +555,10 @@ function readPersistedSession(): PersistedSession | null {
       gameCode: parsed.gameCode,
       role,
       teamId: typeof parsed.teamId === "string" ? parsed.teamId : null,
+      currentRound:
+        typeof parsed.currentRound === "number" && parsed.currentRound >= 0
+          ? parsed.currentRound
+          : 0,
     };
   } catch {
     return null;
@@ -572,9 +580,99 @@ function writePersistedSession(payload: PersistedSession | null): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// M-08 (2026-04-28) — Decide-phase draft persistence
+//
+// Refresh during decide previously wiped the in-progress decision because
+// `pendingDecision` / `pendingAdBids` / `pendingChefBids` lived only in the
+// reducer (Firestore only sees them post-submit). Persist them under a
+// sibling storage key, scoped by (gameId, playerId, currentRound) so:
+//   • a stale draft from a previous round can't bleed into round N+1, and
+//   • a different uid signing into the same browser can't see another
+//     player's draft.
+// Storage choice mirrors PERSISTED_SESSION_KEY (sessionStorage in dev so
+// multi-tab playtesting stays independent; localStorage in prod).
+// ---------------------------------------------------------------------------
+const PERSISTED_DRAFT_KEY = "bakery-bash:pending-draft";
+
+type PersistedDraft = {
+  gameId: string;
+  playerId: string;
+  round: number;
+  pendingDecision: PendingDecisionDraft;
+  pendingAdBids: PendingAdBidsDraft;
+  pendingChefBids: PendingChefBidsDraft;
+};
+
+function readPersistedDraft(scope: {
+  gameId: string;
+  playerId: string;
+  round: number;
+}): PersistedDraft | null {
+  try {
+    const storage = persistedSessionStorage();
+    if (!storage) return null;
+    const raw = storage.getItem(PERSISTED_DRAFT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PersistedDraft> | null;
+    if (
+      !parsed ||
+      parsed.gameId !== scope.gameId ||
+      parsed.playerId !== scope.playerId ||
+      parsed.round !== scope.round
+    ) {
+      return null;
+    }
+    if (
+      !parsed.pendingDecision ||
+      !parsed.pendingAdBids ||
+      !parsed.pendingChefBids
+    ) {
+      return null;
+    }
+    // PR #126 contract: `miscSpent` is a UI-only running tally that resets
+    // on refresh — the server owns the budget, and the field is `Omit`'d
+    // from SubmitPayload. Strip it from the rehydrated draft so refresh
+    // restores menu/quantities/prices/bids without resurrecting the local
+    // tally. Also defends `BakeryView`'s unguarded `miscSpent.toFixed(2)`
+    // against a draft persisted before `miscSpent` (or any future field)
+    // existed — the spread guarantees the field is always a number.
+    return {
+      ...parsed,
+      pendingDecision: { ...parsed.pendingDecision, miscSpent: 0 },
+    } as PersistedDraft;
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedDraft(payload: PersistedDraft | null): void {
+  try {
+    const storage = persistedSessionStorage();
+    if (!storage) return;
+    if (!payload) {
+      storage.removeItem(PERSISTED_DRAFT_KEY);
+      return;
+    }
+    storage.setItem(PERSISTED_DRAFT_KEY, JSON.stringify(payload));
+  } catch {
+    // Quota / private mode: acceptable to no-op; refresh just loses the draft.
+  }
+}
+
 function buildInitialState(): GameState {
   const persisted = readPersistedSession();
   if (!persisted) return initialState;
+  // M-08: rehydrate the in-progress draft if it matches the persisted
+  // session's (gameId, playerId, currentRound). On round advance the
+  // post-state-change effect detects the round mismatch and clears the
+  // draft via writePersistedDraft(null), so a stale draft can't bleed
+  // into round N+1.
+  const draft = readPersistedDraft({
+    gameId: persisted.gameId,
+    playerId: persisted.playerId,
+    round: persisted.currentRound,
+  });
   return {
     ...initialState,
     gameId: persisted.gameId,
@@ -582,6 +680,14 @@ function buildInitialState(): GameState {
     gameCode: persisted.gameCode,
     role: persisted.role,
     teamId: persisted.teamId,
+    currentRound: persisted.currentRound,
+    ...(draft
+      ? {
+          pendingDecision: draft.pendingDecision,
+          pendingAdBids: draft.pendingAdBids,
+          pendingChefBids: draft.pendingChefBids,
+        }
+      : {}),
   };
 }
 
@@ -592,7 +698,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
     buildInitialState,
   );
 
-  const { gameId, playerId, gameCode, role, teamId, phase } = state;
+  const {
+    gameId,
+    playerId,
+    gameCode,
+    role,
+    teamId,
+    phase,
+    currentRound,
+    pendingDecision,
+    pendingAdBids,
+    pendingChefBids,
+  } = state;
   useEffect(() => {
     // Clear on game_over so a reopened tab lands on the landing page instead
     // of being re-routed into the finished game's conclusion screen.
@@ -600,8 +717,54 @@ export function GameProvider({ children }: { children: ReactNode }) {
       writePersistedSession(null);
       return;
     }
-    writePersistedSession({ gameId, playerId, gameCode, role, teamId });
-  }, [gameId, playerId, gameCode, role, teamId, phase]);
+    writePersistedSession({
+      gameId,
+      playerId,
+      gameCode,
+      role,
+      teamId,
+      currentRound,
+    });
+  }, [gameId, playerId, gameCode, role, teamId, phase, currentRound]);
+
+  // M-08: persist the in-progress draft on every mutation. Scoped by
+  // (gameId, playerId, round) so a refresh restores only when all three
+  // match — and SET_ROUND resets all three drafts on round advance, so
+  // cross-round bleed is impossible. Cleared on game_over only.
+  //
+  // Why no `decisionSubmitted` guard: in team mode the team-pending
+  // listener flips `decisionSubmitted=true` for every team member the
+  // moment Operations submits (GamePage.tsx). If we cleared storage on
+  // that flag, Advertising/Finance's `pendingAdBids`/`pendingChefBids`
+  // would never get persisted during the auction phases — a refresh
+  // mid-bid would lose the typed amounts (no Firestore hydration path
+  // exists for `pendingBids`; see GamePage.tsx ~L377 comment). On a
+  // post-submit refresh BakeryView re-renders with the persisted draft,
+  // becomes read-only as soon as the listener re-fires
+  // SET_DECISION_SUBMITTED:true (~100ms), and the draft is cleared on
+  // the next round advance.
+  useEffect(() => {
+    if (!gameId || !playerId || phase === "game_over") {
+      writePersistedDraft(null);
+      return;
+    }
+    writePersistedDraft({
+      gameId,
+      playerId,
+      round: currentRound,
+      pendingDecision,
+      pendingAdBids,
+      pendingChefBids,
+    });
+  }, [
+    gameId,
+    playerId,
+    currentRound,
+    phase,
+    pendingDecision,
+    pendingAdBids,
+    pendingChefBids,
+  ]);
 
   return (
     <GameContext.Provider value={state}>
