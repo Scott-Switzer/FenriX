@@ -784,29 +784,6 @@ h3 { font-size: 0.7rem; }
   background: var(--cream);
 }
 
-.product-tile__remove {
-  font-family: var(--font-pixel);
-  font-size: 0.6rem;
-  width: 28px;
-  border: var(--border-light);
-  background: var(--cream);
-  color: var(--berry);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.product-tile__remove:hover {
-  background: var(--berry);
-  color: var(--flour);
-}
-
-.product-tile__remove:focus-visible {
-  outline: none;
-  border-color: var(--berry);
-}
-
 .product-tile__step-btn {
   font-family: var(--font-pixel);
   font-size: 0.7rem;
@@ -938,27 +915,6 @@ h3 { font-size: 0.7rem; }
   background: var(--honey);
   color: var(--espresso);
   border-color: var(--caramel);
-}
-
-.product-tile__add {
-  grid-column: 1 / -1;
-  font-family: var(--font-pixel);
-  font-size: 0.5rem;
-  padding: 0.45rem 0.7rem;
-  border: var(--border-light);
-  background: var(--honey);
-  color: var(--espresso);
-  cursor: pointer;
-  text-transform: uppercase;
-}
-
-.product-tile__add:hover:not(:disabled) {
-  background: var(--golden);
-}
-
-.product-tile__add:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
 }
 
 /* ─── Apr 28 2026 — station-unlock paywall ─────────────────── */

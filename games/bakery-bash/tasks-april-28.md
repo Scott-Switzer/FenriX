@@ -508,7 +508,7 @@ Pass `disabled={!roleOwnsX(role, teamRoleAssignments)}` on each input. Add a too
 
 ---
 
-## [ ] K-04 [P0, S] — Auto-enable all unlocked products (kill the "+ Add" button)
+## [x] K-04 [P0, S] — Auto-enable all unlocked products (kill the "+ Add" button) (✅ DONE 2026-04-29 by Claude/Kavin-Sofia)
 
 **Problem.** `BakeryView.tsx:259-268` renders "+ Add" buttons for unlocked-but-disabled products. User wants them auto-enabled.
 

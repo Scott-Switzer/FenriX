@@ -126,7 +126,6 @@ interface ProductTileProps {
   unitCost: number;
   onQtyChange: (next: number) => void;
   onPriceChange: (next: number) => void;
-  onToggle: (next: boolean) => void;
   /** FE-9 — lock quantity + menu toggle once the round is submitted. */
   readOnly?: boolean;
   /** POST-01 — disable the price stepper when the viewer is not Finance. */
@@ -146,15 +145,14 @@ function ProductTile({
   unitCost,
   onQtyChange,
   onPriceChange,
-  onToggle,
   readOnly = false,
   priceDisabled,
 }: ProductTileProps) {
   const d = PRODUCT_DISPLAY[product];
-  // Apr 28 2026 — three states for a non-base tile:
-  //   1. unlocked + on menu  → full controls (qty stepper, price, remove)
-  //   2. unlocked + off menu → "+ Add" button
-  //   3. locked              → "Unlock for $X" button (purchase first)
+  // Two states for a non-base tile (K-04 collapsed the old "+ Add"
+  // intermediate step — unlock now auto-enables the product on the menu):
+  //   1. unlocked → full controls (qty stepper, price)
+  //   2. locked   → "Unlock for $X" button (purchase first)
   const showLockedState = !isBase && !isUnlocked;
   return (
     <div
@@ -225,17 +223,10 @@ function ProductTile({
             cfg={PRICE_ZONES[product]}
             disabled={readOnly || priceDisabled}
           />
-          {!isBase && !readOnly && (
-            <button
-              type="button"
-              className="product-tile__remove"
-              onClick={() => onToggle(false)}
-              aria-label={`Remove ${d.name} from menu`}
-              title={`Remove ${d.name} from menu`}
-            >
-              ✕
-            </button>
-          )}
+          {/* K-04 (2026-04-29): once unlocked, products stay on menu. The
+              "Remove" (✕) and "+ Add" affordances were removed alongside
+              the SET_TEAM_UNLOCKS auto-enable in GameContext. Users dial
+              quantity to 0 to skip a product instead of toggling it off.*/}
         </div>
       ) : readOnly ? (
         <span className="product-tile__muted">
@@ -256,16 +247,7 @@ function ProductTile({
         >
           🔒 Unlock — ${unlockCost.toLocaleString()}
         </button>
-      ) : (
-        <button
-          type="button"
-          className="product-tile__add"
-          onClick={() => onToggle(true)}
-          disabled={isBase}
-        >
-          + Add
-        </button>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -352,23 +334,6 @@ export function BakeryView({ readOnly = false }: BakeryViewProps) {
     });
   };
 
-  const toggleMenu = (product: ProductKey, checked: boolean) => {
-    if (readOnly) return;
-    if (BASE_MENU.includes(product)) return;
-    // Apr 28 2026 — guard against putting a still-locked product on the
-    // menu. The UI should never let this happen (unlocked products show
-    // "+ Add"; locked ones show "🔒 Unlock") but the toggle handler is
-    // shared so we re-check here.
-    if (checked && !unlockedProducts.includes(product)) return;
-    dispatch({
-      type: "UPDATE_PENDING_DECISION",
-      payload: {
-        menu: { [product]: checked },
-        ...(checked ? {} : { quantities: { [product]: 0 } }),
-      },
-    });
-  };
-
   const bakeryCost = totalProductCost(
     pendingDecision.menu,
     pendingDecision.quantities,
@@ -452,7 +417,6 @@ export function BakeryView({ readOnly = false }: BakeryViewProps) {
                       unitCost={unitCost}
                       onQtyChange={(n) => setQty(product, n)}
                       onPriceChange={(n) => setPrice(product, n)}
-                      onToggle={(next) => toggleMenu(product, next)}
                       readOnly={readOnly}
                       priceDisabled={!canEditPrices}
                     />

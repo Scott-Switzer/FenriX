@@ -483,12 +483,20 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       if (sameMembers && state.unlocksPurchased === unlocksPurchased) {
         return state;
       }
-      // Apr 28 2026 — when a product gets unlocked, the player has not yet
-      // toggled it onto their menu. Don't auto-add it; just make the
-      // BakeryView UI render an "Add" affordance instead of "Unlock for $X".
+      // K-04 (2026-04-29) — auto-enable newly unlocked products on the
+      // menu. Previously the BakeryView rendered a separate "+ Add" step
+      // after unlock; user feedback flagged that as redundant friction.
+      // Now: unlock IS the toggle-on. Quantity steppers handle "I don't
+      // actually want to bake any" — set qty=0 instead of toggling off.
       // Conversely, if a product slips out of the unlocked set (shouldn't
       // happen post-purchase, but defensive against admin/reset paths),
       // remove it from the pending menu and zero its quantity.
+      const newlyUnlocked = unlockedProducts.filter(
+        (p) =>
+          !BASE_MENU.includes(p) &&
+          !state.unlockedProducts.includes(p) &&
+          !state.pendingDecision.menu[p],
+      );
       const newlyLocked = (Object.keys(state.pendingDecision.menu) as ProductKey[])
         .filter(
           (p) =>
@@ -496,13 +504,16 @@ function gameReducer(state: GameState, action: GameAction): GameState {
             !BASE_MENU.includes(p) &&
             !unlockedProducts.includes(p),
         );
-      const nextDecision = newlyLocked.length
+      const nextDecision = newlyUnlocked.length || newlyLocked.length
         ? {
             ...state.pendingDecision,
             menu: { ...state.pendingDecision.menu },
             quantities: { ...state.pendingDecision.quantities },
           }
         : state.pendingDecision;
+      for (const p of newlyUnlocked) {
+        nextDecision.menu[p] = true;
+      }
       for (const p of newlyLocked) {
         nextDecision.menu[p] = false;
         nextDecision.quantities[p] = 0;
