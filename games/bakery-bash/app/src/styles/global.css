@@ -4174,6 +4174,19 @@ h3 { font-size: 0.7rem; }
 .bakery-view__total-committed-row--total { font-size: 1.05rem; padding-bottom: 0.25rem; border-bottom: 1px dashed var(--dough, #e8d4a8); margin-bottom: 0.25rem; }
 .bakery-view__total-committed-row:not(.bakery-view__total-committed-row--total) { color: var(--dark-roast, #6b4226); font-size: 0.85rem; padding-left: 0.25rem; }
 
+/* B-06 (2026-04-29): yellow loan-shark warning chip. Sits inside the
+   total-committed block so it reads as a sibling of the spend rows. */
+.bakery-view__loan-shark-warning {
+  margin-top: 0.4rem;
+  padding: 0.5rem 0.7rem;
+  background: var(--honey, #f59e0b);
+  color: var(--espresso, #4a2c1a);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
 /* ── FE-N09: Round header timer expired message ──────────────────────── */
 .round-header__timer-expired { font-size: 0.85rem; color: var(--berry, #ef4444); font-weight: bold; }
 

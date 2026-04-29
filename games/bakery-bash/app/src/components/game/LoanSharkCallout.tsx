@@ -39,14 +39,20 @@ export function LoanSharkCallout({
           The loan shark paid you a visit.
         </div>
         <div className="loan-shark-callout__detail">
-          You overspent by <strong>{formatMoney(amountBorrowed)}</strong> this
-          round.
-          {typeof interestCharged === "number" && (
+          {/* B-06 (2026-04-29): name the rate explicitly so players
+              understand the cost of overspending without needing the
+              How-to-Play page. The rate stays in lockstep with the
+              backend ledger via the `interestCharged` value, but the
+              "10% interest" label gives them the rule of thumb. */}
+          Borrowed <strong>{formatMoney(amountBorrowed)}</strong> at{" "}
+          <strong>10% interest</strong>
+          {typeof interestCharged === "number" ? (
             <>
-              {" "}
-              Interest charged:{" "}
-              <strong>{formatMoney(interestCharged)}</strong>.
+              {" "}— paid <strong>{formatMoney(interestCharged)}</strong>{" "}
+              this round.
             </>
+          ) : (
+            <> this round.</>
           )}
           {total !== null && (
             <>

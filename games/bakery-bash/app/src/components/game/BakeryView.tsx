@@ -496,6 +496,24 @@ export function BakeryView({ readOnly = false }: BakeryViewProps) {
           <span>Total Committed This Round</span>
           <strong>${totalCommitted.toFixed(2)}</strong>
         </div>
+        {/* B-06 (2026-04-29): inline warning when this round's committed
+            spend exceeds available budget — players otherwise have to
+            wait until Results to discover they triggered the loan shark.
+            This chip is a *deliberate, narrow* carve-out from FRONTEND.md
+            rule #1 ("Budget is hidden during play"); it never displays
+            the actual budget number, only the boolean "you're over". The
+            user explicitly OK'd this override (Q4, 2026-04-29). */}
+        {!readOnly &&
+          typeof budgetCurrent === "number" &&
+          totalCommitted > budgetCurrent && (
+            <div
+              className="bakery-view__loan-shark-warning"
+              role="status"
+            >
+              ⚠ This decision will trigger the loan shark — 10% interest
+              on the overspend.
+            </div>
+          )}
         <div className="bakery-view__total-committed-row">
           <span>· Staff</span>
           <strong>${staffCost.toFixed(2)}</strong>
