@@ -192,18 +192,6 @@ export function ProfessorPage() {
   const [selectedPreset, setSelectedPreset] = useState<string>("");
   const [manualDifficulty, setManualDifficulty] = useState<string>("medium");
   const [manualPersonality, setManualPersonality] = useState<string>("balanced");
-  const botsInGame = useMemo(
-    () =>
-      roster
-        .filter((r) => r.isBot)
-        .map((r) => ({
-          uid: r.uid,
-          name: r.displayName,
-          difficulty: r.difficulty ?? "unknown",
-          personality: r.personality ?? "unknown",
-        })),
-    [roster],
-  );
 
   // Create-game form.
   const [totalRounds, setTotalRounds] = useState<number>(5);
@@ -257,6 +245,19 @@ export function ProfessorPage() {
     Record<string, Record<string, SubmissionEntry>>
   >({});
   const [submissionsError, setSubmissionsError] = useState<string | null>(null);
+
+  const botsInGame = useMemo(
+    () =>
+      roster
+        .filter((r) => r.isBot)
+        .map((r) => ({
+          uid: r.uid,
+          name: r.displayName,
+          difficulty: r.difficulty ?? "unknown",
+          personality: r.personality ?? "unknown",
+        })),
+    [roster],
+  );
 
   // Mirror the game doc's phase + paused flag + owner uid.
   useEffect(() => {
@@ -1136,7 +1137,7 @@ export function ProfessorPage() {
                   setInfo(`Added ${bot.displayName}`);
                   setSelectedPreset("");
                 } catch (err) {
-                  setError(humanizeFunctionError(err));
+                  setError(humanizeFunctionError(err, "Could not add bot. Please try again."));
                 } finally {
                   setPendingAction(null);
                 }
