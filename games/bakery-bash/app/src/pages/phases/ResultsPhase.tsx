@@ -114,7 +114,12 @@ export function ResultsPhase() {
     gameId,
     playerId,
     teamId,
+    role,
   } = useGame();
+  // S-07 (2026-04-29): the monthly CSV is the Analyst's responsibility
+  // post-Q6. Solo keeps it as the catch-all when teams have ≤2 members.
+  // Backend role string is still `advertising` (label changed in S-03).
+  const canDownloadCsv = role === "advertising" || role === "solo";
   // BE-I03: auction result docs are keyed by team slug (or the player uid for
   // solo players, which is also `team.key` on the backend).
   const auctionResultKey = teamId || playerId;
@@ -218,14 +223,15 @@ export function ResultsPhase() {
         <h2 className="results-phase__title">
           Round {currentRound} Results
         </h2>
-        {roundResults.length > 0 && (
+        {roundResults.length > 0 && canDownloadCsv && (
           <button
             type="button"
             className="btn btn--ghost results-phase__download"
             onClick={() => downloadResultsCsv(roundResults)}
-            aria-label="Download round history as CSV"
+            aria-label="Download your monthly data as CSV"
+            title="Download every round you've played as a CSV (one row per day)."
           >
-            ⬇ Download CSV
+            ⬇ Download your monthly data
           </button>
         )}
       </header>

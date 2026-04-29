@@ -263,6 +263,12 @@ export function RoundHeader() {
     (parsed.base === "bid_chef" && roleOwnsChefBids(role, teamRoleAssignments)) ||
     (parsed.base === "roster" && roleOwnsRoster(role, teamRoleAssignments));
 
+  // S-07 — only the Analyst (or a Solo player) gets the inbox shortcut, since
+  // the monthly CSV download is now their responsibility. The modal can still
+  // open through other entry points (e.g. ResultsPhase) but the persistent
+  // header button is gated.
+  const canSeeCsvInbox = role === "advertising" || role === "solo";
+
   /**
    * S-01 — given a teammate's role, return whether THEIR role owns the
    * current phase. This is the per-pill version of `isActiveRole`. We
@@ -311,21 +317,23 @@ export function RoundHeader() {
         {phaseBannerLabel}
       </div>
 
-      <button
-        type="button"
-        className="round-header__email round-header__csv-inbox"
-        onClick={() => setInboxOpen(true)}
-        title="Open CSV inbox"
-        aria-label="Open CSV inbox"
-      >
-        <img
-          src="/assets/ui/email.svg"
-          alt=""
-          aria-hidden="true"
-          className="round-header__csv-inbox-icon"
-        />
-        <span className="round-header__csv-inbox-label">CSV Inbox</span>
-      </button>
+      {canSeeCsvInbox && (
+        <button
+          type="button"
+          className="round-header__email round-header__csv-inbox"
+          onClick={() => setInboxOpen(true)}
+          title="Open your monthly-data inbox"
+          aria-label="Open your monthly-data inbox"
+        >
+          <img
+            src="/assets/ui/email.svg"
+            alt=""
+            aria-hidden="true"
+            className="round-header__csv-inbox-icon"
+          />
+          <span className="round-header__csv-inbox-label">My Data</span>
+        </button>
+      )}
 
       <CsvInboxModal open={inboxOpen} onClose={() => setInboxOpen(false)} />
 

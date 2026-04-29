@@ -865,7 +865,7 @@ The lay-off → re-hire is a **transient** state during the roster phase; once t
 
 ---
 
-## [ ] S-07 [P1, XS] — Rename CSV button + analyst-only gate
+## [x] S-07 [P1, XS] — Rename CSV button + analyst-only gate (✅ DONE 2026-04-29 by Claude/Scott)
 
 **Problem.** `ResultsPhase.tsx:222-230` button label is "⬇ Download CSV", available to anyone.
 
