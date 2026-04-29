@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import { useGame, useGameDispatch } from "../../../contexts/GameContext";
 import {
+  PLAYER_ROLE_LABELS,
+  roleOwnsDecide,
   type StaffCounts,
 } from "../../../types/game";
 import {
@@ -106,15 +108,33 @@ export interface StaffTabProps {
 }
 
 export function StaffTab({ readOnly = false }: StaffTabProps) {
-  const { config, pendingDecision, equipmentGrade, budgetCurrent } = useGame();
+  const {
+    config,
+    pendingDecision,
+    equipmentGrade,
+    budgetCurrent,
+    role,
+    teamRoleAssignments,
+  } = useGame();
   const dispatch = useGameDispatch();
+  // K-01 (2026-04-29): only Operations / Solo (or any teammate when no
+  // one holds operations) can edit staff + equipment. The visual lock
+  // mirrors `readOnly` — the role-owner tooltip names the gate, since
+  // the existing `readOnly` lock copy ("Locked in for this round.")
+  // describes a different state.
+  const canEditStaff = roleOwnsDecide(role, teamRoleAssignments);
+  const staffOwnerLabel = PLAYER_ROLE_LABELS.operations;
+  const staffLocked = readOnly || !canEditStaff;
+  const staffOwnerHint = canEditStaff
+    ? undefined
+    : `Your ${staffOwnerLabel} teammate submits staff.`;
 
   const { sousBase, maintBase } = resolveBaseCosts(config);
 
   const staffCounts = pendingDecision.staffCounts;
 
   const setCount = (role: keyof StaffCounts, next: number) => {
-    if (readOnly) return;
+    if (staffLocked) return;
     const clamped = Math.max(0, Math.min(MAX_PER_ROLE, Math.floor(next) || 0));
     const prev = staffCounts[role];
     if (clamped === prev) return;
@@ -138,7 +158,7 @@ export function StaffTab({ readOnly = false }: StaffTabProps) {
   }, [staffCounts, config, equipmentGrade, pendingDecision.equipmentUpgradePurchased]);
 
   return (
-    <div className={`staff-tab${readOnly ? " staff-tab--readonly" : ""}`}>
+    <div className={`staff-tab${staffLocked ? " staff-tab--readonly" : ""}`}>
       <div className="staff-tab__header">
         <h3 className="sidebar-tab__title">Hire Staff</h3>
         {readOnly && (
@@ -150,11 +170,15 @@ export function StaffTab({ readOnly = false }: StaffTabProps) {
           </span>
         )}
       </div>
-      {readOnly && (
+      {readOnly ? (
         <p className="sidebar-tab__hint">
           Locked in for this round.
         </p>
-      )}
+      ) : staffOwnerHint ? (
+        <p className="sidebar-tab__hint">
+          {staffOwnerHint}
+        </p>
+      ) : null}
 
       {/* V9 (Apr 26): trimmed the section intros and the redundant
           "Sous Chef — Bakery (Croissant · Cookie)" / "Croissant · Cookie"
@@ -174,7 +198,7 @@ export function StaffTab({ readOnly = false }: StaffTabProps) {
           onIncrement={() =>
             setCount("bakerySousChefs", staffCounts.bakerySousChefs + 1)
           }
-          readOnly={readOnly}
+          readOnly={staffLocked}
         />
         <RoleStepper
           title="Deli"
@@ -188,7 +212,7 @@ export function StaffTab({ readOnly = false }: StaffTabProps) {
           onIncrement={() =>
             setCount("deliSousChefs", staffCounts.deliSousChefs + 1)
           }
-          readOnly={readOnly}
+          readOnly={staffLocked}
         />
         <RoleStepper
           title="Barista"
@@ -202,7 +226,7 @@ export function StaffTab({ readOnly = false }: StaffTabProps) {
           onIncrement={() =>
             setCount("baristaSousChefs", staffCounts.baristaSousChefs + 1)
           }
-          readOnly={readOnly}
+          readOnly={staffLocked}
         />
       </div>
 
@@ -221,7 +245,7 @@ export function StaffTab({ readOnly = false }: StaffTabProps) {
           onIncrement={() =>
             setCount("maintenanceGuys", staffCounts.maintenanceGuys + 1)
           }
-          readOnly={readOnly}
+          readOnly={staffLocked}
         />
       </div>
 
@@ -265,7 +289,7 @@ export function StaffTab({ readOnly = false }: StaffTabProps) {
                   {grade} → {next}
                 </span>
               </div>
-              {readOnly ? (
+              {staffLocked ? (
                 <div className="staff-tab__stepper staff-tab__stepper--readonly">
                   <span
                     className="staff-tab__stepper-value staff-tab__stepper-value--static"
