@@ -295,7 +295,7 @@ Scott consumes this from the FE — see S-05. **Massaro lands first.**
 
 ---
 
-## [ ] M-16 [P0, M] — Race condition: simultaneous last-second bids credited to the wrong team
+## [x] M-16 [P0, M] — Race condition: simultaneous last-second bids credited to the wrong team
 
 **Problem (confirmed Q7).** Round 2, two teams in the same lobby, both submitted bids at the timer = 0–1 s. One team was told they won an ad slot they didn't actually pay for; the other team's bid was credited to the wrong team. This is a classic last-write-wins race in the auction resolution path.
 

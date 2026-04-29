@@ -547,11 +547,16 @@ export function AuctionPage() {
         gameId,
         bidType: "chef",
         chefBids: [{ chefId, amount }],
+        // M-16: pin the bid to the phase the FE thinks it's submitting for
+        // so a stale click landing AFTER auto-advance flips the round to
+        // bid_chef → roster gets rejected as `failed-precondition` rather
+        // than slipping into the next phase's resolution.
+        expectedFromPhase: phase ?? undefined,
       });
     } catch (err) {
       setSubmitError(humanizeFunctionError(err, "Could not submit chef bid. Please try again."));
     }
-  }, [timerExpired, gameId, pendingChefBids, chefPool]);
+  }, [timerExpired, gameId, pendingChefBids, chefPool, phase]);
 
   const handleSubmitBids = useCallback(async () => {
     if (timerExpired) { setShowExpiredPopup(true); return; }
@@ -569,14 +574,26 @@ export function AuctionPage() {
     try {
       if (isAdPhase) {
         const submitBids = httpsCallable<
-          { gameId: string; bidType: "ad"; adBids: Record<AdType, number> },
+          {
+            gameId: string;
+            bidType: "ad";
+            adBids: Record<AdType, number>;
+            expectedFromPhase?: string;
+          },
           { gameId: string; playerId: string; bidType: string; submitted: boolean }
         >(functions, "submitBids");
         const adBids = AD_TYPES.reduce((acc, ad) => {
           acc[ad] = Math.max(0, pendingAdBids[ad] ?? 0);
           return acc;
         }, {} as Record<AdType, number>);
-        await submitBids({ gameId, bidType: "ad", adBids });
+        // M-16: pin to the FE's view of the phase so a late submit gets
+        // a clean rejection instead of slipping into the next phase.
+        await submitBids({
+          gameId,
+          bidType: "ad",
+          adBids,
+          expectedFromPhase: phase ?? undefined,
+        });
       } else {
         // If the real chef pool from `rounds/{round}.chefPool` has loaded,
         // send bids keyed by those real IDs. Until then, chef IDs in
@@ -608,10 +625,17 @@ export function AuctionPage() {
             gameId: string;
             bidType: "chef";
             chefBids: Array<{ chefId: string; amount: number }>;
+            expectedFromPhase?: string;
           },
           { gameId: string; playerId: string; bidType: string; submitted: boolean }
         >(functions, "submitBids");
-        await submitBids({ gameId, bidType: "chef", chefBids });
+        // M-16: pin to the FE's view of the phase.
+        await submitBids({
+          gameId,
+          bidType: "chef",
+          chefBids,
+          expectedFromPhase: phase ?? undefined,
+        });
       }
     } catch (err) {
       setSubmitError(
@@ -630,6 +654,7 @@ export function AuctionPage() {
     chefPool,
     chefPoolIsReal,
     dispatch,
+    phase,
   ]);
 
   useEffect(() => {
