@@ -4540,10 +4540,20 @@ exports.purchaseCompetitorInsight = onCall(CALLABLE_OPTS, async (request) => {
   if (!gameSnap.exists) throw new HttpsError("not-found", "Game not found.");
   const game = gameSnap.data();
   const currentPhase = typeof game.phase === "string" ? game.phase : "";
-  if (!currentPhase.includes("decide")) {
-    throw new HttpsError("failed-precondition", "Competitor insight only available during Decisions phase.");
+  // B-05 (2026-04-29): the FE moved the buy buttons from the DECIDE-phase
+  // sidebar onto the Results screen. During `results_ready` the round
+  // whose results are showing IS `game.currentRound` (not currentRound-1),
+  // so the upper-bound check below also flips. DECIDE keeps the original
+  // strict `round < currentRound` rule — you still can't buy intel on a
+  // round you haven't played yet.
+  const isDecide = currentPhase.includes("decide");
+  const isResultsReady = currentPhase.includes("results_ready");
+  if (!isDecide && !isResultsReady) {
+    throw new HttpsError("failed-precondition", "Competitor insight only available during Decisions or Results phase.");
   }
-  if (round < 1 || round >= (game.currentRound || 1)) {
+  const currentRoundNumber = game.currentRound || 1;
+  const maxBuyableRound = isResultsReady ? currentRoundNumber : currentRoundNumber - 1;
+  if (round < 1 || round > maxBuyableRound) {
     throw new HttpsError("invalid-argument", "Can only purchase insight for a completed round.");
   }
 
@@ -4621,8 +4631,13 @@ exports.purchaseChefData = onCall(CALLABLE_OPTS, async (request) => {
   if (!gameSnap.exists) throw new HttpsError("not-found", "Game not found.");
   const game = gameSnap.data();
   const currentPhase = typeof game.phase === "string" ? game.phase : "";
-  if (!currentPhase.includes("decide")) {
-    throw new HttpsError("failed-precondition", "Chef data only available during Decisions phase.");
+  // B-05 (2026-04-29): also allowed during `results_ready` — the FE moved
+  // these buttons out of the DECIDE-phase sidebar onto the Results screen,
+  // and the data is round-agnostic (Tier 1 is a static nationality table;
+  // Tier 2 dumps the current round's chef pool, which is still the most
+  // recent generated pool while results are showing).
+  if (!currentPhase.includes("decide") && !currentPhase.includes("results_ready")) {
+    throw new HttpsError("failed-precondition", "Chef data only available during Decisions or Results phase.");
   }
 
   const configSnap = await gameRef.collection("config").doc("params").get();
