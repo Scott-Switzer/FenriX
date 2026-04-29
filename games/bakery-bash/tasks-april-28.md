@@ -572,7 +572,7 @@ Pass `disabled={!roleOwnsX(role, teamRoleAssignments)}` on each input. Add a too
 
 ---
 
-## [ ] K-10 [P0, S] — FE: Finance submits quantities (pairs with M-17)
+## [x] K-10 [P0, S] — FE: Finance submits quantities (pairs with M-17) (✅ DONE 2026-04-29 by Claude/Kavin-Sofia)
 
 **Problem.** Today the quantity steppers in `BakeryView.tsx` write to `pendingDecision.quantities`, which is sent up by Operations' `submitDecision`. After M-17 lands, the backend `submitPrices` callable will accept quantities — the FE needs to send them in that call.
 
@@ -589,7 +589,7 @@ Pass `disabled={!roleOwnsX(role, teamRoleAssignments)}` on each input. Add a too
 
 ---
 
-## [ ] K-11 [P0, S] — Remove the "Update Prices" friction button (Q12 + Q14)
+## [x] K-11 [P0, S] — Remove the "Update Prices" friction button (Q12 + Q14) (✅ DONE 2026-04-29 by Claude/Kavin-Sofia)
 
 **Investigation result (2026-04-28).** Located at **`app/src/pages/GamePage.tsx:825-840`**. The offending UI is the secondary submit button rendered alongside the primary one in `<SubmissionLock>`'s action slot:
 ```tsx
