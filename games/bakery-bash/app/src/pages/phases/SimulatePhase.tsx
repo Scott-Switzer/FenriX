@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  doc,
+  onSnapshot,
+  type DocumentData,
+} from "firebase/firestore";
 import { useGame } from "../../contexts/GameContext";
+import { db } from "../../lib/firebase";
 import { PixelBakeryScene } from '../../components/bakery-scene/PixelBakeryScene';
 import { SceneErrorBoundary } from '../../components/bakery-scene/SceneErrorBoundary';
+import type { SpecialtyChefBadge } from '../../components/bakery-scene/SpecialtyChefBadges';
 import '../../styles/pixel-scene.css';
 
 const TOTAL_DAYS = 30;
@@ -19,7 +26,62 @@ function getSelloutDays(): Record<Product, number> {
 }
 
 export function SimulatePhase() {
-  const { roundResults, teamName, pendingDecision, currentRound } = useGame();
+  const { roundResults, teamName, pendingDecision, currentRound, gameId, playerId } = useGame();
+  // K-07 — subscribe to the player doc's specialtyChefs so the kitchen
+  // scene can render portrait cameos for each one. Self-contained
+  // listener (only mounted while we're on the simulating phase) so it
+  // doesn't add load to other surfaces.
+  const [specialtyChefs, setSpecialtyChefs] = useState<SpecialtyChefBadge[]>([]);
+  useEffect(() => {
+    if (!gameId || !playerId) {
+      setSpecialtyChefs([]);
+      return;
+    }
+    const playerRef = doc(db, "games", gameId, "players", playerId);
+    const unsubscribe = onSnapshot(
+      playerRef,
+      (snap) => {
+        if (!snap.exists()) {
+          setSpecialtyChefs([]);
+          return;
+        }
+        const data = snap.data() as DocumentData;
+        const raw = Array.isArray(data.specialtyChefs) ? data.specialtyChefs : [];
+        const next: SpecialtyChefBadge[] = [];
+        for (const c of raw) {
+          if (!c || typeof c !== "object") continue;
+          const id = typeof c.id === "string" ? c.id : null;
+          const nat = c.nationality;
+          const validNat =
+            nat === "american" ||
+            nat === "french" ||
+            nat === "italian" ||
+            nat === "japanese";
+          // Backend stores `gender` as `"male"`/`"female"` or sometimes
+          // `"m"`/`"f"`; normalize to the badge's `"m"|"f"` shape so the
+          // portrait URL resolves correctly.
+          const rawGen = c.gender;
+          const gender =
+            rawGen === "male" || rawGen === "m"
+              ? ("m" as const)
+              : rawGen === "female" || rawGen === "f"
+              ? ("f" as const)
+              : null;
+          const name = typeof c.name === "string" ? c.name : null;
+          if (!id || !validNat || !gender || !name) continue;
+          next.push({ id, nationality: nat, gender, name });
+        }
+        setSpecialtyChefs(next);
+      },
+      (err) => {
+        // Don't crash the simulation if the listener errors — just hide
+        // the cameos. Same pattern as other per-phase player listeners.
+        console.debug("SimulatePhase specialtyChefs listener error:", err);
+        setSpecialtyChefs([]);
+      },
+    );
+    return unsubscribe;
+  }, [gameId, playerId]);
   const latest = roundResults[roundResults.length - 1];
   const latestRound = latest ?? null;
   const targetRevenue =
@@ -117,6 +179,7 @@ export function SimulatePhase() {
               customerCount={latestRound?.customerCount ?? 0}
               menu={[...PRODUCTS]}
               soldOut={soldOut as Set<string>}
+              specialtyChefs={specialtyChefs}
             />
           </SceneErrorBoundary>
           <p className="simulate-phase__waiting">Results loading shortly…</p>

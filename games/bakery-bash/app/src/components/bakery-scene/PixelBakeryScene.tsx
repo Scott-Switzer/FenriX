@@ -2,6 +2,10 @@ import { useState } from 'react'
 import { SceneBackdrop } from './SceneBackdrop'
 import { TeamSign } from './TeamSign'
 import { ChefLayer } from './ChefLayer'
+import {
+  SpecialtyChefBadges,
+  type SpecialtyChefBadge,
+} from './SpecialtyChefBadges'
 import { CounterFrontLayer } from './CounterFrontLayer'
 import { BreadShelfLayer } from './BreadShelfLayer'
 import { CustomerLayer } from './CustomerLayer'
@@ -26,6 +30,12 @@ interface Props {
   customerCount?: number
   menu?: string[]
   soldOut?: Set<string>
+  /**
+   * K-07 — team's specialty chefs (max 3). Rendered as portrait cameos
+   * on the back wall above the team sign. Empty array (default) skips
+   * the layer entirely.
+   */
+  specialtyChefs?: SpecialtyChefBadge[]
 }
 
 // Default to a single front-counter barista. Real-game callers (SimulatePhase)
@@ -35,6 +45,7 @@ const DEFAULT_STAFF: Record<StationKey, number> = { bakery: 0, deli: 0, barista:
 // useEffect deps don't thrash on every parent re-render.
 const EMPTY_MENU: string[] = []
 const EMPTY_SOLD_OUT: Set<string> = new Set()
+const EMPTY_SPECIALTY_CHEFS: SpecialtyChefBadge[] = []
 
 /**
  * Orchestrator for the bakery scene. Composes the backdrop + team sign +
@@ -48,6 +59,7 @@ export function PixelBakeryScene({
   customerCount = 0,
   menu = EMPTY_MENU,
   soldOut = EMPTY_SOLD_OUT,
+  specialtyChefs = EMPTY_SPECIALTY_CHEFS,
 }: Props) {
   const { chefs, cat, customers, dollars } = useBakeryScene({ mode, teamName, staffCounts, customerCount })
 
@@ -67,6 +79,7 @@ export function PixelBakeryScene({
     >
       <SceneBackdrop menu={menu} soldOut={soldOut} />
       <TeamSign teamName={teamName} />
+      <SpecialtyChefBadges chefs={specialtyChefs} />
       <ChefLayer chefs={chefs} />
       <CounterFrontLayer menu={menu} soldOut={soldOut} />
       <BreadShelfLayer menu={menu} soldOut={soldOut} />

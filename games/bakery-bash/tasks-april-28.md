@@ -540,7 +540,7 @@ Pass `disabled={!roleOwnsX(role, teamRoleAssignments)}` on each input. Add a too
 
 ---
 
-## [ ] K-07 [P1, L] — Render specialty chefs in the simulation kitchen
+## [x] K-07 [P1, L] — Render specialty chefs in the simulation kitchen (✅ DONE 2026-04-29 by Claude/Kavin-Sofia)
 
 **Problem.** `SimulatePhase.tsx:108-121` plumbs only `staffCounts` (sous-chef counts) into `<PixelBakeryScene>`. Specialty chefs from the team's roster never render.
 
