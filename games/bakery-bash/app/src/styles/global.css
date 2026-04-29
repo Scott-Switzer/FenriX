@@ -532,6 +532,14 @@ h3 { font-size: 0.7rem; }
   border: var(--border);
   box-shadow: var(--shadow-pixel-sm);
   margin-bottom: 1.5rem;
+  /* S-09 — pin the header to the top while the page scrolls so the timer
+     is always visible during long Decide / Auction / Results pages. The
+     PageShell (flex column on body's scroll) doesn't constrain sticky, so
+     `top: 0` pins to the viewport. Background is already opaque so content
+     scrolling under it stays hidden. */
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .round-header__round {

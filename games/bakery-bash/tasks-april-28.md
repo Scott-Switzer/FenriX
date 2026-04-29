@@ -889,7 +889,7 @@ The lay-off → re-hire is a **transient** state during the roster phase; once t
 
 ---
 
-## [ ] S-09 [P1, XS] — Sticky/freeze the top bar on Decide so the timer is always visible (Q18 confirmed)
+## [x] S-09 [P1, XS] — Sticky/freeze the top bar on Decide so the timer is always visible (Q18 confirmed) (✅ DONE 2026-04-29 by Claude/Scott)
 
 **Problem (confirmed Q18).** During Decide the page scrolls, taking the timer out of view. User wants the `RoundHeader` pinned to the top so the countdown is always visible.
 
