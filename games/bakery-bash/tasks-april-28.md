@@ -81,7 +81,7 @@ After this PR lands, the bigger items (M-02 economy rebalance, M-16 race conditi
 
 ---
 
-## [ ] M-01 [P0, S] — Equipment upgrade is silently dropped on the way to the simulator
+## [x] M-01 [P0, S] — Equipment upgrade is silently dropped on the way to the simulator
 
 **Problem.** Players who toggle "Upgrade Equipment" pay the cost in the UI, but the simulation never sees the upgrade — `equipmentUpgradePurchased` is missing from the assembled simulation `decision` object. Everyone's grade stays at C forever.
 
@@ -128,7 +128,7 @@ When a team has no specialty chefs, satisfaction tanks → `customer-allocation.
 
 ---
 
-## [ ] M-03 [P0, S] — Cleanliness drops to F with 5 maintenance staff
+## [x] M-03 [P0, S] — Cleanliness drops to F with 5 maintenance staff
 
 **Problem.** Confirmed at `equipment-cleanliness.js:42-46` returning `staffCount × 20 - customerCount × 0.20`. The applier at `multi-day-simulation.js:271` passes the **monthly** customer count (~1000–4000), not per-day. So 5 staff × 20 = +100 boost vs 2000 customers × 0.20 = –400 drain → score 0 → F. The constants were calibrated for a per-DAY count, not a 30-day aggregate.
 
@@ -141,7 +141,7 @@ const _cleanlinessDelta = cleanlinessDriftDelta(maintenanceStaffCount, customerC
 
 ---
 
-## [ ] M-04 [P0, S] — Standings always show 0 (or the last round's net only)
+## [x] M-04 [P0, S] — Standings always show 0 (or the last round's net only)
 
 **Problem.** Confirmed: `index.js:2497-2510` writes `revenueNet` into the leaderboard payload but **not** `cumulativeRevenue`. The FE at `LeaderboardPage.tsx:118-121` and `ResultsPhase.tsx:392-398` reads `cumulativeRevenue ?? revenueNet` — falls back to *per-round* net, which can easily be 0 on a bad round.
 
@@ -207,7 +207,7 @@ if (current >= 3) {
 
 ---
 
-## [ ] M-09 [P0, S] — Student CSV only has 1 row per round, not 30 (FE-only fix)
+## [x] M-09 [P0, S] — Student CSV only has 1 row per round, not 30 (FE-only fix)
 
 **User intent (confirmed Q5):** the **student** CSV is the one that matters — the professor isn't downloading these. So this is the FE download path on `RoundHeader.tsx`.
 
@@ -251,7 +251,7 @@ Massaro does the backend. Scott wires the "Take over" button into RoundHeader (s
 
 ---
 
-## [ ] M-12 [P1, XS] — Bid duration: 45 s (confirmed Q1, currently 90 s)
+## [x] M-12 [P1, XS] — Bid duration: 45 s (confirmed Q1, currently 90 s)
 
 **Problem.** `config.js:447-448` has `bid_ad: 90, bid_chef: 90`. Per Q1 the user wants 45 s — gives students a real think while still feeling time-pressured.
 
@@ -285,7 +285,7 @@ Scott consumes this from the FE — see S-05. **Massaro lands first.**
 
 ---
 
-## [ ] M-15 [P2, XS] — Simulation animation should run longer
+## [x] M-15 [P2, XS] — Simulation animation should run longer
 
 **Problem.** `SimulatePhase.tsx:8` `DAY_DURATION_MS = 4000`, backend `simulating` phase is 8 s (`config.js:455`). Animation gets clipped.
 

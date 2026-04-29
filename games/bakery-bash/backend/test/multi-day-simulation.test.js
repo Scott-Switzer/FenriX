@@ -255,25 +255,28 @@ describe('runMonthlySimulation', () => {
       `monthly customer count should be meaningful, got ${agg.customerCount}`);
   });
 
-  it('cleanliness drift uses the FULL monthly customer count, not 1/daysPerRound (PR #128)', () => {
-    // Bug: per-day cleanliness drift was computed each day from a fixed
-    // p.cleanlinessScore + that day's customer count (~monthlyCustomers/30),
-    // and the wrapper kept day-29's value — only ~1/30 of the spec drain
-    // applied per round.
-    // Per spec: cleanlinessDriftDelta(staff, customers) is applied ONCE per
-    // round using the FULL monthly customer count.
+  it('cleanliness drift uses the per-day customer count, not the monthly aggregate (M-03)', () => {
+    // M-03 (2026-04-28): the spec constants for cleanlinessDriftDelta were
+    // calibrated for a PER-DAY customer count, not a 30-day aggregate.
+    // Passing the monthly aggregate over-drained the score (5 staff vs 2000
+    // monthly customers → +100 boost vs -400 drain → F regardless of
+    // staffing). Fix at the apply site: divide by days.
+    //
+    // PR #128 originally asserted the opposite — that the FULL monthly count
+    // should drain the score below 50. That was the bug, not the fix; the
+    // test now asserts the corrected per-day behavior.
     const out = runMonthlySimulation(
       [fakePlayer('p_a', { cleanlinessScore: 100 })],
       prefs, config, { gameId: 'g1', round: 1 },
     );
     const agg = out[0];
-    // 0 maintenance staff, hundreds of monthly customers → drain dominates.
-    // Buggy: 100 + (-0.20 * monthly/30) ≈ 100 - 6 = ~94
-    // Fixed: 100 + (-0.20 * monthly) ≈ 100 - 140 = clamped to 0
-    assert.ok(agg.cleanlinessScore < 50,
-      `cleanlinessScore ${agg.cleanlinessScore} should reflect the FULL monthly drain ` +
-      `(< 50). monthlyCustomers=${agg.customerCount}; expected drain ≈ ${(0.20 * agg.customerCount).toFixed(0)}. ` +
-      `If it's ~90+, only one day's drift accumulated — the bug regressed.`);
+    // 0 maintenance staff, hundreds of monthly customers / 30 days
+    // → small drain per round. Score should stay near 100, not collapse.
+    assert.ok(agg.cleanlinessScore >= 80,
+      `cleanlinessScore ${agg.cleanlinessScore} should stay high when drift is ` +
+      `applied per-day (>= 80). monthlyCustomers=${agg.customerCount}; expected ` +
+      `drain ≈ ${(0.20 * agg.customerCount / 30).toFixed(1)}. ` +
+      `If it's < 50, M-03 regressed and the monthly aggregate is back at the apply site.`);
   });
 
 });

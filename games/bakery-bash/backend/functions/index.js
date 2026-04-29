@@ -2250,6 +2250,7 @@ async function runSimulationAndPersist(gameRef, round, config) {
             {},
           ),
         ),
+        equipmentUpgradePurchased: !!decision.equipmentUpgradePurchased,
       },
       specialtyChefs: Array.isArray(canonicalData.specialtyChefs) ? canonicalData.specialtyChefs : [],
       budgetCurrent: simInputBudget,
@@ -2496,7 +2497,19 @@ async function runSimulationAndPersist(gameRef, round, config) {
   // writes land.
   const rankings = results
     .slice()
-    .sort((a, b) => b.revenueNet - a.revenueNet || b.budgetAfter - a.budgetAfter)
+    .map((r) => {
+      const memberDoc = playerDocs.find((m) => m.id === r.playerId);
+      const memberData = (memberDoc && memberDoc.data()) || {};
+      return {
+        ...r,
+        cumulativeRevenue:
+          numberOrDefault(memberData.cumulativeRevenue, 0) + r.revenueNet,
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.cumulativeRevenue - a.cumulativeRevenue || b.budgetAfter - a.budgetAfter,
+    )
     .map((r, i) => ({
       rank: i + 1,
       playerId: r.playerId,
@@ -2507,6 +2520,7 @@ async function runSimulationAndPersist(gameRef, round, config) {
       customerCount: r.customerCount,
       budgetAfter: r.budgetAfter,
       amountBorrowed: r.amountBorrowed || 0,
+      cumulativeRevenue: r.cumulativeRevenue,
     }));
 
   const revenues = results.map((r) => r.revenueNet);

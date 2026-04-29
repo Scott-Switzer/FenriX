@@ -444,15 +444,15 @@ const DEFAULT_GAME_CONFIG = {
     // 60 → 90: at 25-team load, p95 sharded-write latency is ~12s after the
     // burst starts; 60s left no margin for last-second clickers. Bumping to
     // 90s adds headroom without dragging the round.
-    bid_ad: 90,
-    bid_chef: 90,
+    bid_ad: 45,
+    bid_chef: 45,
     roster: 60,
     // Apr 25 V4: dropped from 30 → 8s. The simulation work itself runs
     // synchronously inside advanceGamePhase(simulating) and immediately
     // flips the phase to results_ready when done, so this is just an
     // upper bound for the professor's auto-advance fallback if the
     // simulating side-effect somehow stalls. 8s is a generous timeout.
-    simulating: 8,
+    simulating: 25,
     results: 60,
   },
 

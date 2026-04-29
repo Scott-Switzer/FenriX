@@ -348,6 +348,9 @@ export function GamePage() {
                 lrr.staffCounts && typeof lrr.staffCounts === "object"
                   ? lrr.staffCounts
                   : undefined,
+              dailyBreakdown: Array.isArray(lrr.dailyBreakdown)
+                ? lrr.dailyBreakdown
+                : undefined,
             },
           });
         }

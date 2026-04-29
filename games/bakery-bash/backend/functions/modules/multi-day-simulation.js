@@ -268,7 +268,7 @@ function runMonthlySimulation(players, roundPreferences, cfg = config, { gameId 
     const _cleanlinessStart = Number.isFinite(Number(p.cleanlinessScore))
       ? Number(p.cleanlinessScore)
       : 75;
-    const _cleanlinessDelta = cleanlinessDriftDelta(maintenanceStaffCount, customerCount);
+    const _cleanlinessDelta = cleanlinessDriftDelta(maintenanceStaffCount, customerCount / days);
     const cleanlinessScore = Math.round(
       Math.max(0, Math.min(100, _cleanlinessStart + _cleanlinessDelta))
     );
