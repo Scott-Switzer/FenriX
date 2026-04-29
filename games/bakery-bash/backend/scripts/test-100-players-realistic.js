@@ -363,8 +363,13 @@ async function main() {
         const cap = 3;
         if (chefs.length > cap) {
           for (const chef of chefs.slice(cap)) {
-            const layoffFn = httpsCallable(p.functions, "layoffChef");
-            await layoffFn({ gameId, chefId: chef.id });
+            try {
+              const layoffFn = httpsCallable(p.functions, "layoffChef");
+              await layoffFn({ gameId, chefId: chef.id });
+            } catch (err) {
+              // not-found = another teammate already laid off this chef; safe to ignore
+              if (err.code !== 'not-found' && err.code !== 'functions/not-found') throw err;
+            }
           }
         }
         const continueFn = httpsCallable(p.functions, "continueFromRoster");
