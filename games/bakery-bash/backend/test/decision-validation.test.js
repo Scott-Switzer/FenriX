@@ -25,11 +25,14 @@ const baseInput = () => ({
 });
 
 describe('validateDecision staffCounts contract (PR #128)', () => {
-  it('defaults staffCounts.maintenanceGuys to 2 when client omits the field', () => {
+  it('defaults staffCounts.maintenanceGuys to 0 when client omits the field', () => {
+    // Barlava follow-up (2026-04-29): default flipped from 2 → 0 to
+    // match the FE DEFAULT_STAFF_COUNTS. Players hire maintenance
+    // explicitly now; no more "ghost" two-person starter staff.
     const validated = validateDecision(baseInput(), 1, config, {});
     assert.ok(validated.staffCounts, 'validated should include staffCounts');
-    assert.equal(validated.staffCounts.maintenanceGuys, 2,
-      'maintenanceGuys must default to 2 — submitDecision relies on this default ' +
+    assert.equal(validated.staffCounts.maintenanceGuys, 0,
+      'maintenanceGuys must default to 0 — submitDecision relies on this default ' +
       'flowing through the {...validated} spread into the persisted decisionPatch.');
   });
 
@@ -52,7 +55,7 @@ describe('validateDecision staffCounts contract (PR #128)', () => {
       submittedAt: 'sentinel',
       ...validated,
     };
-    assert.equal(decisionPatch.staffCounts.maintenanceGuys, 2,
+    assert.equal(decisionPatch.staffCounts.maintenanceGuys, 0,
       'spread should carry through the validator default');
   });
 });

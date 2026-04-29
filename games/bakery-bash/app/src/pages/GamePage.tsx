@@ -341,6 +341,12 @@ export function GamePage() {
                   : undefined,
               adWon: lrr.adWon ?? null,
               adPaid: typeof lrr.adPaid === "number" ? lrr.adPaid : undefined,
+              // Barlava follow-up: chefBidPaid is written by the backend
+              // simulation onto `lastRoundResult` but the FE was dropping
+              // it on the floor here, so Results couldn't render the chef-
+              // bid spend line.
+              chefBidPaid:
+                typeof lrr.chefBidPaid === "number" ? lrr.chefBidPaid : undefined,
               auctionResults: {
                 adWon: lrr.adWon ?? null,
                 chefWon:

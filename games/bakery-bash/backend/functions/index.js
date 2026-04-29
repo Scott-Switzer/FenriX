@@ -2936,9 +2936,10 @@ exports.submitDecision = onCall(CALLABLE_OPTS, async (request) => {
 
       // Merge so an existing Finance-written `productPrices` + `quantities`
       // survive. POST-01 follow-up: `staffCounts` (including the
-      // maintenanceGuys default of 2) is included in `validated` and flows
-      // through the spread — do not re-assign it from raw `data.staffCounts`,
-      // which would discard the validator's defaulting.
+      // maintenanceGuys default of 0 — Barlava follow-up flipped from 2)
+      // is included in `validated` and flows through the spread — do not
+      // re-assign it from raw `data.staffCounts`, which would discard the
+      // validator's defaulting.
       const decisionPatch = {
         round: currentRound,
         submittedAt: FieldValue.serverTimestamp(),

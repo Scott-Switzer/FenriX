@@ -64,6 +64,15 @@ export function useGameListener(gameId: string | null, playerId?: string | null)
         if (!snap.exists()) return;
         const data = snap.data() as DocumentData;
         if (typeof data.phase === "string") {
+          // Barlava follow-up: when the professor's `resetGame` flips
+          // the doc back to "lobby", clear the in-memory per-round
+          // results / drafts / submission flags so a re-played game
+          // doesn't carry forward last game's conclusion screen. RESET
+          // preserves gameId/playerId so the Firestore listeners stay
+          // attached — see GameContext reducer.
+          if (data.phase === "lobby") {
+            dispatch({ type: "RESET" });
+          }
           dispatch({ type: "SET_PHASE", payload: data.phase });
         }
         const nextRound =

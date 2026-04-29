@@ -527,7 +527,22 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     }
 
     case "RESET":
-      return initialState;
+      // Barlava follow-up: hard reset of per-game state used when the
+      // professor reverts a game back to the lobby (fired from
+      // `useGameListener` when `phase` flips to "lobby"). We preserve
+      // the CONNECTION identity (gameId / playerId / gameCode / player)
+      // so the existing Firestore listeners keep firing — without this,
+      // RESET would null gameId, every dependent useEffect would tear
+      // down its listener, and the player would silently lose live
+      // updates until they refreshed. Per-round drafts, submission
+      // flags, round results, etc. all clear.
+      return {
+        ...initialState,
+        gameId: state.gameId,
+        playerId: state.playerId,
+        gameCode: state.gameCode,
+        player: state.player,
+      };
 
     default:
       return state;

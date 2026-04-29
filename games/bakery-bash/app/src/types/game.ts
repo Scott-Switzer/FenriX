@@ -800,10 +800,18 @@ export interface LeaderboardRanking {
   budgetAfter?: number;
 }
 
-/** Default per-station staff counts (all zero). */
+/**
+ * Default per-station staff counts (all zero).
+ *
+ * Barlava follow-up: maintenanceGuys flipped from 2 → 0. The two free
+ * maintenance hires were a leftover starter-budget assumption from an
+ * earlier balance pass; players reported the "ghost spend" was confusing
+ * since the receipt didn't otherwise account for them. Backend
+ * `decision-validation.js` was bumped to match.
+ */
 export const DEFAULT_STAFF_COUNTS: StaffCounts = {
   bakerySousChefs: 0,
   deliSousChefs: 0,
   baristaSousChefs: 0,
-  maintenanceGuys: 2,
+  maintenanceGuys: 0,
 };
