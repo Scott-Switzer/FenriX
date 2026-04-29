@@ -794,34 +794,6 @@ export function ProfessorPage() {
     }
   };
 
-  // T2.4 — manual checkpoint. Auto-saves run at the start of every round
-  // (server-side hook in advanceGamePhase + startGame), so this is just
-  // for the rare case where the prof wants to checkpoint mid-round.
-  const onSaveNow = async () => {
-    if (!gameId) {
-      setError("No active game to save.");
-      return;
-    }
-    setError(null);
-    setInfo(null);
-    setPendingAction("save-snapshot");
-    try {
-      const callable = httpsCallable<
-        { gameId: string },
-        { snapshotId: string; round: number; phase: string; totalBytes: number; elapsedMs: number }
-      >(functions, "createSnapshot");
-      const res = await callable({ gameId });
-      const kb = (res.data.totalBytes / 1024).toFixed(1);
-      setInfo(
-        `Saved checkpoint at round ${res.data.round} (${kb} KB, ${res.data.elapsedMs} ms).`,
-      );
-    } catch (err) {
-      setError(humanizeFunctionError(err, "Could not save a checkpoint."));
-    } finally {
-      setPendingAction(null);
-    }
-  };
-
   // T2.4 — restore from the most recent snapshot. Backend always pauses
   // the game and runs the destructive "clean" pass; this just kicks it off.
   const onRestoreLastSave = async () => {
@@ -1342,17 +1314,9 @@ export function ProfessorPage() {
           {pendingAction === "reset" ? "Resetting…" : "Reset Game"}
         </button>
 
-        {/* T2.4: save / restart-this-round panic buttons. */}
-        <button
-          type="button"
-          className="btn btn--small btn--secondary"
-          disabled={!gameId || controlsDisabled || !user || pendingAction === "save-snapshot"}
-          onClick={onSaveNow}
-          title="Save a manual checkpoint right now. Auto-saves run at the start of every round; this is for ad-hoc saves."
-        >
-          {pendingAction === "save-snapshot" ? "Saving…" : "Save Now"}
-        </button>
-
+        {/* T2.4: restart-this-round panic button. Saves are automatic at
+            the start of every round — see captureGameSnapshot hook in
+            advanceGamePhase + startGame. */}
         <button
           type="button"
           className="btn btn--small btn--danger"
