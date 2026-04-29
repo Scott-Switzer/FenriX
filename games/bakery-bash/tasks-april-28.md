@@ -771,7 +771,7 @@ Pull names from `rosterByUid` (the existing roster listener), iterate `teamRoleA
 
 ---
 
-## [ ] S-02 [P0, XS] — Visible countdown timer on the Professor panel
+## [x] S-02 [P0, XS] — Visible countdown timer on the Professor panel (✅ DONE 2026-04-29 by Claude/Scott — PR #151)
 
 **Problem.** `ProfessorPage.tsx` reads `phaseEndsAtMs` only to wire auto-advance. There's no rendered timer. The professor literally cannot see when the phase ends.
 

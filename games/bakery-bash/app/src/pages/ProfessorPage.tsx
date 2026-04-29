@@ -18,6 +18,7 @@ import { PageShell } from "../components/ui/PageShell";
 import { humanizeFunctionError } from "../lib/errors";
 import { parseGamePhase, type BasePhase } from "../types/game";
 import { isDevModeEnabled, setDevMode } from "../lib/devMode";
+import { usePhaseCountdownSeconds } from "../hooks/usePhaseCountdownSeconds";
 
 /**
  * FE-15 — Professor control panel.
@@ -189,6 +190,18 @@ export function ProfessorPage() {
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
 
   const gameId = contextGameId ?? createdGame?.gameId ?? null;
+
+  // S-02 — live phase countdown for the professor. Single source of truth
+  // is `usePhaseCountdownSeconds` (same hook RoundHeader uses) so the prof's
+  // timer can never disagree with the students'. Returns null between phases
+  // (lobby / paused) so we can hide the chip entirely instead of rendering
+  // "0:00".
+  const phaseCountdownSeconds = usePhaseCountdownSeconds();
+  const formatCountdown = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  };
 
   // Dev-tools visibility — the DevNav is hidden from students by default.
   // Professors can toggle it from this page so they (and our dev team) can
@@ -1144,6 +1157,24 @@ export function ProfessorPage() {
         >
           {pendingAction === "extend" ? "Extending…" : "+ 1 Min"}
         </button>
+
+        {/* S-02 — visible phase countdown. Hidden when between phases
+            (lobby / paused / no end time set) so we don't render 0:00. */}
+        {phaseCountdownSeconds !== null && (
+          <span
+            className={`professor-page__timer${
+              phaseCountdownSeconds < 30 ? " professor-page__timer--urgent" : ""
+            }`}
+            role="timer"
+            aria-live="polite"
+            aria-label="Phase countdown"
+            title="Time remaining in the current phase."
+          >
+            {phaseCountdownSeconds <= 0
+              ? "0:00"
+              : formatCountdown(phaseCountdownSeconds)}
+          </span>
+        )}
 
         {phase === "simulating" && (
           <button

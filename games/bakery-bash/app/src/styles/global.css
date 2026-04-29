@@ -2108,7 +2108,27 @@ h3 { font-size: 0.7rem; }
   gap: 0.75rem;
   flex-wrap: wrap;
   justify-content: center;
+  align-items: center;
   margin-bottom: 1.5rem;
+}
+
+/* S-02 — phase countdown chip, mirrors the round-header timer styling so
+   the professor sees the same numbers as the students. Goes red under 30s. */
+.professor-page__timer {
+  font-family: var(--font-pixel);
+  font-size: 0.9rem;
+  color: var(--sage);
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--sage);
+  border-radius: 6px;
+  min-width: 4ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.professor-page__timer--urgent {
+  color: var(--berry);
+  border-color: var(--berry);
 }
 
 .professor-page__note {
