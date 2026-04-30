@@ -544,6 +544,28 @@ function cleanString(value) {
 }
 
 /**
+ * sanitizeName
+ * Strips dangerous Unicode characters that enable visual spoofing or
+ * injection attacks: zero-width spaces, directional overrides, and other
+ * invisible formatting characters. Preserves normal international text
+ * (emoji, CJK, Arabic, accents, etc.). Collapses multiple spaces.
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+function sanitizeName(value) {
+  if (typeof value !== 'string') return '';
+  // Strip zero-width/invisible chars and directional overrides
+  return value
+    .replace(
+      /[\u200B-\u200F\u202A-\u202E\u2060\uFEFF\u180E\u3164]/g,
+      '',
+    )
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * coerceChefPoolSize
  * Accepts the new flat-number schema, the legacy `{min, max}` object schema,
  * or anything else (falls back to `fallback`). For legacy `{min, max}` we
@@ -736,6 +758,7 @@ module.exports = {
   numberOrDefault,
   objectOrDefault,
   cleanString,
+  sanitizeName,
   EQUIPMENT_GRADES,
   EQUIPMENT_TIER_COSTS,
   EQUIPMENT_CAPACITY_FACTOR,

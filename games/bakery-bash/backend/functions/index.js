@@ -81,6 +81,7 @@ const {
   numberOrDefault,
   objectOrDefault,
   cleanString,
+  sanitizeName,
 } = require('./modules/config');
 
 const {
@@ -1026,6 +1027,15 @@ exports.createGame = onCall(CALLABLE_OPTS, async (request) => {
   }
 
   const config = mergeConfig(objectOrDefault(data.config, {}));
+
+  // Validate playerCap so a professor can't accidentally (or maliciously) set
+  // an unbounded cap. The FE already clamps to 1–200; mirror that here.
+  const playerCap = numberOrDefault(config.playerCap, 20);
+  if (!Number.isInteger(playerCap) || playerCap < 1 || playerCap > 200) {
+    throw new HttpsError('invalid-argument', 'playerCap must be an integer between 1 and 200.');
+  }
+  config.playerCap = playerCap;
+
   const joinCode = await generateUniqueJoinCode();
 
   // Generate preference profiles for every round up front so the game is
@@ -1090,7 +1100,7 @@ exports.joinGame = onCall(CALLABLE_OPTS, async (request) => {
   const data = request.data || {};
 
   const joinCode = cleanString(data.joinCode).toUpperCase();
-  const displayName = cleanString(data.displayName);
+  const displayName = sanitizeName(data.displayName);
   const rawTeamNumber = data.teamNumber;
   const teamNumber = Number.isInteger(rawTeamNumber) && rawTeamNumber >= 1 && rawTeamNumber <= 8
     ? rawTeamNumber : null;
@@ -1099,7 +1109,7 @@ exports.joinGame = onCall(CALLABLE_OPTS, async (request) => {
   // Falls back to the PR #45 `team-{N}` derivation otherwise so existing
   // sessions keep working.
   const explicitTeamId = isValidTeamId(data.teamId) ? data.teamId : null;
-  const bakeryName = cleanString(data.bakeryName) || (teamNumber ? `Team ${teamNumber}` : `${displayName}'s Bakery`);
+  const bakeryName = sanitizeName(data.bakeryName) || (teamNumber ? `Team ${teamNumber}` : `${displayName}'s Bakery`);
 
   if (!/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/.test(joinCode)) {
     throw new HttpsError('invalid-argument', 'joinCode must be a 6-character game code (letters A-Z excluding I/O, digits 2-9).');
@@ -1430,8 +1440,8 @@ exports.createTeam = onCall(CALLABLE_OPTS, async (request) => {
   const data = request.data || {};
 
   const joinCode = cleanString(data.joinCode).toUpperCase();
-  const teamName = cleanString(data.teamName);
-  const displayName = cleanString(data.displayName);
+  const teamName = sanitizeName(data.teamName);
+  const displayName = sanitizeName(data.displayName);
 
   if (!/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/.test(joinCode)) {
     throw new HttpsError('invalid-argument', 'joinCode must be a 6-character game code.');
@@ -4720,12 +4730,14 @@ exports.updateTeamName = onCall(CALLABLE_OPTS, async (request) => {
 
   const gameId   = cleanGameId(request.data && request.data.gameId);
   const teamId   = cleanString(request.data && request.data.teamId);
-  const name     = cleanString(request.data && request.data.name);
+  const name     = sanitizeName(request.data && request.data.name);
 
   if (!gameId) throw new HttpsError('invalid-argument', 'gameId is required.');
   if (!teamId) throw new HttpsError('invalid-argument', 'teamId is required.');
   if (!name)   throw new HttpsError('invalid-argument', 'name is required.');
-  if (name.length > 64) throw new HttpsError('invalid-argument', 'name must be 64 characters or fewer.');
+  if (name.length < 2 || name.length > 64) {
+    throw new HttpsError('invalid-argument', 'name must be 2–64 characters.');
+  }
 
   const teamRef   = db.collection('games').doc(gameId).collection('teams').doc(teamId);
   const playerRef = db.collection('games').doc(gameId).collection('players').doc(auth.uid);
@@ -5356,7 +5368,12 @@ exports.createBotPlayer = onCall(CALLABLE_OPTS, async (request) => {
     difficulty = validDifficulties.includes(data.difficulty) ? data.difficulty : 'medium';
     const validPersonalities = ['balanced', 'aggressive', 'conservative', 'random', 'chef_focused', 'ad_focused', 'volume', 'margin'];
     personality = validPersonalities.includes(data.personality) ? data.personality : 'balanced';
-    botName = data.name || `Bot ${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}`;
+    botName = sanitizeName(data.name) || `Bot ${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}`;
+  }
+
+  // Validate bot name (same rules as player displayName)
+  if (botName.length < 2 || botName.length > 40) {
+    botName = `Bot ${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}`;
   }
 
   const cfgSnap = await gameRef.collection('config').doc('params').get();
